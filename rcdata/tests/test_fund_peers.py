@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import duckdb
 
-from RevenueChaser.rcdata.build.fundamentals import tables
+from revenuechaser.rcdata.build.fundamentals import tables
 
 from . import fund_fixture as fx
 

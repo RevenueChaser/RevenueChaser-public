@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import calendar, config
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import calendar, config
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata import ops
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +20,7 @@ def _market(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client():
-    from RevenueChaser.app.dashboard import app
+    from revenuechaser.app.dashboard import app
     return panel_test_client(app)
 
 
@@ -56,7 +56,7 @@ def test_the_etf_lists_datasets_take_a_fetch_and_a_backfill(client, dataset):
 
 
 def test_a_request_without_the_panel_header_is_refused_and_enqueues_nothing():
-    from RevenueChaser.app.dashboard import app
+    from revenuechaser.app.dashboard import app
     r = app.test_client().post("/api/build/request/market_series")
     assert r.status_code == 403
     assert not ops.ops_path().exists() or _rows() == []
@@ -123,9 +123,9 @@ def test_an_unknown_schedule_action_is_404(client):
 
 
 def test_a_paused_dataset_is_skipped_by_one_builder_pass_and_runs_again_after_resume(client, monkeypatch):
-    from RevenueChaser.rcdata import build
-    from RevenueChaser.rcdata.build import DATASETS
-    from RevenueChaser.rcdata.build import __main__ as cli
+    from revenuechaser.rcdata import build
+    from revenuechaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import __main__ as cli
     # The two market datasets only: the spine's (PR 5) would be queued as never built and call their providers.
     monkeypatch.setattr(build, "DATASETS", {k: DATASETS[k] for k in ("market_series", "uw/spot_expiry_strike")})
     assert client.post("/api/build/schedule/market_series/pause").status_code == 200
@@ -306,7 +306,7 @@ def test_the_cadence_action_keeps_a_pause_as_it_is(client):
 
 def test_pause_cancels_the_queued_request_and_says_how_many(client):
     """#492 PR (ii): a queued request of a paused dataset never runs."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     rid = client.post("/api/build/request/market_series", headers={"X-RC-Panel": "settings"}).get_json()["id"]
     r = client.post("/api/build/schedule/market_series/pause", headers={"X-RC-Panel": "settings"})
     assert r.status_code == 200 and r.get_json()["cancelled"] == 1
@@ -368,7 +368,7 @@ def test_the_builder_timer_switch_runs_only_life_ctl_on_or_off(client, monkeypat
     """#527 step 11 (avo chose "Dashboard'a sudo izni"): the board's press runs exactly
     ``sudo -n /usr/local/sbin/life-ctl life-rc-builder.timer on|off`` and nothing else; a refusal is the answer."""
     import subprocess
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     seen = []
 
     def fake_run(argv, **kw):

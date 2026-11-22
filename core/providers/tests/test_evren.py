@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import deepseek, evren
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import deepseek, evren
 
 KEY = "sentinel-evren-key-360"
 

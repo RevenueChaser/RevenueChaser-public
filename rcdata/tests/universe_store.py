@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import duckdb
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build.spine import security
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build.spine import security
 
 # Every table the spine readers expect, but not ``my_universe``: an empty list there would keep no name.
 TABLES = ("security", "security_history", "gics_history", "index_membership")
@@ -58,7 +58,7 @@ MARKET: dict[str, dict] = {}
 
 
 def _write(rows: list[dict], *, replace: bool) -> None:
-    from RevenueChaser.core import spine_reads
+    from revenuechaser.core import spine_reads
     if replace:
         MARKET.clear()
     for r in rows:
@@ -97,7 +97,7 @@ def replace(rows: list[dict]) -> None:
 def changes(rows) -> None:
     """``my_universe_changes`` rows (``ticker``, ``kind``, ``change``, ``as_of``), in the order given, as the whole
     table: the dated universe ``read.my_universe_spans`` reads. ``my_universe`` itself is left absent on purpose."""
-    from RevenueChaser.rcdata.build.spine import my_universe
+    from revenuechaser.rcdata.build.spine import my_universe
     cols = [c for c, _ in my_universe.CHANGES_SCHEMA]
     con = _connect()
     try:
@@ -128,5 +128,5 @@ def membership(slug: str, tickers) -> None:
         con.execute("CHECKPOINT")
     finally:
         con.close()
-    from RevenueChaser.core import spine_reads
+    from revenuechaser.core import spine_reads
     spine_reads.clear()

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline, _institutional_flow_comment
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline, _institutional_flow_comment
 
 FAILED_LABEL = "Flow unavailable (provider failure)"
 

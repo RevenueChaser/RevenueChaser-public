@@ -14,8 +14,8 @@ from datetime import date as _date
 
 import numpy as np
 
-from RevenueChaser.core.config import to_float
-from RevenueChaser.core.options import parse_option_symbol
+from revenuechaser.core.config import to_float
+from revenuechaser.core.options import parse_option_symbol
 
 from . import opd_math
 

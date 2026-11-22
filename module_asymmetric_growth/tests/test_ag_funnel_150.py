@@ -10,11 +10,11 @@ import copy
 
 import pytest
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import funnel
-from RevenueChaser.module_asymmetric_growth import engine, freeze
-from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _ANNUAL, _QUOTE, _edgar
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import funnel
+from revenuechaser.module_asymmetric_growth import engine, freeze
+from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+from revenuechaser.module_asymmetric_growth.tests.test_ag_info_only_150 import _ANNUAL, _QUOTE, _edgar
 
 
 
@@ -125,8 +125,8 @@ _GOLDEN_PANEL = (
 
 def test_the_ag_funnel_panel_is_byte_identical_to_today(rawstore_tmp_db):
     """#383 C16: the shared ``funnel_panel_html`` keeps the exact markup AG rendered before the move."""
-    from RevenueChaser.core import funnel as f
-    from RevenueChaser.module_asymmetric_growth.report import _universe_tile_and_funnel
+    from revenuechaser.core import funnel as f
+    from revenuechaser.module_asymmetric_growth.report import _universe_tile_and_funnel
     assert f.funnel_panel_html(_GOLDEN_STEPS) == _GOLDEN_PANEL
     _, panel = _universe_tile_and_funnel({"universe_total": 3, "funnel_steps": _GOLDEN_STEPS}, {})
     assert panel == _GOLDEN_PANEL

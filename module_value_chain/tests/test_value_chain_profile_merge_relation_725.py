@@ -7,7 +7,7 @@ a competitor, and a profile edge in a second relation could never pick up a stat
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import engine
+from revenuechaser.module_value_chain import engine
 
 _XBRL_CUSTOMERS = [{"customer": "Intel", "share": 0.2, "period_end": "2025-12-31",
                     "document_date": "2026-02-01", "form": "10-K", "accession": "a"}]

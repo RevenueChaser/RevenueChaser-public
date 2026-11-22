@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard, runners
-from RevenueChaser.app.jobs import GAPS, JobMessage
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.app import dashboard, runners
+from revenuechaser.app.jobs import GAPS, JobMessage
+from revenuechaser.core import rawstore
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 
 def _client():
@@ -22,7 +22,7 @@ def test_news_is_the_first_tab_of_research():
 def test_refresh_renders_from_the_board_file_without_building(monkeypatch, tmp_path):
     monkeypatch.setattr(runners, "NEWS_LATEST", tmp_path / "news_latest.html")
     built = []
-    from RevenueChaser.module_news import calendar
+    from revenuechaser.module_news import calendar
     monkeypatch.setattr(calendar, "build", lambda **kw: built.append(kw))
     r = _client().get("/view/module_news", query_string={"refresh": "1"})
     assert r.status_code == 200 and "US · Calendar" in r.get_data(as_text=True)
@@ -38,14 +38,14 @@ def test_the_fetch_queues_the_news_job(monkeypatch):
 
 
 def test_the_job_builds_then_renders(monkeypatch, tmp_path):
-    from RevenueChaser.module_news import headlines, report
-    from RevenueChaser.rcdata import read
+    from revenuechaser.module_news import headlines, report
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(read, "job_list", lambda kind: {"": ["RKLB"], "stock": ["OKLO"], "news": ["AAPL"]}[kind])
     asked = []
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw: asked.append(names) or
                         {"tickers": len(names), "stored": 0, "skipped": [], "error": "no API session"})
-    from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_economic
+    from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve_economic
     serve_economic({"2026-11-09": [{"event_ts": 1794317400.0, "event": "CPI, M/M%", "type": "report"}]},
                    fetched_at=100.0)
     with pytest.raises(JobMessage):                   # a down gateway ends the job "done" with gaps, never failed
@@ -56,7 +56,7 @@ def test_the_job_builds_then_renders(monkeypatch, tmp_path):
 
 
 def test_a_down_gateway_shows_the_data_incomplete_banner(monkeypatch, tmp_path):
-    from RevenueChaser.module_news import headlines, report
+    from revenuechaser.module_news import headlines, report
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw:
                         {"tickers": len(names), "stored": 0, "skipped": [], "error": "no API session"})
@@ -70,8 +70,8 @@ def test_a_down_gateway_shows_the_data_incomplete_banner(monkeypatch, tmp_path):
 
 
 def test_a_name_ibkr_does_not_know_is_no_banner(monkeypatch, tmp_path):
-    from RevenueChaser.module_news import headlines, report
-    from RevenueChaser.rcdata import read
+    from revenuechaser.module_news import headlines, report
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(read, "job_list", lambda kind: [])
     monkeypatch.setattr(headlines, "fetch", lambda names, **kw:
@@ -90,7 +90,7 @@ def test_the_listener_route_queues_the_headlines_job_once(monkeypatch):
 
 
 def test_the_headlines_job_loads_the_tape_then_renders_without_the_calendar(monkeypatch, tmp_path):
-    from RevenueChaser.module_news import calendar, headlines, report
+    from revenuechaser.module_news import calendar, headlines, report
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(calendar, "build", lambda **kw: pytest.fail("the 5-minute pass builds no calendar"))
     order = []
@@ -118,7 +118,7 @@ def test_the_api_returns_headlines_stored_after_since_with_their_lane():
 def test_the_api_shows_a_tape_headline_before_the_five_minute_pass_stores_it():
     import json
     import time
-    from RevenueChaser.module_news import tape
+    from revenuechaser.module_news import tape
     now = time.time()
     path = tape.day_file(now)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,8 +129,8 @@ def test_the_api_shows_a_tape_headline_before_the_five_minute_pass_stores_it():
 
 
 def test_the_five_minute_pass_reloads_no_frame_and_a_down_gateway_raises_no_alert(monkeypatch, tmp_path):
-    from RevenueChaser.app import jobs
-    from RevenueChaser.module_news import headlines, report
+    from revenuechaser.app import jobs
+    from revenuechaser.module_news import headlines, report
     assert jobs._PRODUCES["news_headlines"] == []              # the shell reloads what a job produces
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})
@@ -141,7 +141,7 @@ def test_the_five_minute_pass_reloads_no_frame_and_a_down_gateway_raises_no_aler
 
 
 def test_the_history_drops_the_five_minute_passes_first(monkeypatch):
-    from RevenueChaser.app import jobs
+    from revenuechaser.app import jobs
     monkeypatch.setattr(jobs, "_JOBS", {})
     monkeypatch.setattr(jobs, "_SEQ", {})
     monkeypatch.setattr(jobs, "MAX_HISTORY", 3)
@@ -154,8 +154,8 @@ def test_the_history_drops_the_five_minute_passes_first(monkeypatch):
 
 def test_a_refused_request_that_is_not_an_unknown_name_shows_the_banner(monkeypatch, tmp_path):
     # Review F1 (18 Nov 2026): a lapsed feed or pacing error must not pass for a quiet lane (avo's D5: "Panoda bant").
-    from RevenueChaser.module_news import headlines, report
-    from RevenueChaser.rcdata import read
+    from revenuechaser.module_news import headlines, report
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(read, "job_list", lambda kind: [])
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})
@@ -168,8 +168,8 @@ def test_a_refused_request_that_is_not_an_unknown_name_shows_the_banner(monkeypa
 
 def test_an_unreadable_stock_list_is_said_not_read_as_empty(monkeypatch, tmp_path):
     # Review F6: the job reads the strict accessor, so a list it cannot read shows on the board.
-    from RevenueChaser.module_news import headlines, report
-    from RevenueChaser.rcdata import read
+    from revenuechaser.module_news import headlines, report
+    from revenuechaser.rcdata import read
 
     def job_list(kind):
         if kind == "stock":
@@ -212,7 +212,7 @@ def test_the_ticker_box_reads_the_names_stored_rows(monkeypatch):
 
 
 def test_the_page_carries_the_ticker_box(monkeypatch, tmp_path):
-    from RevenueChaser.module_news import report
+    from revenuechaser.module_news import report
     page = report.render_html()
     assert 'id="tq"' in page and "News for one stock" in page and "/run/news_ticker" in page
     assert "TQ_PICK = " in page and "rcWatchInit(" in page
@@ -229,7 +229,7 @@ def test_the_x_reader_route_queues_one_pass(monkeypatch):
 
 
 def test_a_refused_x_read_is_the_pages_banner_not_a_job_message(monkeypatch, tmp_path):
-    from RevenueChaser.module_news import report, x_reader
+    from revenuechaser.module_news import report, x_reader
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
 
     def refused(**kw):
@@ -239,7 +239,7 @@ def test_a_refused_x_read_is_the_pages_banner_not_a_job_message(monkeypatch, tmp
     assert page.count('class="rc-provider-health"') == 1 and "Unauthorized" in page
     monkeypatch.setattr(x_reader, "run", lambda **kw: {"skipped": True, "read": 0, "stored": 0})
     assert runners.run_news_x_follow() is None
-    from RevenueChaser.module_news import headlines
+    from revenuechaser.module_news import headlines
     assert headlines.lane_ok()["x"] is None                     # neither a refused nor a skipped read marks the lane
     monkeypatch.setattr(x_reader, "run", lambda **kw: {"skipped": False, "read": 0, "stored": 0})
     runners.run_news_x_follow()
@@ -249,8 +249,8 @@ def test_a_refused_x_read_is_the_pages_banner_not_a_job_message(monkeypatch, tmp
 def test_only_a_clean_per_ticker_pass_marks_the_stocks_lane_ok(monkeypatch, tmp_path):
     """Review F2 / plan step 6: the mark Grafana alerts on moves on a pass that refused nothing, even one that
     brought no headline, and stays put on a pass with a refused request or an unreadable list."""
-    from RevenueChaser.module_news import headlines, report
-    from RevenueChaser.rcdata import read
+    from revenuechaser.module_news import headlines, report
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(report, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(read, "job_list", lambda kind: ["AAPL"] if kind == "news" else [])
     monkeypatch.setattr(headlines, "load_tape", lambda **kw: {"read": 0, "stored": 0})

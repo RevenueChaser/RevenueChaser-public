@@ -8,8 +8,8 @@ when it did not qualify. Real UW rows of 4 Nov for the 5 Nov expiry: the largest
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import charm_pin, scenarios
-from RevenueChaser.module_spx_gamma.normalize import normalize_strike_expiry_rows
+from revenuechaser.module_spx_gamma import charm_pin, scenarios
+from revenuechaser.module_spx_gamma.normalize import normalize_strike_expiry_rows
 from .conftest import make_snapshot
 
 UW_ROWS_2026_11_04 = {"data": [
@@ -72,7 +72,7 @@ def test_snapshot_carries_the_report_pin():
 
 
 def test_charm_card_shows_the_report_pin_first():
-    from RevenueChaser.module_spx_gamma import summary
+    from revenuechaser.module_spx_gamma import summary
     snap = make_snapshot()
     card = summary.build_summary(snap)[3]
     labels = [r[0] for r in card["rows"]]
@@ -100,7 +100,7 @@ def test_the_asof_days_own_expiry_is_dead_after_its_close():
 
 
 def test_normalize_passes_the_fetch_time_to_the_pin():
-    from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+    from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
     from .conftest import make_raw
     raw = make_raw()
     assert normalize_snapshot(raw, "2026-08-14")["charm_pin_report"]["expiry"] == "2026-08-14"
@@ -130,7 +130,7 @@ def test_the_table_prints_the_open_upside_as_n_a():
 
 
 def test_the_open_upside_reaches_brier_close_check_and_structures():
-    from RevenueChaser.module_spx_gamma import brier, close_check, structures
+    from revenuechaser.module_spx_gamma import brier, close_check, structures
     bands = scenarios.scenario_bands(REAL_5_NOV)
     assert brier._clean_bands(bands)["upside"] == [7721.82, None]
     assert scenarios.realized_class(bands, 7800.0) == "Upside"

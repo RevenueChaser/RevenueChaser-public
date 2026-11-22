@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_settings import report
+from revenuechaser.module_settings import report
 
 
 
@@ -105,7 +105,7 @@ class TestJobVerdict:
 
 def test_every_provider_the_registry_can_name_is_written_in_words():
     """The copy rule: a source code such as ``finra/cftc`` never reaches the page."""
-    from RevenueChaser.core import datasets
+    from revenuechaser.core import datasets
 
     for source in datasets.Source:
         words = report._provider_name(source)
@@ -173,7 +173,7 @@ def _settings_block(custom=False, **over):
 class TestJobPoller:
 
     def test_one_shared_verdict_function(self):
-        from RevenueChaser.core import reporting_common as rc
+        from revenuechaser.core import reporting_common as rc
         assert "function settingsJobVerdict(" in rc.JOB_JS
         assert "function settingsJobVerdict(" in report.JS
         assert report.JS.count("function settingsJobVerdict(") == 1
@@ -279,7 +279,7 @@ def _identity(**over):
 # --- Automations panel (#130) ------------------------------------------------------
 
 def _autos():
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     return automations.static_rows()
 
 
@@ -313,7 +313,7 @@ def _render_rows(rows: list, available: bool = True) -> str:
     import shutil
     import subprocess
     import pytest
-    from RevenueChaser.core import html_safe
+    from revenuechaser.core import html_safe
     if shutil.which("node") is None:
         pytest.skip("node not on PATH")
     script = (html_safe.ESC_JS + report.AUTOMATIONS_JS +
@@ -469,7 +469,7 @@ def _auto_poll(open_ids: list, focused_id: str | None) -> dict:
     import shutil
     import subprocess
     import pytest
-    from RevenueChaser.core import html_safe
+    from revenuechaser.core import html_safe
     if shutil.which("node") is None:
         pytest.skip("node not on PATH")
     script = (html_safe.ESC_JS + report.AUTOMATIONS_JS
@@ -505,7 +505,7 @@ def _drill_rows(detail: dict) -> str:
     import shutil
     import subprocess
     import pytest
-    from RevenueChaser.core import html_safe
+    from revenuechaser.core import html_safe
     if shutil.which("node") is None:
         pytest.skip("node not on PATH")
     helpers = report.DRILL_JS[:report.DRILL_JS.index("function onDrillPick")]
@@ -640,7 +640,7 @@ def test_the_detail_toggle_and_the_grouping_run_under_node(tmp_path):
     import shutil
     import subprocess
     import pytest
-    from RevenueChaser.core.tests.board_js import function_source
+    from revenuechaser.core.tests.board_js import function_source
     if shutil.which("node") is None:
         pytest.skip("node not on PATH")
     js = (function_source(report.JS, "settingsDetail")
@@ -799,7 +799,7 @@ def test_the_filters_run_under_node(tmp_path):
     import shutil
     import subprocess
     import pytest
-    from RevenueChaser.core.tests.board_js import function_source
+    from revenuechaser.core.tests.board_js import function_source
     if shutil.which("node") is None:
         pytest.skip("node not on PATH")
     js = (function_source(report.JS, "settingsRowPairs")
@@ -985,7 +985,7 @@ def _other_section(html: str) -> str:
 def test_every_registry_source_is_spelled_out_in_words():
     """avo's copy rule: no 'uw' or 'sec' shorthand on the board. Every provider value the registry can carry has
     plain words, and none of them is the raw short form."""
-    from RevenueChaser.core import datasets
+    from revenuechaser.core import datasets
     for source in datasets.Source:
         words = report.source_words(source.value)
         assert source.value in report.SOURCE_WORDS, source.value
@@ -1053,7 +1053,7 @@ def test_a_dataset_without_a_provider_says_unknown_provider_in_words(row, words)
 
 
 def test_a_row_without_a_store_file_takes_the_registry_file_without_reading_the_store():
-    from RevenueChaser.core import datasets
+    from revenuechaser.core import datasets
     spec = next(s for s in datasets.REGISTRY if s.db == "relatedness")
     graph = report.flow_graph([{"key": spec.key, "source": spec.source.value, "writer": spec.writer}])
     assert [s["name"] for s in graph["stores"]] == ["relatedness"]
@@ -1121,7 +1121,7 @@ def test_a_store_file_outside_the_board_files_draws_in_muted_ink_and_says_so():
 
 def test_the_real_registry_diagram_stays_under_the_budget():
     """The ~60 datasets of the real registry, built from the registry alone (no store read)."""
-    from RevenueChaser.core import datasets
+    from revenuechaser.core import datasets
     rows = [{"key": s.key, "source": s.source.value, "writer": s.writer, "db": s.db}
             for s in datasets.REGISTRY]
     svg = report._flow_svg(report.flow_graph(rows))

@@ -5,16 +5,16 @@ from collections import defaultdict
 from pathlib import Path
 
 from .core.config import UW_API_KEY
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline, nrc_from_card
-from RevenueChaser.module_earnings_radar.terminal import render_dashboard
-from RevenueChaser.module_earnings_radar.report import export_html, open_in_browser
-from RevenueChaser.module_earnings_radar.rules.nrc import export_nrc_html
-from RevenueChaser.module_earnings_radar.watchlist_augment import augment_calendar, _augment_watchlist  # noqa: F401
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline, nrc_from_card
+from revenuechaser.module_earnings_radar.terminal import render_dashboard
+from revenuechaser.module_earnings_radar.report import export_html, open_in_browser
+from revenuechaser.module_earnings_radar.rules.nrc import export_nrc_html
+from revenuechaser.module_earnings_radar.watchlist_augment import augment_calendar, _augment_watchlist  # noqa: F401
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("RevenueChaser")
+logger = logging.getLogger("revenuechaser")
 
 
 def build_weeks(n: int = 12) -> list[tuple[date, date, int]]:
@@ -28,7 +28,7 @@ def run_unit_tests() -> int:
     """Run the co-located pytest suite and return the exit code."""
     import subprocess
     root = Path(__file__).resolve().parent.parent
-    package_dir = Path(__file__).resolve().parent  # RevenueChaser/ (co-located tests)
+    package_dir = Path(__file__).resolve().parent  # revenuechaser/ (co-located tests)
 
     print(f"\n  Running unit tests: {package_dir}")
     print("  " + "=" * 60)
@@ -63,7 +63,7 @@ def main():
         return
 
     if mode == "2":
-        from RevenueChaser.module_sector_rotation.__main__ import run_rotation_map
+        from revenuechaser.module_sector_rotation.__main__ import run_rotation_map
         run_rotation_map()
         return
 
@@ -144,7 +144,7 @@ def main():
     print(f"\n  {len(tickers)} tickers. Loading rotation data...")
     etf_quadrant_map = {}
     try:
-        from RevenueChaser.module_sector_rotation.engine import rotation_quadrant_map
+        from revenuechaser.module_sector_rotation.engine import rotation_quadrant_map
         etf_quadrant_map = rotation_quadrant_map(uw)
         if etf_quadrant_map:
             print(f"  Rotation ready: {len(etf_quadrant_map)} ETFs classified (pipeline maps tickers by cluster).")

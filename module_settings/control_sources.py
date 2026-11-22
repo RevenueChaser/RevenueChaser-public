@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from RevenueChaser.rcdata.needs import screen
+from revenuechaser.rcdata.needs import screen
 
 PV_LABELS: dict[str, str] = {
     "build": "the build", "rule": "our rule", "sec": "SEC", "wrds": "WRDS", "figi": "OpenFIGI", "alpaca": "Alpaca",
@@ -163,7 +163,7 @@ def funnel(nd: dict, *, rules_path: Path | None = None) -> dict:
     The words of each rule are read from ``my_universe_rules.json`` (or ``rules_path``) now; the counts are the
     Identity card's steps and the Our universe card's counts, which ``newdata.collect`` already read. A step those
     do not count (an ETN or CEF is not counted anywhere the model reads) is None."""
-    from RevenueChaser.rcdata.build.spine import my_universe as mine
+    from revenuechaser.rcdata.build.spine import my_universe as mine
     rules = mine.load_rules(rules_path)
     steps = {str(s.get("key")): s.get("count") for s in ((nd.get("identity") or {}).get("steps") or [])}
     mu = nd.get("my_universe") or {}

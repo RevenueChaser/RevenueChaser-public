@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_watchlists import board, store
-from RevenueChaser.rcdata import read
+from revenuechaser.module_watchlists import board, store
+from revenuechaser.rcdata import read
 
 pytestmark = [pytest.mark.rawstore_schema_from_scratch]
 

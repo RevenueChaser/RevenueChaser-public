@@ -9,7 +9,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import needs, read
+from revenuechaser.rcdata import needs, read
 
 
 def test_every_need_points_at_a_read_function():
@@ -80,7 +80,7 @@ def _served_columns() -> dict[str, set[str]]:
     That is every serving table there is, so this covers every need, not only the ones whose build module happens
     to expose a module-level schema.
     """
-    from RevenueChaser.rcdata import scaffold
+    from revenuechaser.rcdata import scaffold
     return {table: {c for c, _ in columns}
             for tables in scaffold.SCHEMA_OF_KIND.values() for table, columns in tables.items()}
 

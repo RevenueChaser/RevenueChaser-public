@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.module_settings import control, control_render
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
-from RevenueChaser.rcdata import serving
+from revenuechaser.module_settings import control, control_render
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.rcdata import serving
 
 #: One picture per serving kind, from the registry: a kind added should not come back here as a count.
 FILES = len(serving.KINDS)
@@ -127,7 +127,7 @@ def test_the_icon_column_is_as_wide_as_the_step_with_the_most_icons():
 
 
 def test_the_reference_parts_under_the_files_are_not_drawn_on_a_phone():
-    from RevenueChaser.module_settings import needs_tab
+    from revenuechaser.module_settings import needs_tab
     assert "#needs details.hfold:not(.onphone){display:none}" in _phone_rules(needs_tab.NEEDS_CSS)
     assert "#needs details.hfold:not(.onphone){display:none}" not in needs_tab.NEEDS_CSS.replace(
         "@media(max-width:900px){#needs details.hfold:not(.onphone){display:none}}", ""), "the desk keeps them"
@@ -135,7 +135,7 @@ def test_the_reference_parts_under_the_files_are_not_drawn_on_a_phone():
 
 def test_the_automations_are_the_one_reference_part_a_phone_keeps():
     """avo, 16 Nov 2026: the job list (RC-SEC-Read among them) must show on Settings, and he reads it on a phone."""
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     more = report._database_more({"automations": [{"name": "RC-SEC-Read"}]})
     assert '<details class="hfold onphone"><summary>Automations:' in more
     assert more.count('class="hfold onphone"') == 1
@@ -157,7 +157,7 @@ def test_the_phone_rules_reach_the_width_he_actually_browses_at():
     then at 760, and his page still showed the desk layout at 02:16 (the Grafana board's rows gave it away). His
     width is not fixed — it moves with Chrome's display size — so the page has one narrow breakpoint, 900, wide
     enough to catch every state of it; a desk window is wider than that anyway."""
-    from RevenueChaser.module_settings import needs_tab
+    from revenuechaser.module_settings import needs_tab
     for css in (control_render.CTL_CSS, needs_tab.NEEDS_CSS):
         assert "max-width:640px" not in css and "max-width:760px" not in css, "one narrow breakpoint, and it is 900"
     phone = _phone_rules(control_render.CTL_CSS)

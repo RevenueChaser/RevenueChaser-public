@@ -2,7 +2,7 @@
 9 Nov 2026 review, E1 of #342), the source Relatedness reads instead of ``raw.duckdb.etf_holdings``."""
 from __future__ import annotations
 
-from RevenueChaser.rcdata import read
+from revenuechaser.rcdata import read
 
 from . import spine_fixture as fx
 

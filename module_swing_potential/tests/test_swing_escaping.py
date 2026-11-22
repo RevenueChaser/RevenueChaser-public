@@ -9,10 +9,10 @@ import copy
 import json
 import re
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_swing_potential.pipeline import build_payload
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_swing_potential.pipeline import build_payload
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
 
 _EVIL = "\"'><img src=x onerror=alert(1)>"
 
@@ -109,7 +109,7 @@ def test_the_server_markup_holds_no_card_and_no_raw_value():
 def test_a_comment_opener_or_placeholder_in_a_name_keeps_the_script_intact(tmp_path):
     """F3: ``<!--<script>`` in a value blanked the board; a value spelling
     ``__GATES__`` was substituted again."""
-    from RevenueChaser.core.tests.board_js import PROBE, assert_scripts_intact
+    from revenuechaser.core.tests.board_js import PROBE, assert_scripts_intact
     p = copy.deepcopy(_payload())
     p["candidates"][0]["name"] = PROBE
     p["candidates"][0]["gates"]["minervini"]["rules"][0]["label"] = PROBE

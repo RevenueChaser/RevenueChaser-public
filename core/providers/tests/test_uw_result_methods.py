@@ -19,9 +19,9 @@ from pathlib import Path
 import httpx
 import pytest
 
-from RevenueChaser.core.providers import unusual_whales as uwmod
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers import unusual_whales as uwmod
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 EVIL = "A/B?x=1"
 EVIL_SEG = "A%2FB%3Fx%3D1"
@@ -308,8 +308,8 @@ def test_importing_the_client_still_loads_dotenv_through_config(tmp_path):
     """The client no longer imports a key from ``core.config``, but the import itself loads
     ``.env`` (``config`` calls ``load_dotenv``); without it a key kept only in ``.env`` is lost."""
     repo = Path(uwmod.__file__).resolve().parents[2]
-    code = ("import sys; import RevenueChaser.core.providers.unusual_whales; "
-            "print('RevenueChaser.core.config' in sys.modules)")
+    code = ("import sys; import revenuechaser.core.providers.unusual_whales; "
+            "print('revenuechaser.core.config' in sys.modules)")
     env = {"PATH": "", "PYTHONPATH": str(repo.parent), "RC_STORE_DIR": str(tmp_path / "s"),
            "RC_CACHE_DIR": str(tmp_path / "c"), "RC_EDGAR_DOCS_DIR": str(tmp_path / "e")}
     out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,

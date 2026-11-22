@@ -17,7 +17,7 @@ warning rather than substituting a list of its own.
 from __future__ import annotations
 
 from .config import PEER_CAP_RATIO_BAND, PEER_K
-from RevenueChaser.core.gics_map import UNCLASSIFIED, canonical_sector, is_unclassified
+from revenuechaser.core.gics_map import UNCLASSIFIED, canonical_sector, is_unclassified
 
 
 def _industry_key(row: dict) -> str:

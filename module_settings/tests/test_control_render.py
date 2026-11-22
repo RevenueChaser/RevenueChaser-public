@@ -7,13 +7,13 @@ import re
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import H
-from RevenueChaser.core.tests.board_js import assert_scripts_parse
-from RevenueChaser.core.tests.test_board_html_guard import assert_inert
-from RevenueChaser.core.tests.test_one_escaper_175 import check_page
-from RevenueChaser.module_settings import control, control_render, report
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
-from RevenueChaser.rcdata.needs import screen
+from revenuechaser.core.tests.board_fixtures import H
+from revenuechaser.core.tests.board_js import assert_scripts_parse
+from revenuechaser.core.tests.test_board_html_guard import assert_inert
+from revenuechaser.core.tests.test_one_escaper_175 import check_page
+from revenuechaser.module_settings import control, control_render, report
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.rcdata.needs import screen
 
 SECTIONS = ("sec-health", "sec-flow", "sec-crosscheck")
 #: the sections of the old Fetch/Health HTML, off the page since #715 (the framed Grafana board carries them)
@@ -188,7 +188,7 @@ def test_the_calendar_counts_only_the_universes_sets_on_each_session(tmp_path):
     import json
     import shutil
     import subprocess
-    from RevenueChaser.core.tests.board_js import function_source
+    from revenuechaser.core.tests.board_js import function_source
     if shutil.which("node") is None:
         pytest.skip("node not on PATH")
     src = function_source(control_render.CTL_JS, "sessionN")
@@ -210,7 +210,7 @@ def _flow_js() -> str:
 
 def test_a_press_in_the_flow_diagram_leaves_the_page_where_it_is():
     """avo, 30 Oct: pressing a value must not carry the page to the cards; only the press on 'open them' does."""
-    from RevenueChaser.core.tests.board_js import function_source
+    from revenuechaser.core.tests.board_js import function_source
     flow = _flow_js()
     assert "scrollIntoView" not in function_source(flow, "paint"), "a pick never scrolls"
     assert "scrollIntoView" not in flow, "#492: the file panels follow the picker; the flow never carries the reader"
@@ -218,7 +218,7 @@ def test_a_press_in_the_flow_diagram_leaves_the_page_where_it_is():
 
 def test_a_health_badge_picks_its_own_file():
     """avo, 30 Oct: the 6/7 on spine.duckdb picks that file, not every file whose health reads the same."""
-    from RevenueChaser.core.tests.board_js import function_source
+    from revenuechaser.core.tests.board_js import function_source
     flow = _flow_js()
     assert "picks.hs" not in flow, "the badge picks a file, so there is no health-state pick left"
     hit = function_source(flow, "hit")

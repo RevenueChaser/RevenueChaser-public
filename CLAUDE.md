@@ -132,7 +132,7 @@ Code, comments, commit messages, issues and docs are written in **English**.
   variable `RC_STORE_AUTO_ENSURE=0`. Without the second one, application code applies the schema manifest on its
   first call and creates tables in the file you meant only to read.
 - **A `_SCHEMA_VERSION` bump** needs a store checkpoint taken before the merge; there is no automation for it.
-- **The dashboard holds the DuckDB writer** (`python -m RevenueChaser.app.dashboard`, port 8000 by default), so
+- **The dashboard holds the DuckDB writer** (`python -m revenuechaser.app.dashboard`, port 8000 by default), so
   start store-writing jobs through it rather than running a second writer:
   `curl -X POST -H "X-RC-Panel: cli" http://127.0.0.1:8000/run/<job>`, then poll `/api/job/<id>`.
   **Every non-`GET`/`HEAD`/`OPTIONS` request needs that header**; without it the dashboard answers

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import plotly.graph_objects as go
 
-from RevenueChaser.module_spx_gamma.charts import position_map
+from revenuechaser.module_spx_gamma.charts import position_map
 from .conftest import make_snapshot
 
 
@@ -95,7 +95,7 @@ def test_the_export_passes_the_responsive_config_to_plotly(tmp_path, snapshot):
 
     Plotly 6's default also happens to be responsive, so the output cannot tell; the call can.
     """
-    from RevenueChaser.module_spx_gamma.run import _export_chart
+    from revenuechaser.module_spx_gamma.run import _export_chart
     fig = position_map.build(snapshot, include_tornado=False)
     seen = {}
     real = fig.to_html
@@ -114,8 +114,8 @@ def test_a_close_only_window_is_drawn_as_a_close_line():
     empty, so it is drawn as a line, and the footnote names its source."""
     import plotly.graph_objects as go
 
-    from RevenueChaser.module_spx_gamma.charts import position_map
-    from RevenueChaser.module_spx_gamma.tests.conftest import make_snapshot
+    from revenuechaser.module_spx_gamma.charts import position_map
+    from revenuechaser.module_spx_gamma.tests.conftest import make_snapshot
 
     snap = make_snapshot()
     snap["candles"] = [{**c, "open": None, "high": None, "low": None, "volume": None} for c in snap["candles"]]

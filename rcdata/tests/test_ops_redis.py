@@ -10,8 +10,8 @@ import threading
 
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import config
+from revenuechaser.rcdata import ops
 
 pytestmark = pytest.mark.skipif(not os.getenv("RC_REDIS_URL"), reason="needs a Redis at RC_REDIS_URL (CI runs one)")
 
@@ -203,7 +203,7 @@ def test_ids_keep_counting_after_rows_are_copied_in():
 def test_a_newer_schema_stamp_is_refused():
     ops.ensure()
     assert ops.schema_version() == ops.OPS_SCHEMA_VERSION
-    from RevenueChaser.rcdata import ops_redis
+    from revenuechaser.rcdata import ops_redis
     ops_redis._client().set(ops_redis._key("ops_schema"), ops.OPS_SCHEMA_VERSION + 1)
     ops_redis._ENSURED.clear()
     with pytest.raises(ops.OpsSchemaTooNew):
@@ -211,7 +211,7 @@ def test_a_newer_schema_stamp_is_refused():
 
 
 def test_the_reads_never_write_a_key():
-    from RevenueChaser.rcdata import ops_redis
+    from revenuechaser.rcdata import ops_redis
     ops.read_queue(), ops.open_issues("x"), ops.watch_rows("stock"), ops.schema_version(), ops.latest_check("x")
     assert list(ops_redis._client().scan_iter(match=ops_redis._key("*"))) == []
 
@@ -229,7 +229,7 @@ def test_sync_issues_keeps_open_rows_and_resolves_only_its_kinds_at_scale():
 
 def test_a_step_that_keeps_conflicting_gives_up_as_a_busy_store(monkeypatch):
     """Review S1: the optimistic retry is bounded, with a backoff; then WatchError, which callers treat as busy."""
-    from RevenueChaser.rcdata import ops_redis
+    from revenuechaser.rcdata import ops_redis
     waits: list[int] = []
     monkeypatch.setattr(ops_redis, "_backoff", waits.append)              # counted, not slept
     tries = []
@@ -245,7 +245,7 @@ def test_a_step_that_keeps_conflicting_gives_up_as_a_busy_store(monkeypatch):
 
 
 def test_the_backoff_grows_and_has_jitter():
-    from RevenueChaser.rcdata import ops_redis
+    from revenuechaser.rcdata import ops_redis
     waits = [ops_redis._backoff_s(a) for a in range(ops_redis.MAX_ATTEMPTS)]
     assert all(0 < w <= ops_redis.BACKOFF_MAX_S for w in waits)
     assert max(waits[-5:]) > max(waits[:2])
@@ -255,7 +255,7 @@ def test_the_backoff_grows_and_has_jitter():
 def test_the_snapshot_finishes_under_a_steady_writer():
     """Review S1: 3,000 check rows and a writer every 20 ms; a WATCHed read never finished (106 tries in 15 s)."""
     import time
-    from RevenueChaser.rcdata import ops_redis
+    from revenuechaser.rcdata import ops_redis
     ops.put_rows("dataset_check", [{"id": i, "dataset": "d", "checked_on": "2026-11-02", "result": "changed"}
                                    for i in range(1, 3001)])
     stop = threading.Event()
@@ -294,7 +294,7 @@ def test_an_explicit_namespace_stays_when_the_market_root_moves(monkeypatch, tmp
 
 
 def ops_redis_ns_env() -> str:
-    from RevenueChaser.rcdata import ops_redis
+    from revenuechaser.rcdata import ops_redis
     return ops_redis.NAMESPACE_ENV
 
 
@@ -310,7 +310,7 @@ def test_an_empty_namespace_beside_an_ops_file_with_rows_refuses_to_start(monkey
         ops.count_calls("uw", 1)
     with pytest.raises(ops.OpsNotCopied):
         ops.ensure()
-    from RevenueChaser.rcdata import ops_copy
+    from revenuechaser.rcdata import ops_copy
     assert ops_copy.main([]) == 0                              # the copy is the way in
     ops.count_calls("uw", 1)
     assert ops.calls_today("uw") == 6

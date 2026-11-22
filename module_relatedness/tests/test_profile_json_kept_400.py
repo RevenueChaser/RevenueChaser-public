@@ -7,8 +7,8 @@ went through ``store.save_profile``, which sent neither JSON column, so a re-sav
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import config, engine, store
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import config, engine, store
 
 V3 = {"summary": "makes gpus", "segments": [{"name": "compute", "share": 0.9, "source": "table",
                                              "products": ["gpu"], "end_markets": ["data center"]}],
@@ -54,8 +54,8 @@ def test_an_explicit_none_clears_the_json(rawstore_tmp_db):
 
 def test_an_unusable_answer_keeps_the_stored_v3_json(rawstore_tmp_db, monkeypatch):
     """Engine path: the second run's reply is unusable, the kept profile is re-saved with its attempt counted."""
-    from RevenueChaser.module_relatedness import profiles
-    from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
+    from revenuechaser.module_relatedness import profiles
+    from revenuechaser.module_relatedness.tests.test_relatedness import long_body
 
     monkeypatch.setattr(engine, "_cik_for", lambda ts: {t: t for t in ts})
     monkeypatch.setattr(engine, "_filing_text", lambda t: (t, long_body("we make gpus")))

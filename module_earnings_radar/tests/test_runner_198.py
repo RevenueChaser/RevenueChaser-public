@@ -9,9 +9,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_earnings_radar import pipeline as pl
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
+from revenuechaser.module_earnings_radar import pipeline as pl
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
 
 
 @pytest.fixture(autouse=True)
@@ -173,8 +173,8 @@ class TestBoundedScoringPool:
 
 class TestProviderEarningsRows:
     def test_one_request_serves_the_event_and_the_history(self):
-        from RevenueChaser.core.providers.result import ProviderResult
-        from RevenueChaser.core.providers.unusual_whales import UWClient
+        from revenuechaser.core.providers.result import ProviderResult
+        from revenuechaser.core.providers.unusual_whales import UWClient
         calls = []
         uw = UWClient.__new__(UWClient)
         uw.get_result = lambda ep, params=None: calls.append(ep) or ProviderResult(

@@ -13,7 +13,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import scaffold, serving
+from revenuechaser.rcdata import scaffold, serving
 
 
 def test_every_serving_kind_has_a_declared_schema():
@@ -29,7 +29,7 @@ def test_every_served_table_of_every_dataset_is_in_its_kinds_schema():
     """The promise in ``scaffold``'s own docstring: the tables come from the build modules, so a dataset that
     serves a table of its own appears in the empty file without a second list to keep. A table missing here is a
     kind whose empty file would not hold it, and a reader of it would meet a missing table, not no rows."""
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     for ds in DATASETS.values():
         for table in ds.tables:
             assert table in scaffold.SCHEMA_OF_KIND[ds.kind], f"{ds.name} serves {table}"
@@ -39,7 +39,7 @@ def test_every_served_table_a_reader_knows_is_in_the_scaffolds_schema():
     """``create_empty`` exists to close the gap between "never built" and "built and empty", so a served table the
     scaffold does not declare reopens it — and the panel's file card, which reads the same map, never lists it.
     The assertion below is a subset, so it passes with a table missing; this one is the equality."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     declared = {t for tables in scaffold.SCHEMA_OF_KIND.values() for t in tables}
     assert set(read.KIND_OF_TABLE) <= declared, sorted(set(read.KIND_OF_TABLE) - declared)
 
@@ -87,7 +87,7 @@ def test_create_missing_fills_only_the_gaps():
 
 
 def test_a_read_of_an_empty_file_is_no_rows_never_an_error():
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     scaffold.create_empty("prices")
     assert read.bars(["sec:1"]) == []
     summary = read.table_summary("price_bar_daily", day_column="session_date", key_column="security_id")
@@ -99,7 +99,7 @@ def test_a_read_of_an_empty_file_is_no_rows_never_an_error():
 @pytest.fixture
 def backup_taken(monkeypatch):
     """The verified backup, stubbed: a test has no backup folder, and what is under test here is the scaffold."""
-    from RevenueChaser.rcdata import backup
+    from revenuechaser.rcdata import backup
     monkeypatch.setattr(backup, "run_backup", lambda only=None: {"ops": "copied"})
     return backup
 
@@ -117,7 +117,7 @@ def test_the_command_reports_what_it_created_and_what_it_left_alone(capsys, back
 
 def test_the_command_says_so_when_there_is_nothing_to_do(capsys):
     scaffold.create_missing()
-    from RevenueChaser.rcdata import backup
+    from revenuechaser.rcdata import backup
     assert backup.main(["create-empty-stores"]) == 0
     assert "nothing to create" in capsys.readouterr().out
 
@@ -133,7 +133,7 @@ def test_the_ownership_file_holds_every_providers_table_too():
 
 def test_every_table_a_need_names_is_in_some_kinds_schema():
     """A need over a table no empty file would hold is a need no screen can ever show as 'built, empty'."""
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     known = {t for tables in scaffold.SCHEMA_OF_KIND.values() for t in tables}
     missing = sorted({n.table for n in needs.catalog.NEEDS.values()} - known)
     assert missing == [], f"needs over tables no serving file declares: {missing}"
@@ -145,7 +145,7 @@ def test_without_apply_the_command_only_says_what_it_would_do(capsys):
     """CLAUDE.md: a write to the live store runs behind a verified backup, with an idle queue and a named rollback.
     The command's own comment promised all three and then wrote straight away. The default is a dry run now, as
     ``clean-scratch`` has been all along for far less."""
-    from RevenueChaser.rcdata import backup
+    from revenuechaser.rcdata import backup
     assert backup.main(["create-empty-stores"]) == 0
     out = capsys.readouterr().out
     assert "would create" in out and "--apply" in out

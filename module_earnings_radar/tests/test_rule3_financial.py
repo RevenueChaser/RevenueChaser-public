@@ -6,7 +6,7 @@ supplements.
 """
 import pytest
 
-from RevenueChaser.module_earnings_radar.rules.rule3_financial import (
+from revenuechaser.module_earnings_radar.rules.rule3_financial import (
     score,
     _score_saas,
     _score_hardware,
@@ -359,7 +359,7 @@ def test_universal_om_cluster_is_not_overridden_for_short_mild_case():
 
 # ── #196 E-1: R3 correctness (E2, E6, E7, E8) ───────────────────────────────
 
-from RevenueChaser.module_earnings_radar.rules.rule3_financial import _yoY_index
+from revenuechaser.module_earnings_radar.rules.rule3_financial import _yoY_index
 
 
 def _dated(rows, dates):
@@ -450,7 +450,7 @@ def test_e7_no_year_ago_row_leaves_growth_unavailable_not_qoq():
 
 
 def test_e7_undated_history_gets_no_prior():
-    from RevenueChaser.module_earnings_radar.rules.rule3_financial import _yoy_prior
+    from revenuechaser.module_earnings_radar.rules.rule3_financial import _yoy_prior
     assert _yoy_prior([{"revenue": 1}, {"revenue": 2}]) is None
 
 

@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from RevenueChaser.core.gics_map import SECTORS_11, UNCLASSIFIED
+from revenuechaser.core.gics_map import SECTORS_11, UNCLASSIFIED
 
 
 def sort_categories(items) -> list[str]:
@@ -41,7 +41,7 @@ def themes_for(ticker: str) -> list[str]:
     if not ticker:
         return []
     try:
-        from RevenueChaser.module_relatedness import themes as _th
+        from revenuechaser.module_relatedness import themes as _th
         return _th.themes_for_ticker(ticker)
     except Exception:  # noqa: BLE001 - the loader must never break a scan
         return []
@@ -50,7 +50,7 @@ def themes_for(ticker: str) -> list[str]:
 def themes_for_many(tickers) -> dict[str, list[str]]:
     """``themes_for`` for many tickers in a fixed number of store queries (tickers with none are absent)."""
     try:
-        from RevenueChaser.module_relatedness import themes as _th
+        from revenuechaser.module_relatedness import themes as _th
         return _th.themes_for_tickers(tickers)
     except Exception:  # noqa: BLE001 - the loader must never break a scan
         return {}

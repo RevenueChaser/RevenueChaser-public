@@ -11,9 +11,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core.reporting_common import payload_path
-from RevenueChaser.core.tests.board_js import assert_scripts_parse
-from RevenueChaser.module_relatedness import engine, report
+from revenuechaser.core.reporting_common import payload_path
+from revenuechaser.core.tests.board_js import assert_scripts_parse
+from revenuechaser.module_relatedness import engine, report
 
 
 def _payload(n: int) -> dict:
@@ -49,7 +49,7 @@ def test_the_served_page_scripts_parse(tmp_path):
 
 @pytest.fixture
 def board(tmp_path, monkeypatch):
-    from RevenueChaser.app import dashboard, runners
+    from revenuechaser.app import dashboard, runners
     monkeypatch.setattr(runners, "RELATEDNESS_LATEST", tmp_path / "relatedness_latest.html")
     monkeypatch.setattr(runners, "RELATEDNESS_JSON", tmp_path / "relatedness" / "relatedness_latest.json")
     monkeypatch.setattr(runners, "RELATEDNESS_PEERS_DIR", tmp_path / "relatedness" / "peers")

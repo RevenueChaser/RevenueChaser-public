@@ -15,21 +15,21 @@ import os
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import rawstore, screen_common
-from RevenueChaser.core.screen_common import spy_summary
-from RevenueChaser.core.tests import screen_parity as scn
-from RevenueChaser.module_fundamentals import config as fcfg
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_fundamentals import scores as fscores
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_swing_potential import config as scfg
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.module_swing_potential import scores as sscores
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
-from RevenueChaser.module_swing_potential.tests.test_ohlc import _df
-from RevenueChaser.core.tests.d01_seed import drop_d01
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import rawstore, screen_common
+from revenuechaser.core.screen_common import spy_summary
+from revenuechaser.core.tests import screen_parity as scn
+from revenuechaser.module_fundamentals import config as fcfg
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_fundamentals import scores as fscores
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_swing_potential import config as scfg
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.module_swing_potential import scores as sscores
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.module_swing_potential.tests.test_ohlc import _df
+from revenuechaser.core.tests.d01_seed import drop_d01
 
 MODS = [(fp, render_fundamental_dashboard, fscores, fcfg), (sp, render_swing_dashboard, sscores, scfg)]
 ANNUAL = [{"revenue": 100.0 * (i + 1), "gross_profit": 50.0, "operating_cash_flow": 20.0,
@@ -135,7 +135,7 @@ def test_a_known_regime_still_renders(mod, render, scores, cfg):
 
 
 def test_regime_parts():
-    from RevenueChaser.core.scan_quality import regime_parts
+    from revenuechaser.core.scan_quality import regime_parts
     assert regime_parts("RISK-ON")[:2] == ("on", "RISK-ON")
     assert regime_parts("RISK-OFF")[:2] == ("off", "RISK-OFF")
     cls, label, momentum = regime_parts(None)

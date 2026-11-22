@@ -19,10 +19,10 @@ from datetime import date, datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import prices
-from RevenueChaser.module_settings import freshness_tab
-from RevenueChaser.rcdata import opens, serving
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import prices
+from revenuechaser.module_settings import freshness_tab
+from revenuechaser.rcdata import opens, serving
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 BUILT = datetime(2026, 11, 9, 8, 52, tzinfo=timezone.utc).timestamp()      # 09:52 Amsterdam
 RUN = datetime(2026, 11, 9, 9, 10, tzinfo=timezone.utc).timestamp()

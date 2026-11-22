@@ -14,9 +14,9 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import base, market_series as ms, uw_greek_expiry_strike as uwg, uw_spot_expiry_strike as uw
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import base, market_series as ms, uw_greek_expiry_strike as uwg, uw_spot_expiry_strike as uw
 
 SESSIONS = (date(2026, 10, 20), date(2026, 10, 21), date(2026, 10, 22), date(2026, 10, 23), date(2026, 10, 26))
 FRIDAY = date(2026, 10, 23)

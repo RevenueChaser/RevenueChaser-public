@@ -7,7 +7,7 @@ concentration sentences (at most 40) and its XBRL major customers.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_relatedness import engine, profile_v3
+from revenuechaser.module_relatedness import engine, profile_v3
 
 PROSE = "We make widgets for customers across many markets and we sell them through distributors worldwide.\n" * 30
 

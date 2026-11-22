@@ -22,7 +22,7 @@ import json
 
 import pytest
 
-from RevenueChaser.v2.door import config, proxy, writelog
+from revenuechaser.v2.door import config, proxy, writelog
 
 LOGIN = {"tailscale-user-login": "tester@tailnet.invalid", "x-rc-panel": "v2"}
 
@@ -301,7 +301,7 @@ HOST = "127.0.0.1"
 @pytest.fixture
 def client(monkeypatch, log_file):
     """A door whose proxy records what it would have forwarded instead of forwarding it."""
-    from RevenueChaser.v2.door import app as door_app
+    from revenuechaser.v2.door import app as door_app
 
     monkeypatch.setenv("RC_DOOR_HOSTS", HOST)
     sent = []
@@ -415,7 +415,7 @@ def test_the_proxy_and_the_write_log_add_no_third_party_package_to_the_image():
     """
     import ast
     import sys
-    allowed = {"RevenueChaser", "__future__"}
+    allowed = {"revenuechaser", "__future__"}
     for name in ("proxy.py", "writelog.py"):
         tree = ast.parse((_DOOR / name).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -439,7 +439,7 @@ def test_the_doc_names_every_route_in_the_table_with_its_class():
 
 
 def test_the_doc_states_the_prefix_and_the_timeout_the_code_owns():
-    from RevenueChaser.v2.door import app as door_app
+    from revenuechaser.v2.door import app as door_app
     assert f"`{door_app.PROXY_PREFIX}`" in _DOC
     assert f"{config.UPSTREAM_TIMEOUT_S:g} s" in _DOC.replace("**", "")
     for variable in ("RC_DOOR_UPSTREAM", "RC_DOOR_WRITE_LOG"):

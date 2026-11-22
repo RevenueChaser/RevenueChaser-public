@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from RevenueChaser.module_earnings_radar import report
+from revenuechaser.module_earnings_radar import report
 
 
 def test_the_earnings_page_is_written_inside_this_tests_own_folder(isolate_board_artifacts):
@@ -25,7 +25,7 @@ def test_the_earnings_page_is_written_inside_this_tests_own_folder(isolate_board
 
 
 def test_two_renders_in_the_same_second_are_still_this_tests_own_page(isolate_board_artifacts):
-    from RevenueChaser.module_earnings_radar.tests.test_labels_e3 import _card
+    from revenuechaser.module_earnings_radar.tests.test_labels_e3 import _card
 
     stats = {"total": 1, "passed": 1, "bypassed": 0, "filtered": 0, "by_reason": {}, "excluded": []}
     page = report.export_html([_card()], [], {}, filter_stats=stats)

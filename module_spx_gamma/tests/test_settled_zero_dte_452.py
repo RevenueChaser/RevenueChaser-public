@@ -11,10 +11,10 @@ settled, gave Iron Butterfly legs IVs of 182-558 %.
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import render
-from RevenueChaser.module_spx_gamma.engines.prediction_engine import _near_dte_rows
-from RevenueChaser.module_spx_gamma.expiry_table import front_expiry_share, session_hedge_flow
-from RevenueChaser.module_spx_gamma.normalize import normalize_snapshot
+from revenuechaser.module_spx_gamma import render
+from revenuechaser.module_spx_gamma.engines.prediction_engine import _near_dte_rows
+from revenuechaser.module_spx_gamma.expiry_table import front_expiry_share, session_hedge_flow
+from revenuechaser.module_spx_gamma.normalize import normalize_snapshot
 
 from .conftest import make_raw
 

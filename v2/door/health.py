@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
-from RevenueChaser.v2.door import boards, config
+from revenuechaser.v2.door import boards, config
 
 # A probe whose ``ok`` is ``False`` makes the route answer 503. ``redis`` is not among them: the read side reads
 # files, and step 7's write side is what will need the queue (its own PR adds the requirement here).

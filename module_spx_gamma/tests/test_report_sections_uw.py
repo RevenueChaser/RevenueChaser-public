@@ -5,7 +5,7 @@ else reads. A day whose fetch did not get them renders without the rows rather t
 """
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma.normalize import normalize_vega_flow, normalize_vix_greeks
+from revenuechaser.module_spx_gamma.normalize import normalize_vega_flow, normalize_vix_greeks
 
 
 # ── §4.1, the directional vega flow ───────────────────────────────────────────

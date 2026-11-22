@@ -6,8 +6,8 @@ import math
 import numpy as np
 import pytest
 
-from RevenueChaser.module_relatedness.validation import metrics
-from RevenueChaser.module_relatedness.validation.peer_sets import PeerSet
+from revenuechaser.module_relatedness.validation import metrics
+from revenuechaser.module_relatedness.validation.peer_sets import PeerSet
 
 
 def _ps(name, tickers, kind="hand"):

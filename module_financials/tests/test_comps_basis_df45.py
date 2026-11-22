@@ -7,8 +7,8 @@ shares side is the prices store's since #645 (``market_meta.shares_source``), na
 """
 from __future__ import annotations
 
-from RevenueChaser.module_financials.engines.comps_engine import PEERS_SOURCE, run_comps
-from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+from revenuechaser.module_financials.engines.comps_engine import PEERS_SOURCE, run_comps
+from revenuechaser.module_financials.reporting.html_builder import build_report_html
 
 
 def _fetch(t):

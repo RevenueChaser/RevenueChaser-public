@@ -1,7 +1,7 @@
 """Tests for the Brier scorecard (honest probability audit)."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import brier
+from revenuechaser.module_spx_gamma import brier
 from .conftest import make_snapshot
 
 

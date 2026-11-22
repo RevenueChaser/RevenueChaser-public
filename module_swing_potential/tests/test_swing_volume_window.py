@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_swing_potential import config, indicators
-from RevenueChaser.module_swing_potential.tests.test_swing import _ohlcv
+from revenuechaser.module_swing_potential import config, indicators
+from revenuechaser.module_swing_potential.tests.test_swing import _ohlcv
 
 
 def _with_volume(*tail: float):

@@ -9,8 +9,8 @@ FileNotFoundError that the caller could only swallow.
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
-import RevenueChaser.module_financials.run as fm
+from revenuechaser.rcdata.tests import universe_store
+import revenuechaser.module_financials.run as fm
 
 
 
@@ -45,8 +45,8 @@ def test_embedded_sector_bands_match_the_json_file():
     """The embedded fallback and ``config/sector_defaults.json`` carry the same keys and numbers, so the DCF band
     is the same whether or not the file is readable."""
     import json
-    from RevenueChaser.core.gics_map import MORNINGSTAR_SECTORS
-    from RevenueChaser.module_financials import config
+    from revenuechaser.core.gics_map import MORNINGSTAR_SECTORS
+    from revenuechaser.module_financials import config
     from_file = json.loads(config.SECTOR_DEFAULTS_FILE.read_text(encoding="utf-8"))
     assert set(config.SECTOR_DEFAULTS) == set(from_file)
     assert set(config.SECTOR_DEFAULTS) - {"default"} <= set(MORNINGSTAR_SECTORS)
@@ -57,7 +57,7 @@ def test_embedded_sector_bands_match_the_json_file():
 @pytest.mark.parametrize("sector", ["Technology", "Consumer Defensive", "Financial Services", "Energy", "Healthcare"])
 def test_dcf_band_is_the_sector_band_with_or_without_the_json_file(tmp_path, monkeypatch, sector):
     """Every banded Morningstar sector gets its own band, not ``default``, from the file and from the embedded copy."""
-    from RevenueChaser.module_financials import config
+    from revenuechaser.module_financials import config
     default = config.sector_defaults("Unclassified")
     from_file = config.sector_defaults(sector)
     assert from_file != default

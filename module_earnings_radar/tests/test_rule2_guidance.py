@@ -9,7 +9,7 @@ calls "improving" only with ≥4 consecutive beats. Coverage tiers 3-4 -> 0.40,
 """
 import pytest
 
-from RevenueChaser.module_earnings_radar.rules.rule2_guidance import score
+from revenuechaser.module_earnings_radar.rules.rule2_guidance import score
 
 
 def _history(surprises: list[tuple[float, float]]) -> list[dict]:

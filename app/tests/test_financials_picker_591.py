@@ -11,7 +11,7 @@ import re
 
 import pytest
 
-from RevenueChaser.app import dashboard
+from revenuechaser.app import dashboard
 
 
 @pytest.fixture(scope="module")

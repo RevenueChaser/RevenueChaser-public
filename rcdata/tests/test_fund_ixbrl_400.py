@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata.build.fundamentals import ixbrl
+from revenuechaser.rcdata.build.fundamentals import ixbrl
 
 from . import fund_fixture as fx
 

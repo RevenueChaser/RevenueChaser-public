@@ -74,7 +74,7 @@ see [`05_migration_plan.md`](05_migration_plan.md) §4 for the three real sync p
 ## 5. What we actually spend at UW — read from the API dashboard, 21 November 2026 14:56 Amsterdam
 
 Read off `unusualwhales.com/dashboard/api` by the UI thread (screenshots in
-`/mnt/project-files/UWdependency/api/`; the key was not revealed).
+`/mnt/project-files/uw_dependency/api/`; the key was not revealed).
 
 - Plan **"Whale Bundle Basic"**, active. **Unlimited requests a day** (the page prints 100M included, 1,312 used
   that day), **2-year lookback**, and **websockets are NOT in this plan** ("Upgrade to bundle Pro").

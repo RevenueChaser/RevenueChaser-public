@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import sys
 
-from RevenueChaser.core import baselines
-from RevenueChaser.scripts import forecast_cli
-from RevenueChaser.scripts.forecast_cli import BUSY_EXIT  # noqa: F401 - the task's documented busy exit code
+from revenuechaser.core import baselines
+from revenuechaser.scripts import forecast_cli
+from revenuechaser.scripts.forecast_cli import BUSY_EXIT  # noqa: F401 - the task's documented busy exit code
 
 # The job_lock name, as a constant so the lock-name guard (core/tests/test_job_lock_names_pl6a.py) sees it.
 LOCK = "forecast_baselines"

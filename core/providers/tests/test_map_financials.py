@@ -7,7 +7,7 @@ shadowed on the instance.
 """
 import pytest
 
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 
 def _client(income=None, balance=None, cashflow=None) -> UWClient:

@@ -12,7 +12,7 @@ the contract in docs/data_retrieval.md:
 """
 from __future__ import annotations
 
-from RevenueChaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import universe_store
 import time
 from dataclasses import dataclass
 
@@ -85,7 +85,7 @@ def _seed() -> None:
         for ts, p in price.items():
             rows.append({"ticker": t, "ts": ts.isoformat(), "open": p, "high": p,
                          "low": p, "close": float(p), "volume": 1.0, "cached_at": now})
-    from RevenueChaser.module_comovement.tests.prices_bars import write_bars
+    from revenuechaser.module_comovement.tests.prices_bars import write_bars
     write_bars(rows)
 
 
@@ -211,7 +211,7 @@ import re  # noqa: E402
 
 
 def _step(html: str, prefix: str) -> int:
-    from RevenueChaser.module_testing.e2e.test_board_settings import _card_steps
+    from revenuechaser.module_testing.e2e.test_board_settings import _card_steps
 
     hits = {k: v for k, v in _card_steps(html).items() if k.startswith(prefix)}
     assert len(hits) == 1, f"expected one card row starting {prefix!r}, got {hits}"

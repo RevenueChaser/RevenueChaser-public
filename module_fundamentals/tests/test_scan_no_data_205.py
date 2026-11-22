@@ -10,14 +10,14 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import rawstore, screen_common
-from RevenueChaser.core.scan_quality import no_data_payload
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_fundamentals.report import render_fundamental_dashboard
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
-from RevenueChaser.module_swing_potential.tests.test_ohlc import _df
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import rawstore, screen_common
+from revenuechaser.core.scan_quality import no_data_payload
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_fundamentals.report import render_fundamental_dashboard
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.module_swing_potential.tests.test_ohlc import _df
 
 NOW = datetime(2026, 10, 14, 21, 45, tzinfo=timezone.utc)      # the 14 Oct session is complete
 
@@ -65,8 +65,8 @@ def scan_env(rawstore_tmp_db, monkeypatch):
 @pytest.mark.parametrize("mod,render", MODS)
 def test_no_data_anywhere_is_an_explicit_empty_state_not_the_fixture(scan_env, monkeypatch, mod, render):
     persisted = []
-    monkeypatch.setattr("RevenueChaser.module_fundamentals.scores.persist", lambda r: persisted.append(r))
-    monkeypatch.setattr("RevenueChaser.module_swing_potential.scores.persist", lambda r: persisted.append(r))
+    monkeypatch.setattr("revenuechaser.module_fundamentals.scores.persist", lambda r: persisted.append(r))
+    monkeypatch.setattr("revenuechaser.module_swing_potential.scores.persist", lambda r: persisted.append(r))
     payload = mod.run_scan()
     assert not payload.get("is_fixture")             # #49 A2: Swing payloads no longer carry the key
     assert payload["no_data"] is True
@@ -96,7 +96,7 @@ def test_no_data_message_is_escaped(rawstore_tmp_db, monkeypatch, mod, render):
 
 
 def test_ohlc_drop_reason_252_bar_threshold():
-    from RevenueChaser.core.scan_quality import ohlc_drop_reason
+    from revenuechaser.core.scan_quality import ohlc_drop_reason
     assert ohlc_drop_reason(_df(251)) == "short_bars"
     assert ohlc_drop_reason(_df(252)) == ""
 
@@ -113,7 +113,7 @@ def test_no_universe_warning_has_no_literal_format_marker(rawstore_tmp_db, monke
                                           (render_swing_dashboard, "0 setups shown")])
 def test_the_page_script_keeps_the_server_side_no_data_message_DF111(render, count, tmp_path):
     """DF111 under node: with no candidates render() leaves the server's no-data message alone."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     html = render({"no_data": True, "no_data_message": "No universe stored.",
                    "no_data_reason": "", "candidates": [], "data_quality": {"spy_stale": False}})
     assert "No universe stored." in html

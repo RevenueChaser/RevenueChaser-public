@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import copy
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core.tests.board_js import run_board_js, with_payload
-from RevenueChaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core.tests.board_js import run_board_js, with_payload
+from revenuechaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
 
 _EVIL = "\"'><img src=x onerror=alert(1)>"
 
@@ -59,7 +59,7 @@ def test_card_fields_are_escaped(tmp_path):
 
 def test_a_comment_opener_in_a_name_keeps_the_script_intact(tmp_path):
     """F3: ``<!--<script>`` in a value blanked the board."""
-    from RevenueChaser.core.tests.board_js import PROBE, assert_scripts_intact
+    from revenuechaser.core.tests.board_js import PROBE, assert_scripts_intact
     r = copy.deepcopy(_result())
     r["cards"][0]["name"] = PROBE
     html = render_asymmetric_growth_hunter_html(r)

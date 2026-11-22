@@ -10,11 +10,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar, rawstore
-from RevenueChaser.module_earnings_radar import stored_inputs
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline, REACTION_OHLC_SESSIONS
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.core import calendar, rawstore
+from revenuechaser.module_earnings_radar import stored_inputs
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline, REACTION_OHLC_SESSIONS
+from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
+from revenuechaser.core.tests.d01_seed import write_d01
 
 SESSION = date(2026, 10, 14)               # Wednesday, the latest complete session
 NOW = datetime(2026, 10, 14, 21, 0, tzinfo=timezone.utc)          # 17:00 New York
@@ -182,7 +182,7 @@ def test_an_empty_store_is_an_empty_map():
 
 
 def test_a_broken_store_is_an_empty_map(monkeypatch):
-    from RevenueChaser.core import prices
+    from revenuechaser.core import prices
     monkeypatch.setattr(prices, "daily_bars", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("locked")))
     assert stored_inputs.ohlc_bars(["AAPL"]) == {}
 

@@ -6,9 +6,9 @@ candidates to ``forecast_ledger``. The mapping lives here, in the module, not in
 """
 from __future__ import annotations
 
-from RevenueChaser.core import ledger
-from RevenueChaser.module_swing_potential import config
-from RevenueChaser.module_swing_potential import settings as swing_settings
+from revenuechaser.core import ledger
+from revenuechaser.module_swing_potential import config
+from revenuechaser.module_swing_potential import settings as swing_settings
 
 SOURCE = "swing"
 LABEL = "Swing"

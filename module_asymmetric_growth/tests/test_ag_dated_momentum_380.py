@@ -23,11 +23,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_asymmetric_growth import engine, freeze
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import rawstore
+from revenuechaser.module_asymmetric_growth import engine, freeze
+from revenuechaser.rcdata.tests import prices_store
 
 SESSION = date(2026, 10, 15)                                    # a Thursday
 CLOSE = cal.session_close(SESSION).astimezone(timezone.utc)

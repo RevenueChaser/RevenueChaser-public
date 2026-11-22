@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import screen_common
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import pipeline as sp
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import screen_common
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import pipeline as sp
 
 
 def _ohlcv(periods=300) -> pd.DataFrame:

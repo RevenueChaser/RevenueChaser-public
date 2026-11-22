@@ -6,7 +6,7 @@ write and no typed-column promotion: the payload is a *last-run snapshot* for a
 lab, never a scan/join target, so the hot-path rule does not apply. Paths come
 from ``core.config.OUTPUT_DIR`` so the ``RC_CACHE_DIR`` test redirect works.
 """
-from RevenueChaser.core.config import OUTPUT_DIR
+from revenuechaser.core.config import OUTPUT_DIR
 
 # Durable per-module artifacts do not belong here; this JSON is regenerable and
 # lives under .cache/ like every other *_latest payload (financials, v2, …).
@@ -34,7 +34,7 @@ def save_state(payload: dict) -> None:
     Written atomically (#258): a concurrent reader sees either the old payload or
     the new one, never a half-written file that ``load_state`` reads as ``None``.
     """
-    from RevenueChaser.core.reporting_common import write_artifact
+    from revenuechaser.core.reporting_common import write_artifact
     write_artifact(UW_STATE_JSON, json.dumps(payload, ensure_ascii=False, default=str))
 
 

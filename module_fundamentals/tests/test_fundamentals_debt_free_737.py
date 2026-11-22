@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_fundamentals import config, debt, pipeline
-from RevenueChaser.module_fundamentals.screeners import INFERRED_DEBT_NOTE, evaluate_quality
+from revenuechaser.module_fundamentals import config, debt, pipeline
+from revenuechaser.module_fundamentals.screeners import INFERRED_DEBT_NOTE, evaluate_quality
 
 # A profitable, cash-rich software filer with nothing borrowed: the shape of PANW's and ZS's balance sheet in the
 # stored facts -- cash and equity tagged, not one of the 30 debt lines, and no interest expense line at all.
@@ -102,7 +102,7 @@ def test_a_filed_zero_is_not_an_inference():
 def test_every_debt_line_the_store_can_carry_is_checked():
     """The list is the facts layer's, not a copy: a tag added to #239's lines or to #825's fallback ladders is in
     scope here the day it lands, and never has to be added twice."""
-    from RevenueChaser.rcdata.build.fundamentals import facts
+    from revenuechaser.rcdata.build.fundamentals import facts
     fields = debt.tag_fields()
     assert set(fields) == set(facts.DEBT_LINES) | set(facts.FALLBACK_DEBT_LINES)
     assert len(fields) == len(set(fields))
@@ -156,13 +156,13 @@ def test_a_presence_only_field_tagged_at_zero_is_still_a_tag(field):
 def test_a_presence_only_field_enters_no_total_anywhere():
     """They say "there is debt", never "this much debt": neither the facts layer's ladders nor the extractor's own
     ``total_debt`` may carry one, or a per-instrument carrying amount would become a balance."""
-    from RevenueChaser.rcdata.build.fundamentals import facts
+    from revenuechaser.rcdata.build.fundamentals import facts
     assert not set(debt.PRESENCE_ONLY_FIELDS) & (set(facts.DEBT_LINES) | set(facts.FALLBACK_DEBT_LINES))
 
 
 def test_every_presence_only_field_is_a_field_the_store_can_carry():
     """A typo here would silently switch the check off, which is how the six got through in the first place."""
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
     assert set(debt.PRESENCE_ONLY_FIELDS) | set(debt.INTEREST_FIELDS) <= set(sec_edgar.CONCEPTS)
     assert set(debt.PRESENCE_ONLY_FIELDS) <= sec_edgar._DEBT_COMPONENT_FIELDS   # never sums, never a record
     assert set(debt.INTEREST_FIELDS) <= sec_edgar._NEVER_A_RECORD | sec_edgar._LAYER_ONLY_FIELDS
@@ -230,7 +230,7 @@ def test_every_debt_component_field_is_either_summed_or_watched():
     """Fable review F6: ``PRESENCE_ONLY_FIELDS`` is written by hand, so a debt concept added to the extractor and
     to neither list would be invisible to the rule. The leases are the one deliberate exemption -- EBITDA is
     already after rent and a lease liability on its own is not a borrowing (#239)."""
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
     leases = {f for f in sec_edgar._DEBT_COMPONENT_FIELDS if f.startswith(("finance_lease", "operating_lease"))}
     unwatched = set(sec_edgar._DEBT_COMPONENT_FIELDS) - set(debt.tag_fields()) - set(debt.PRESENCE_ONLY_FIELDS)
     assert unwatched == leases

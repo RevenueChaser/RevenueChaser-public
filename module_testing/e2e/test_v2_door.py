@@ -28,11 +28,11 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core import v2_envelope as env
-from RevenueChaser.v2.door import app as door_app
-from RevenueChaser.v2.door import proxy as door_proxy
-from RevenueChaser.v2.door import writelog as door_writelog
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core import v2_envelope as env
+from revenuechaser.v2.door import app as door_app
+from revenuechaser.v2.door import proxy as door_proxy
+from revenuechaser.v2.door import writelog as door_writelog
 
 REPO = Path(__file__).resolve().parents[2]
 HOST = "127.0.0.1"
@@ -84,7 +84,7 @@ def door(tmp_path_factory):
 
     port = _free_port()
     env_vars = dict(os.environ)
-    # The repository's parent first, so ``RevenueChaser.*`` imports resolve, and whatever was already on
+    # The repository's parent first, so ``revenuechaser.*`` imports resolve, and whatever was already on
     # PYTHONPATH after it — that is the suite's own netguard folder, and dropping it would start the one child in
     # this tier that runs unguarded (module_testing/netguard/sitecustomize.py).
     env_vars.update(RC_CACHE_DIR=str(cache), RC_STORE_DIR=str(root / ".store"),
@@ -94,7 +94,7 @@ def door(tmp_path_factory):
                                                            os.environ.get("PYTHONPATH", "")) if p))
     env_vars.pop("RC_REDIS_URL", None)   # the read side needs no queue; the probe then reports "not configured"
     log = (root / "door.log").open("w", encoding="utf-8")
-    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "RevenueChaser.v2.door.app:app",
+    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "revenuechaser.v2.door.app:app",
                              "--host", HOST, "--port", str(port), "--workers", "1"],
                             cwd=REPO.parent, env=env_vars, stdout=log, stderr=subprocess.STDOUT)
     base = f"http://{HOST}:{port}"
@@ -277,7 +277,7 @@ def proxy_door(tmp_path_factory, upstream):
                                                            os.environ.get("PYTHONPATH", "")) if p))
     env_vars.pop("RC_REDIS_URL", None)
     log = (root / "door.log").open("w", encoding="utf-8")
-    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "RevenueChaser.v2.door.app:app",
+    proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "revenuechaser.v2.door.app:app",
                              "--host", HOST, "--port", str(port), "--workers", "1"],
                             cwd=REPO.parent, env=env_vars, stdout=log, stderr=subprocess.STDOUT)
     base = f"http://{HOST}:{port}"

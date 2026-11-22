@@ -18,7 +18,7 @@ import logging
 import re
 from collections import Counter
 
-from RevenueChaser.core import llm_jobs, rawstore
+from revenuechaser.core import llm_jobs, rawstore
 
 from . import store_reads as sr, themes as themes_mod
 

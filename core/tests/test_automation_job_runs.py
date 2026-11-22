@@ -19,8 +19,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core import automations as A
-from RevenueChaser.core import ledger, rawstore
+from revenuechaser.core import automations as A
+from revenuechaser.core import ledger, rawstore
 
 AMS = ZoneInfo("Europe/Amsterdam")
 
@@ -74,7 +74,7 @@ _PRINTS_RESULT = ("import json; print('working'); "
 def test_a_scheduled_run_records_its_row_with_the_counts_it_printed(monkeypatch, tmp_path):
     """The gap this closes: a scheduled step printed its result and nothing recorded it, so the Runs tab could not
     say how much a run did (#136)."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     e = _entry(code=_PRINTS_RESULT)
     _only(monkeypatch, e)
     assert A.run_task(e.name, cwd=tmp_path) == 0
@@ -87,7 +87,7 @@ def test_a_scheduled_run_records_its_row_with_the_counts_it_printed(monkeypatch,
 
 
 def test_a_failed_scheduled_run_records_its_exit_code(monkeypatch, tmp_path):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     e = _entry(code="import sys; print('{\"rows\": 2}'); sys.exit(2)")
     _only(monkeypatch, e)
     assert A.run_task(e.name, cwd=tmp_path) == 2
@@ -96,7 +96,7 @@ def test_a_failed_scheduled_run_records_its_exit_code(monkeypatch, tmp_path):
 
 
 def test_a_step_that_prints_no_object_records_no_counts(monkeypatch, tmp_path):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     e = _entry(code="print('done, 4 rows'); print('[1, 2]')")
     _only(monkeypatch, e)
     assert A.run_task(e.name, cwd=tmp_path) == 0
@@ -106,7 +106,7 @@ def test_a_step_that_prints_no_object_records_no_counts(monkeypatch, tmp_path):
 
 def test_a_switched_off_pass_records_no_row(monkeypatch, tmp_path):
     """No command ran, so there is no run to log."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     e = _entry(code=_PRINTS_RESULT)
     _only(monkeypatch, e)
     monkeypatch.setattr(A, "_switched_off", lambda name: "skipped: the fetch switch is off (avo at 12:00)")
@@ -117,7 +117,7 @@ def test_a_switched_off_pass_records_no_row(monkeypatch, tmp_path):
 def test_an_ops_store_that_refuses_the_row_does_not_stop_the_task(monkeypatch, tmp_path):
     """Bookkeeping is best-effort (#282): the row is attempted, and a store that refuses it costs the row, not the
     run. ``asked`` is what the base does not do at all — it records nothing — so this is red there too."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     e = _entry(code=_PRINTS_RESULT)
     _only(monkeypatch, e)
     asked = []
@@ -168,13 +168,13 @@ _SHOW_CHAIN = "import os; print('chain', os.environ.get('RC_CHAIN_ID'))"
 
 
 def _chain_of(run_id: str) -> str | None:
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     [row] = [r for r in ops.rows("job_runs2") if r["run_id"] == run_id]
     return (ops._loads(row["params"]) or {}).get("chain")
 
 
 def test_a_task_hands_its_run_id_to_its_command_as_the_chain(monkeypatch, tmp_path):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     monkeypatch.delenv(ops.CHAIN_ID_ENV, raising=False)
     e = _entry(code=_SHOW_CHAIN, tables=())
     _only(monkeypatch, e)
@@ -186,7 +186,7 @@ def test_a_task_hands_its_run_id_to_its_command_as_the_chain(monkeypatch, tmp_pa
 
 
 def test_a_task_s_own_row_is_the_root_of_its_chain(monkeypatch, tmp_path):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     monkeypatch.delenv(ops.CHAIN_ID_ENV, raising=False)
     e = _entry(code=_PRINTS_RESULT)
     _only(monkeypatch, e)
@@ -196,7 +196,7 @@ def test_a_task_s_own_row_is_the_root_of_its_chain(monkeypatch, tmp_path):
 
 
 def test_a_table_writer_gets_both_variables(monkeypatch, tmp_path):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     monkeypatch.delenv(ops.CHAIN_ID_ENV, raising=False)
     e = _entry(code="import os; print('ids', os.environ.get('RC_RUN_ID'), os.environ.get('RC_CHAIN_ID'))")
     _only(monkeypatch, e)

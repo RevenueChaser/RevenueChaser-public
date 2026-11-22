@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from RevenueChaser.module_value_chain import aliases, config, engine, precision, report
+from revenuechaser.module_value_chain import aliases, config, engine, precision, report
 
 
 # ── C25 ────────────────────────────────────────────────────────────────────

@@ -11,9 +11,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.rcdata import backup, ops
+from revenuechaser.core import config
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata import backup, ops
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +27,7 @@ def _market(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client():
-    from RevenueChaser.app.dashboard import app
+    from revenuechaser.app.dashboard import app
     return panel_test_client(app)
 
 

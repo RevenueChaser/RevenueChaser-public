@@ -18,8 +18,8 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core import reporting_common as rc
+from revenuechaser.app import dashboard
+from revenuechaser.core import reporting_common as rc
 
 PAYLOAD = {"rows": [{"ticker": "AAA", "name": "Ä & <b>"}], "n": 1}
 
@@ -128,7 +128,7 @@ def test_refresh_rewrites_both_for_a_board_on_the_route(board, monkeypatch):
 def test_the_per_board_refresh_branches_drop_the_payload_too(mod, runner, tmp_path, monkeypatch, rawstore_tmp_db):
     """#383 C6a review (N7): Financials, Implied Probability and Co-movement refresh before the generic branch; their
     rebuild writes the HTML only, so the old payload goes with the old page there too."""
-    from RevenueChaser.app import runners
+    from revenuechaser.app import runners
     html = tmp_path / f"{mod}_latest.html"
     rc.write_board(html, "<html>old</html>", PAYLOAD)
     monkeypatch.setattr(dashboard, "_module_file", lambda m: html if m == mod else None)

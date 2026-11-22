@@ -1,8 +1,8 @@
 """#20: the offline theme label must not depend on the order the tag rows are scanned."""
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import themes
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import themes
 
 
 def _tie_rows(run_id: str, fine_first: str):
@@ -94,7 +94,7 @@ def _naming_prompt(run_id: str, fine_first: str, members_reversed: bool = False)
     members = [{"ticker": t, "theme_id": f"{run_id}:f1", "weight": 1.0} for t in ("BAC", "WFC")] \
         + [{"ticker": t, "theme_id": f"{run_id}:f2", "weight": 1.0} for t in ("AMGN", "BIIB")]
     rawstore.write_rows("relatedness_theme_members", list(reversed(members)) if members_reversed else members)
-    from RevenueChaser.module_relatedness import naming
+    from revenuechaser.module_relatedness import naming
     sent = []
 
     def _complete(system, user, **kw):
@@ -145,7 +145,7 @@ def test_the_naming_prompt_s_tags_do_not_rely_on_the_sql_order(rawstore_tmp_db, 
     one -- ``test_the_whole_naming_prompt_does_not_depend_on_the_member_insertion_order`` is the test
     for it.
     """
-    from RevenueChaser.module_relatedness import naming
+    from revenuechaser.module_relatedness import naming
     _reverse_for_b(monkeypatch, naming.themes_mod)
     assert _tag_line(_naming_prompt("nrevA", "f1")) == _tag_line(_naming_prompt("nrevB", "f1"))
 

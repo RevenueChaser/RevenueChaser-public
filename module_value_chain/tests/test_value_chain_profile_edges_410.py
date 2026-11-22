@@ -10,9 +10,9 @@ relation part of that key); a filer without a profile gets no edge from its text
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import aliases, engine
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import aliases, engine
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 TEXT = "Direct sales to Apple accounted for 29.8% of our net sales. We compete with Intel in some markets."
 PROFILE = {"customers": [{"name": "Apple Inc.", "type": "company", "share": None, "quote": "Apple is our largest"},
@@ -37,7 +37,7 @@ def answer_row(cik, profile: dict | None, **over) -> dict:
     """One ``read_answer`` row; ``cik`` is keyed as the layer keys it, so ``0000789019`` and ``789019`` are one."""
     import json
 
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return {**ANSWER, "cik": read._cik(cik), "answer": None if profile is None else json.dumps(profile), **over}
 
 
@@ -48,8 +48,8 @@ def serve_answers(rows: list[dict], *, replace: bool = False) -> None:
     the build starts from the live file unless ``replace``. The columns come from the dataset's own schema, so a
     serving version that adds one does not leave a stale copy here.
     """
-    from RevenueChaser.rcdata import serving
-    from RevenueChaser.rcdata.build.sec_reads.reads import SCHEMA, TABLE
+    from revenuechaser.rcdata import serving
+    from revenuechaser.rcdata.build.sec_reads.reads import SCHEMA, TABLE
 
     names = [name for name, _ in SCHEMA]
     cols = ", ".join(f"{name} {sql}" for name, sql in SCHEMA)

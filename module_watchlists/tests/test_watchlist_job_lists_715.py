@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.module_watchlists import board, store
-from RevenueChaser.rcdata import ops, read
-from RevenueChaser.module_watchlists import store as wl_store
+from revenuechaser.app import dashboard
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.module_watchlists import board, store
+from revenuechaser.rcdata import ops, read
+from revenuechaser.module_watchlists import store as wl_store
 
 pytestmark = pytest.mark.rawstore_schema_from_scratch
 

@@ -2,7 +2,7 @@
 
 The card's LEAPS fields and drawer row are gone (C1, 16 Nov 2026): no label could ever reach them.
 """
-from RevenueChaser.module_earnings_radar import pipeline as pl
+from revenuechaser.module_earnings_radar import pipeline as pl
 
 
 def test_the_pipeline_no_longer_imports_the_old_leaps_engine():

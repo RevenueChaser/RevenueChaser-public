@@ -6,8 +6,8 @@ control and all status to the board, and the page's renderers went with the clea
 from __future__ import annotations
 
 
-from RevenueChaser.module_settings import control, report
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.module_settings import control, report
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
 
 
 def _view(nd=None) -> dict:

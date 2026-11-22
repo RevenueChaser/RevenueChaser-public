@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from RevenueChaser.core import sec_throttle
+from revenuechaser.core import sec_throttle
 
 
 @dataclass(frozen=True)

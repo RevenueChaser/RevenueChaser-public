@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
 
 
 # ── S-1: allow_shrink relaxes only the asking dataset's tables ──────────────────────────────────────────────────
@@ -82,9 +82,9 @@ def test_s1_the_scope_is_the_own_tables_plus_the_ones_the_dataset_declares_it_fe
 # ── S-2: a session that has not finished is never fetched ────────────────────────────────────────────────────────
 from datetime import date, datetime, timezone  # noqa: E402
 
-from RevenueChaser.core import calendar  # noqa: E402
-from RevenueChaser.core.providers import unusual_whales  # noqa: E402
-from RevenueChaser.rcdata.build import uw_spot_expiry_strike as uw  # noqa: E402
+from revenuechaser.core import calendar  # noqa: E402
+from revenuechaser.core.providers import unusual_whales  # noqa: E402
+from revenuechaser.rcdata.build import uw_spot_expiry_strike as uw  # noqa: E402
 
 from . import uw_fixture  # noqa: E402
 
@@ -119,7 +119,7 @@ def test_s2_a_backfill_to_an_open_session_stops_at_the_latest_complete_one(http_
 
 
 def test_s2_the_cli_help_names_the_real_default():
-    from RevenueChaser.rcdata.build import __main__ as cli
+    from revenuechaser.rcdata.build import __main__ as cli
     import inspect
     assert "default: today's" not in inspect.getsource(cli)
 
@@ -192,7 +192,7 @@ def test_n1_an_answer_whose_every_stamp_is_unreadable_is_refused(http_mock, uw_a
 
 
 def test_n1_a_few_unreadable_stamps_in_a_good_answer_are_kept_with_one_issue(http_mock, uw_after_the_close):
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     body = uw_fixture.body()
     for r in body["data"][:2]:
         r["time"] = "not a time"

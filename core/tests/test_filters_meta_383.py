@@ -12,9 +12,9 @@ import re
 
 import pytest
 
-from RevenueChaser.core import index_registry as ir
-from RevenueChaser.core import rawstore
-from RevenueChaser.core import reporting_common as rc
+from revenuechaser.core import index_registry as ir
+from revenuechaser.core import rawstore
+from revenuechaser.core import reporting_common as rc
 
 
 def _members(prefix: str, n: int) -> set[str]:
@@ -39,7 +39,7 @@ def _members(prefix: str, n: int) -> set[str]:
 # ── labels and meta ───────────────────────────────────────────────────────────────────────────────────────────────
 def _spine(monkeypatch, members: dict[str, set[str]], nasdaq=("N0001",)) -> None:
     """The spine's index members and Nasdaq-listed names (``core.index_registry`` reads only the spine, #642 PR 6)."""
-    from RevenueChaser.core import spine_reads
+    from revenuechaser.core import spine_reads
     monkeypatch.setattr(spine_reads, "membership", lambda *a, **k: [
         {"index_slug": slug, "ticker": t} for slug, ts in members.items() for t in sorted(ts)])
     monkeypatch.setattr(spine_reads, "universe", lambda tiers=("A",): [
@@ -73,7 +73,7 @@ def test_the_component_has_no_literal_index_list():
 
 
 def test_comovement_meta_carries_the_registry_indexes(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     _spine(monkeypatch, {"sp500": {"S0001"}})
 
     html = report.render_comovement_dashboard({"as_of": "2026-09-17T00:00:00+00:00", "clusters": {}, "cuts": []})
@@ -86,8 +86,8 @@ def test_comovement_meta_carries_the_registry_indexes(rawstore_tmp_db, monkeypat
 
 # ── C23: one public theme-run lookup ─────────────────────────────────────────────────────────────────────────────
 def test_current_theme_run_is_public_and_shared(rawstore_tmp_db):
-    from RevenueChaser.core import universe
-    from RevenueChaser.module_relatedness import themes
+    from revenuechaser.core import universe
+    from revenuechaser.module_relatedness import themes
 
     assert universe.current_theme_run() is None
     rawstore.write_rows("theme_runs", [{"id": "r9", "is_current": 1}])
@@ -96,7 +96,7 @@ def test_current_theme_run_is_public_and_shared(rawstore_tmp_db):
 
 
 def test_filter_fields_looks_up_the_theme_run_once(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
 
     calls = []
     real = universe.current_theme_run
@@ -108,8 +108,8 @@ def test_filter_fields_looks_up_the_theme_run_once(rawstore_tmp_db, monkeypatch)
 def test_the_relatedness_guard_lookup_raises_on_a_failed_read(rawstore_tmp_db, monkeypatch):
     """A filter never breaks a board (None), but the guards that refuse to rebuild the current run must not read a
     failed lookup as "no current run"."""
-    from RevenueChaser.core import universe
-    from RevenueChaser.module_relatedness import themes
+    from revenuechaser.core import universe
+    from revenuechaser.module_relatedness import themes
 
     def boom(*a, **k):
         raise RuntimeError("store locked")

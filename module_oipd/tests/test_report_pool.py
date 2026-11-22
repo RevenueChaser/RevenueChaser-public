@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_oipd import engine, report
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_oipd import engine, report
 
 
 

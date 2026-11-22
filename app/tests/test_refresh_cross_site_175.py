@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
+from revenuechaser.app import dashboard
 
 # (module, the runner or hook its refresh branch calls)
 BRANCHES = [

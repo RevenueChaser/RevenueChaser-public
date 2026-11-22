@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import plotly.graph_objects as go
 
-from RevenueChaser.module_spx_gamma import run as spx_run, store as spx_store
-from RevenueChaser.module_spx_gamma.charts import tornado
-from RevenueChaser.module_spx_gamma.charts.tornado import (
+from revenuechaser.module_spx_gamma import run as spx_run, store as spx_store
+from revenuechaser.module_spx_gamma.charts import tornado
+from revenuechaser.module_spx_gamma.charts.tornado import (
     BG, GREEN, GRID, ORANGE, RED, TEXT, _level_entries, bar_value_and_overflow, fmt_signed_compact,
     tornado_range, tornado_rows,
 )

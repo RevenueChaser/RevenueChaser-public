@@ -8,10 +8,10 @@ from datetime import date, datetime, timezone
 import duckdb
 import pytest
 
-from RevenueChaser.core import calendar, config
-from RevenueChaser.module_settings import newdata
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build.prices import serving as prices_serving, wrds_history
+from revenuechaser.core import calendar, config
+from revenuechaser.module_settings import newdata
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build.prices import serving as prices_serving, wrds_history
 
 NOW = datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)
 PRICES = ("alpaca/bars", "alpaca/corporate_actions", "sec/cover_shares", "yfinance/float", "uw/total_float",

@@ -1,7 +1,7 @@
 """Tests for the UW Interaction report renderer."""
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_uw_interaction.report import render_board
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_uw_interaction.report import render_board
 
 
 def test_empty_payload_renders_idle_console():

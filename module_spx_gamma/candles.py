@@ -40,7 +40,7 @@ def window_lag(rows: list[dict], asof: date | str) -> tuple[str | None, str | No
     if not rows:
         return None, None                      # the empty case has its own warning
     try:
-        from RevenueChaser.core import calendar as nyse_calendar
+        from revenuechaser.core import calendar as nyse_calendar
         expected = min(nyse_calendar.latest_complete_session(), asof_date)
         if not nyse_calendar.is_trading_day(expected):
             # the holiday table starts at 1993; an older as-of must not read as a failed window
@@ -60,13 +60,13 @@ def live_spot(ticker: str = "^GSPC", now: datetime | None = None) -> tuple[float
     103 points, 1.33%, on 22 Oct. **One** yfinance request, only while the session is open. A failure returns
     its reason so the caller can fall back to the stored close with a visible warning, never silently.
 
-    The read goes through :func:`RevenueChaser.core.providers.yfinance.attempt` (#1213), so it is counted for
+    The read goes through :func:`revenuechaser.core.providers.yfinance.attempt` (#1213), so it is counted for
     the board banner (#299) and consults the 401 "Invalid Crumb" session cure (#402) like every other Yahoo read.
     An empty frame consults that cure too, because a refused ``history`` raises nothing: it logs the 401 and
     hands back an empty frame. That is why this file is declared in ``PROVIDER_FILES`` -- it is a provider read,
     and was one before it was routed.
     """
-    from RevenueChaser.core import calendar as nyse_calendar
+    from revenuechaser.core import calendar as nyse_calendar
     try:
         if not nyse_calendar.in_us_session_window(now):
             return None, None                  # market closed: the stored close is the right answer, no warning
@@ -75,7 +75,7 @@ def live_spot(ticker: str = "^GSPC", now: datetime | None = None) -> tuple[float
         return None, f"session window unknown ({type(exc).__name__}: {exc})"[:200]
     import yfinance as yf
 
-    from RevenueChaser.core.providers import yfinance as yf_provider
+    from revenuechaser.core.providers import yfinance as yf_provider
 
     frame, error = yf_provider.attempt(
         lambda: yf.Ticker(ticker).history(period="1d", interval="1m", auto_adjust=False),

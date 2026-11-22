@@ -1,9 +1,9 @@
 """Rule 0 — NRC. Categorizes all tickers into sectioned HTML. Never eliminates."""
-from RevenueChaser.core.reporting_common import write_artifact
+from revenuechaser.core.reporting_common import write_artifact
 import json
 from pathlib import Path
 from datetime import datetime
-from RevenueChaser.core.config import OUTPUT_DIR
+from revenuechaser.core.config import OUTPUT_DIR
 
 
 # Scoped under `.nrc` so the fragment can be embedded inside the Earnings Radar

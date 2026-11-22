@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from RevenueChaser.module_value_chain import precision as prec
+from revenuechaser.module_value_chain import precision as prec
 
 
 def _labels(n_true, n_false):

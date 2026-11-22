@@ -15,7 +15,7 @@ import pandas as pd
 def seed_d01(ticker: str, df: pd.DataFrame, fetched_at: float | None = None) -> None:
     """``df``'s Open/High/Low/Close/Volume bars as D01 rows; ``fetched_at`` defaults to now (after any past close)."""
     at = time.time() if fetched_at is None else fetched_at
-    from RevenueChaser.rcdata.tests import prices_store
+    from revenuechaser.rcdata.tests import prices_store
     rows = [{
         "ticker": ticker, "session_date": pd.Timestamp(ts).date(), "open": float(r["Open"]),
         "high": float(r["High"]), "low": float(r["Low"]), "close": float(r["Close"]), "adj_close": None,

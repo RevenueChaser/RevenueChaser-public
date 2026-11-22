@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar as se
+from revenuechaser.core.providers import sec_edgar as se
 
 _DIR = Path(__file__).parent / "fixtures" / "sec_companyfacts"
 _B = 1e9

@@ -22,20 +22,20 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 
-from RevenueChaser.core import earnings_dates, fiscal_year, trailing_year
-from RevenueChaser.core import funnel as funnel_mod
-from RevenueChaser.core import job_control
-from RevenueChaser.core import ownership
-from RevenueChaser.core import price_hygiene
-from RevenueChaser.core import tristate as tri
-from RevenueChaser.core.config import to_float
-from RevenueChaser.core.liquidity import liquid_assets
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.core import universe as _spine
-from RevenueChaser.core.taxonomy import themes_for_many
-from RevenueChaser.module_asymmetric_growth import sector_rules          # #18: AG's own rule, beside it now
-from RevenueChaser.module_fundamentals import debt as _debt              # decision B1 (avo, 17 Nov 2026)
-from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
+from revenuechaser.core import earnings_dates, fiscal_year, trailing_year
+from revenuechaser.core import funnel as funnel_mod
+from revenuechaser.core import job_control
+from revenuechaser.core import ownership
+from revenuechaser.core import price_hygiene
+from revenuechaser.core import tristate as tri
+from revenuechaser.core.config import to_float
+from revenuechaser.core.liquidity import liquid_assets
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.core import universe as _spine
+from revenuechaser.core.taxonomy import themes_for_many
+from revenuechaser.module_asymmetric_growth import sector_rules          # #18: AG's own rule, beside it now
+from revenuechaser.module_fundamentals import debt as _debt              # decision B1 (avo, 17 Nov 2026)
+from revenuechaser.rcdata import opens  # #566: pooled reads count for this run
 
 logger = logging.getLogger(__name__)
 
@@ -423,7 +423,7 @@ def score_ticker(ticker: str, financials: dict, technical: dict, meta: dict | No
     # cannot be read, so two other strong signals would rank a name nobody can judge on growth.
     tier = None if (not_comparable or anchor_flags) else tier_of(signals)
 
-    from RevenueChaser.core.taxonomy import themes_for
+    from revenuechaser.core.taxonomy import themes_for
     # C21 (#383): a theme label is the pinned NMF medium run or nothing — no keyword matcher, no sector guess.
     themes = pinned_themes.get(ticker, []) if pinned_themes is not None else themes_for(ticker)
     tech_breakthrough = rd_intensity is not None and rd_intensity >= RND_INTENSITY_MIN
@@ -504,7 +504,7 @@ def _price_session() -> date | None:
     PR 11: ``rcdata.read.last_sessions``). No store or no SPY bar reads as no session, and the scan then scores every
     card with unknown momentum instead of failing. The freeze checks the same served file (``freeze._make_anchor``).
     """
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return read.last_sessions(["SPY"]).get("SPY")
 
 
@@ -519,7 +519,7 @@ def _bars_by_ticker(tickers, session: date | None, basis: str = "split") -> dict
     out too. The price-hygiene gates need both bases of a name (#116, ``price_hygiene.unexplained_jump`` tells a bad
     print from an action the adjustment explains), which is one more read per batch and not one per name.
     """
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     if not tickers or session is None:
         return {}
     frame = read.ticker_bars(list(tickers), start=session - timedelta(days=BARS_WINDOW_DAYS), end=session,
@@ -892,7 +892,7 @@ def _sort_cards(cards: list[dict]) -> None:
 def scored_before(cards: list[dict]) -> bool:
     """True when a card was scored by an older model version than this code's (rows a Fetch stored before an
     upgrade: no ``model_version``, or another one). The board then shows every card under a banner (#380 S2)."""
-    from RevenueChaser.module_asymmetric_growth import freeze
+    from revenuechaser.module_asymmetric_growth import freeze
     current = freeze.model_version()
     return any(c.get("model_version") != current for c in cards)
 
@@ -978,9 +978,9 @@ def stored_result(header: dict | None = None) -> dict:
     counted from the cards and there is no funnel. No stored card: the no-data message (no stored universe, or no
     stored scan). No scorer, no network, no write.
     """
-    from RevenueChaser.core import ticker_store
-    from RevenueChaser.core.index_registry import annotate_cards
-    from RevenueChaser.core.scan_quality import no_data_message
+    from revenuechaser.core import ticker_store
+    from revenuechaser.core.index_registry import annotate_cards
+    from revenuechaser.core.scan_quality import no_data_message
 
     cards = ticker_store.all_cards()
     asof = ticker_store.asof()
@@ -1092,7 +1092,7 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
         if settled:
             latest_13f[c["ticker"]] = settled[-1]
     splits = _split_factors(latest_13f)
-    from RevenueChaser.module_asymmetric_growth import freeze
+    from revenuechaser.module_asymmetric_growth import freeze
     version = freeze.model_version()        # the rows say which rules scored them (old-rows view, #380 S2)
     for c in cards:
         so_row = shares_out.get(str(c["ticker"]).strip().upper()) or {}
@@ -1107,7 +1107,7 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
 
     _sort_cards(cards)
 
-    from RevenueChaser.core.index_registry import annotate_cards
+    from revenuechaser.core.index_registry import annotate_cards
     annotate_cards(cards)
 
     summary = _summary(cards, len(universe) - len(to_score), score_errors, drops.thin)
@@ -1128,7 +1128,7 @@ def run_asymmetric_growth_hunter(uw=None, max_workers: int = 10,
     }
     if not universe:
         # The board says why it is empty (#145): a Refresh never loads the universe, a Fetch may find none.
-        from RevenueChaser.core.scan_quality import no_data_message
+        from revenuechaser.core.scan_quality import no_data_message
         reason = "no_universe_stored" if no_fetch else "no_universe"
         result["no_data_reason"] = reason
         result["no_data_message"] = no_data_message(reason)

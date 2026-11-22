@@ -10,8 +10,8 @@ from __future__ import annotations
 import hashlib
 from datetime import date, datetime, timedelta, timezone
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.core import calendar
+from revenuechaser.rcdata.tests import prices_store
 
 FIRST = date(2025, 3, 3)
 

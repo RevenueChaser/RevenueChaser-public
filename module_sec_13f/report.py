@@ -15,7 +15,7 @@ Every share count on the board is on today's share basis (#732): a quarter's sha
 quarter end's split factor and its close multiplied by it, so a split reads as what it is, not as buying. The board
 shows the last ``WINDOW_QUARTERS`` settled quarters (owner, 12 Nov 2026), plus a quarter still arriving after them.
 """
-from RevenueChaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, PAYLOAD_JS, THEME_CSS,
+from revenuechaser.core.reporting_common import (FILTERS_CSS, FILTERS_JS, PAYLOAD_JS, THEME_CSS,
                                                  THEME_JS, THEME_SCALE, THEME_TOKENS, filters_bar_html,
                                                  filters_meta, help_html, notice_html, provider_health_html,
                                                  watchlist_html, write_board)
@@ -23,11 +23,11 @@ import math
 from datetime import datetime
 from pathlib import Path
 
-from RevenueChaser.core import universe
-from RevenueChaser.core.config import OUTPUT_DIR, PLOTLY_CDN_URL
-from RevenueChaser.core.gics_map import UNCLASSIFIED, canonical_sector, sector_or_unclassified
-from RevenueChaser.core.html_safe import esc, fill, script_json
-from RevenueChaser.module_sec_13f import engine
+from revenuechaser.core import universe
+from revenuechaser.core.config import OUTPUT_DIR, PLOTLY_CDN_URL
+from revenuechaser.core.gics_map import UNCLASSIFIED, canonical_sector, sector_or_unclassified
+from revenuechaser.core.html_safe import esc, fill, script_json
+from revenuechaser.module_sec_13f import engine
 
 
 def _row_sector(raw) -> str:
@@ -1579,7 +1579,7 @@ def types_section_html(filers: dict[str, int] | None = None) -> str:
     fetched from ``/api/sec_13f/types/<tag>`` when the section is opened, so a closed section costs nothing. Each
     option carries its type's filers in the newest quarter (``filers``; owner's pick of 13 Nov 2026), and a type with
     none is shown disabled; with no counts at all (a store that cannot say) the options are bare."""
-    from RevenueChaser.core.ownership import SEC13F_TYPES
+    from revenuechaser.core.ownership import SEC13F_TYPES
 
     def option(tag: str, label: str) -> str:
         n = (filers or {}).get(tag, 0) if filers else None
@@ -1653,7 +1653,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
                        "spine show as <b>Unclassified</b> with no market cap, so any cap filter hides them."})
     meta_js = f"<script>var META = {script_json(kit_meta)};</script>"
 
-    from RevenueChaser.core.ownership import sec13f_type_filers
+    from revenuechaser.core.ownership import sec13f_type_filers
     types_html = types_section_html(sec13f_type_filers())
     status_html = ("<div class=\"status\">" + "".join(f'<span class="{esc(c)}">{esc(t)}</span>' for c, t in status)
                    + "</div>") if status else ""

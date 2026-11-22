@@ -224,7 +224,7 @@ tabs share the width at 44 px.
 ### 2.0 The "New data system" section (PR 2)
 
 The first section of the old fold (2.0a), above the old inventory (which stays until PR 21, with its drill, flow diagram and
-board-input cards). It shows the market store that the builder (`python -m RevenueChaser.rcdata.build`) writes. The
+board-input cards). It shows the market store that the builder (`python -m revenuechaser.rcdata.build`) writes. The
 contract below binds the page; decisions D1, D6, D9, F6, F7 A, F8 A, F10 B and the five Settings decisions of
 27 Oct 2026 are the source.
 
@@ -283,7 +283,7 @@ cards run on their cadence since #1361, so they carry Fetch, Backfill and Pause 
 store"): Alpaca's daily bars (coverage = Tier A names with a bar on the session, target 99%; backfill = its day
 partitions), Alpaca's corporate actions, the SEC cover shares, the Yahoo and UW float, the WRDS history and
 `prices/serving`. The WRDS history card follows its daily cadence since #1361 and shows the by-hand whole-build
-line (`python -m RevenueChaser.rcdata.build backfill wrds/prices`);
+line (`python -m revenuechaser.rcdata.build backfill wrds/prices`);
 its backfill progress counts the table-year partitions (`secd 1993` ...) out of those expected, and its WRDS
 difference slot shows the store's monthly report (`wrds_price_diff`): per comparison the sessions compared and how
 many differ by more than 1 bp, with the largest difference. Every other card still says "no WRDS run yet", except
@@ -293,7 +293,7 @@ the four WRDS checks of the fundamentals layer below.
 (`docs/data_architecture.md`, "Fundamentals"), each with its own cadence (the SEC facts and filings, the Alpha Vantage
 calendar, UW's preliminary quarters and `fundamentals/tables` daily, the yfinance estimates weekly, the SEC's FSDS and
 the WRDS checks monthly). The WRDS cards `wrds/fundq`, `wrds/funda`, `wrds/segments`, `wrds/exrt` and `wrds/audit`
-run on their cadence since #1361; their whole build is still by hand (`python -m RevenueChaser.rcdata.build backfill
+run on their cadence since #1361; their whole build is still by hand (`python -m revenuechaser.rcdata.build backfill
 wrds/fundq wrds/funda wrds/segments wrds/exrt wrds/audit`), and their WRDS difference slot is the monthly difference report: the note of the
 newest run that read WRDS (a skipped or failed run is not one), so the agreement counts against the SEC and the
 number of revisions since the snapshot before are on the card (decided 27 Oct). No coverage target is set for these
@@ -755,7 +755,7 @@ ones a systemd timer and service honour, #579).
   comes from the log, and its message names the `systemctl --user reset-failed` that clears it, since
   an error row carries no button. A user timer runs only while that user's systemd instance runs, so a server
   that runs logged off needs `loginctl enable-linger <user>` once, by hand.
-- **Task names for scripts.** `python -m RevenueChaser.core.automations names` prints the registry
+- **Task names for scripts.** `python -m revenuechaser.core.automations names` prints the registry
   names one per line and never asks the scheduler, so a script that freezes or lists the tasks reads
   them from the registry instead of keeping its own list (#164).
 - **Tests** use a fake scheduler; the end-to-end harness installs it, so no test reaches the real
@@ -950,7 +950,7 @@ Comparing the stored accession to the SEC's own submissions list, end to end:
      and upsert the filing row as `updated`;
    - no 10-K or 20-F in the list, so `no_filing`.
 
-Run: `python -m RevenueChaser.module_value_chain --sync-filings [--limit N] [--force] [--floor M | --tickers A,B]`.
+Run: `python -m revenuechaser.module_value_chain --sync-filings [--limit N] [--force] [--floor M | --tickers A,B]`.
 Without a floor or a ticker list it covers the whole classification universe, and the submissions
 sweep covers every universe central index key. Cost: one submissions call per key at the shared
 SEC rate, and archive downloads only on a mismatch.

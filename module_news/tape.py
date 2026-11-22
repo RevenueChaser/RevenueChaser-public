@@ -1,6 +1,6 @@
 """The News board's live listener (#673; avo, 10 Nov 2026 20:04 Amsterdam: "evet bu sekilde yapalim").
 
-One long-lived process (``python -m RevenueChaser.module_news.tape``, the ``life-rc-news-tape`` unit on homesrv). It
+One long-lived process (``python -m revenuechaser.module_news.tape``, the ``life-rc-news-tape`` unit on homesrv). It
 holds one IBKR Gateway connection (client id ``CLIENT_ID``), subscribes to the broad-tape news feeds in ``feeds()``
 and appends every headline, as it arrives, to ``tape_dir()/<UTC day>.jsonl``. It opens no DuckDB: the dashboard is
 the one writer of ``boards/news.duckdb``, so every ``TRIGGER_S`` the listener queues the dashboard job
@@ -22,9 +22,9 @@ from pathlib import Path
 
 import httpx
 
-from RevenueChaser.core import config, ibkr_login
-from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import tape_state
+from revenuechaser.core import config, ibkr_login
+from revenuechaser.core.providers import ibkr_tws as ibkr
+from revenuechaser.module_news import tape_state
 
 log = logging.getLogger(__name__)
 

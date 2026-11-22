@@ -10,8 +10,8 @@ import threading
 import uuid
 from datetime import date, datetime, timezone
 
-from RevenueChaser.core import calendar as nyse_calendar
-from RevenueChaser.core import credentials
+from revenuechaser.core import calendar as nyse_calendar
+from revenuechaser.core import credentials
 
 # The VIX family, the CFTC COT and the SPX closes come from the market store, read by store_reads (D4, PR 3). The
 # snapshot asks no live source for them and writes none of them into the raw day: run.build_day reads them for the

@@ -17,12 +17,12 @@ import random
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.app import dashboard, runners
-from RevenueChaser.core import reporting_common as rc, ticker_store
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_asymmetric_growth import engine, freeze
-from RevenueChaser.module_asymmetric_growth import report
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.app import dashboard, runners
+from revenuechaser.core import reporting_common as rc, ticker_store
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_asymmetric_growth import engine, freeze
+from revenuechaser.module_asymmetric_growth import report
 
 LIMIT = 2 * 1024 * 1024      # card F: one board view, compressed
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import ast
 
-from RevenueChaser.rcdata.needs import boards
+from revenuechaser.rcdata.needs import boards
 
 #: ``boards.UNDECLARED`` on 11 Nov 2026. Remove a board here when it migrates; never add one.
 UNDECLARED_CEILING = frozenset({

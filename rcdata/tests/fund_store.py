@@ -19,8 +19,8 @@ from datetime import date, timedelta
 
 import duckdb
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build.fundamentals import tables
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build.fundamentals import tables
 
 FACTS_DATASET = "sec/companyfacts"
 TABLES = ("fundamental_company", "fundamental_fact", "filing_item")

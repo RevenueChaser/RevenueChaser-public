@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_value_chain import aliases
+from revenuechaser.module_value_chain import aliases
 
 SPINE = aliases.spine_names([
     {"ticker": "ORN", "name": "Orion Group Holdings, Inc."},

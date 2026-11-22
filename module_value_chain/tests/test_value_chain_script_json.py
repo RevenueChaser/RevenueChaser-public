@@ -1,8 +1,8 @@
 """Value Chain board: one 10-K snippet cannot blank the script (ADR-X1 F3, #144)."""
 from __future__ import annotations
 
-from RevenueChaser.core.tests.board_js import PROBE, assert_scripts_intact
-from RevenueChaser.module_value_chain import report
+from revenuechaser.core.tests.board_js import PROBE, assert_scripts_intact
+from revenuechaser.module_value_chain import report
 
 
 def test_a_comment_opener_or_placeholder_in_a_snippet_keeps_the_script_intact(tmp_path):
@@ -29,7 +29,7 @@ def _board():
 
 def test_df60_chip_follows_edge_direction(tmp_path):
     """DF60 under node: a customer edge never says "customer list"; each direction gets its own text."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     tail = """
 drawEdges([{src:"NVDA",dst:"TSM",relation:"customer",snippet:"we purchase from our supplier",hop:1},
            {src:"NVDA",dst:"AMD",relation:"supplier",snippet:"our largest customer",hop:1},

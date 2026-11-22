@@ -1,6 +1,6 @@
 """rcdata — the market store's one library (#206 F1/D1, #217 F12/D4).
 
-A separate builder process (``python -m RevenueChaser.rcdata.build``) fetches raw files to the HDD
+A separate builder process (``python -m revenuechaser.rcdata.build``) fetches raw files to the HDD
 (``config.MARKET_RAW_DIR``), types them to Parquet, builds each serving DuckDB file as a new file and swaps it in
 (``serving.swap``); the dashboard opens serving files read-only (``serving.open_read``) and boards read them only
 through ``read``. Operational state (the request queue, the check rows, the call counter) is SQLite WAL in

@@ -12,7 +12,7 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata.build.prices import serving as prices_serving
 
 
 def _world(actions: list[tuple], bars: list[tuple]) -> duckdb.DuckDBPyConnection:

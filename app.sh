@@ -79,18 +79,18 @@ case "$cmd" in
   dashboard|dash|web)
     port="${1:-8000}"
     say "dashboard -> http://localhost:$port"
-    exec "$PY" -c "from RevenueChaser.app.dashboard import main; main(port=$port, open_browser=True)"
+    exec "$PY" -c "from revenuechaser.app.dashboard import main; main(port=$port, open_browser=True)"
     ;;
   serve)
     port="${1:-8000}"
     say "dashboard (no browser) -> http://localhost:$port"
-    exec "$PY" -c "from RevenueChaser.app.dashboard import main; main(port=$port, open_browser=False)"
+    exec "$PY" -c "from revenuechaser.app.dashboard import main; main(port=$port, open_browser=False)"
     ;;
-  menu)      require_key; run -m RevenueChaser.main ;;
-  radar)     require_key; run -m RevenueChaser.main ;;
-  rotation)  require_key; run -m RevenueChaser.module_sector_rotation ;;
-  spx)       require_key; run -m RevenueChaser.module_spx_gamma "$@" ;;
-  fin)       run -m RevenueChaser.module_financials "$@" ;;
+  menu)      require_key; run -m revenuechaser.main ;;
+  radar)     require_key; run -m revenuechaser.main ;;
+  rotation)  require_key; run -m revenuechaser.module_sector_rotation ;;
+  spx)       require_key; run -m revenuechaser.module_spx_gamma "$@" ;;
+  fin)       run -m revenuechaser.module_financials "$@" ;;
 
   # ── test ────────────────────────────────────────────────────────────────────
   test|tests)  run -m pytest "$REPO" -q "$@" ;;
@@ -126,10 +126,10 @@ case "$cmd" in
     rm -rf "$REPO/.pytest_cache"
     printf '%s\n' "${GRN}✓ cleaned __pycache__ and .pytest_cache${RST}"
     # Scratch a killed run left behind; a run in progress is protected by the age rule.
-    run -m RevenueChaser.scripts.clean_test_scratch --apply
+    run -m revenuechaser.scripts.clean_test_scratch --apply
     ;;
   clean-scratch)
-    run -m RevenueChaser.scripts.clean_test_scratch "$@"
+    run -m revenuechaser.scripts.clean_test_scratch "$@"
     ;;
   help|-h|--help) usage ;;
   *) printf '%s\n' "${RED}✗ unknown command: $cmd${RST}" >&2; echo; usage; exit 2 ;;

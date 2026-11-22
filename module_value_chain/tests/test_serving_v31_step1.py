@@ -6,8 +6,8 @@ every edge whichever way it is set; G-F (#284) the payload says when a sync foun
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import config, engine, report
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import config, engine, report
 
 
 def _edge(dst, relation, source):

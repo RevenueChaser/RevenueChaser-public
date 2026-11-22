@@ -12,11 +12,11 @@ import sqlite3
 
 import pytest
 
-import RevenueChaser.app.dashboard as d
-from RevenueChaser.app import runners
-from RevenueChaser.core.tests.panel_client import panel_test_client
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (each test its own ops.sqlite)
+import revenuechaser.app.dashboard as d
+from revenuechaser.app import runners
+from revenuechaser.core.tests.panel_client import panel_test_client
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (each test its own ops.sqlite)
 
 DATASETS = ("uw/spot_expiry_strike", "market_series")
 
@@ -32,7 +32,7 @@ class _FakeUW:
 @pytest.fixture
 def ran(monkeypatch, tmp_path):
     """jobs.submit runs the job's runner at once (the board's module mocked): what each job was handed."""
-    from RevenueChaser.module_spx_gamma import run as spx_run
+    from revenuechaser.module_spx_gamma import run as spx_run
     seen: list[tuple[str, dict]] = []
 
     def module_run(asof_date, uw=None, force=False, builder_request=None):
@@ -85,7 +85,7 @@ def test_a_second_fetch_while_queued_adds_none_and_still_runs(ran):
 
 
 def test_a_stored_past_day_fetch_queues_them_too(ran, monkeypatch):
-    from RevenueChaser.module_spx_gamma import run as spx_run
+    from revenuechaser.module_spx_gamma import run as spx_run
     monkeypatch.setattr(spx_run, "serves_from_disk", lambda asof, data_root=None: True)
     r = _client().post("/run/spxgamma", data={"date": "2026-10-23"})
     assert r.status_code == 202 and ran[0][0] == "spxgamma_stored"
@@ -135,8 +135,8 @@ def test_a_locked_queue_never_fails_the_fetch(ran, monkeypatch):
 
 
 def test_the_board_says_the_builder_was_asked_and_when_it_runs():
-    from RevenueChaser.module_spx_gamma import render
-    from RevenueChaser.module_spx_gamma.tests.conftest import make_snapshot
+    from revenuechaser.module_spx_gamma import render
+    from revenuechaser.module_spx_gamma.tests.conftest import make_snapshot
     snap = make_snapshot()
     snap["builder_request"] = {"requested_at": "2026-10-26 16:40 New York",
                                "datasets": {"uw/spot_expiry_strike": "queued", "market_series": "already queued"}}

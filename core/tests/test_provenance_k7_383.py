@@ -21,14 +21,14 @@ from datetime import date, datetime, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import provenance, rawstore
-from RevenueChaser.core.tests import screen_parity as scn
-from RevenueChaser.core.tests.d01_seed import seed_d01
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.rcdata.tests import prices_store
-from RevenueChaser.core.tests.d01_seed import drop_d01
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import provenance, rawstore
+from revenuechaser.core.tests import screen_parity as scn
+from revenuechaser.core.tests.d01_seed import seed_d01
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.rcdata.tests import prices_store
+from revenuechaser.core.tests.d01_seed import drop_d01
 
 D = date(2026, 10, 14)
 EVENING = datetime(2026, 10, 14, 21, 0, tzinfo=timezone.utc).timestamp()

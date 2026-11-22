@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 
-from RevenueChaser.rcdata.build import base
+from revenuechaser.rcdata.build import base
 
 
 def test_a_spill_freed_before_the_step_ends_still_counts_as_its_peak(tmp_path):

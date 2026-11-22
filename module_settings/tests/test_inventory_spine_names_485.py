@@ -5,9 +5,9 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.module_settings import inventory, report
-from RevenueChaser.rcdata import read as rcread, serving
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
+from revenuechaser.module_settings import inventory, report
+from revenuechaser.rcdata import read as rcread, serving
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401 - market roots per test
 
 
 def _spine(rows):

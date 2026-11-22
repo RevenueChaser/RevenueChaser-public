@@ -11,14 +11,14 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_economic, serve_estimates
-from RevenueChaser.module_earnings_radar.tests.test_rule1_drivers_e6 import FULL
-from RevenueChaser.module_earnings_radar.tests.test_stored_ohlc_e5e import _bars, _prints, _seed as _seed_bars
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_short_interest
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
+from revenuechaser.core import calendar
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve_economic, serve_estimates
+from revenuechaser.module_earnings_radar.tests.test_rule1_drivers_e6 import FULL
+from revenuechaser.module_earnings_radar.tests.test_stored_ohlc_e5e import _bars, _prints, _seed as _seed_bars
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve_short_interest
+from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
 
 NY = ZoneInfo("America/New_York")
 SESSION = date(2026, 10, 14)
@@ -65,7 +65,7 @@ def _seed_everything():
 
 
 def test_a_run_with_every_input_stored_asks_uw_and_fred_for_none_of_them():
-    from RevenueChaser.module_earnings_radar import macro_watch
+    from revenuechaser.module_earnings_radar import macro_watch
     assert not hasattr(macro_watch, "fred_daily_map")      # the board has no FRED reader to call any more
     _seed_everything()
     fake = _CountingUW()

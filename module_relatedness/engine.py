@@ -13,13 +13,13 @@ import math
 import threading
 from datetime import datetime, timezone
 
-from RevenueChaser.core import job_lock, rawstore
-from RevenueChaser.core.reporting_common import write_artifact
-from RevenueChaser.core.providers import deepseek, evren
-from RevenueChaser.module_value_chain import engine as vc_engine
-from RevenueChaser.rcdata import opens  # #566: pooled reads count for this run
+from revenuechaser.core import job_lock, rawstore
+from revenuechaser.core.reporting_common import write_artifact
+from revenuechaser.core.providers import deepseek, evren
+from revenuechaser.module_value_chain import engine as vc_engine
+from revenuechaser.rcdata import opens  # #566: pooled reads count for this run
 # The input's pure half (#894): the SEC reading service sends the same bytes for one filing.
-from RevenueChaser.rcdata.sec_profile_input import (MAX_SENTENCES, MAX_XBRL_CUSTOMERS, clean_input,  # noqa: F401
+from revenuechaser.rcdata.sec_profile_input import (MAX_SENTENCES, MAX_XBRL_CUSTOMERS, clean_input,  # noqa: F401
                                                     filing_sentences)
 
 from . import config
@@ -64,7 +64,7 @@ def select_pilot(limit: int | None = None) -> list[str]:
     One selector for every classification board (core/universe.py). ``limit``
     caps the set for tests/demos.
     """
-    from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
+    from revenuechaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
     # The board's type filter (PR 2): profiles need a 10-K, so operating companies only by default.
     tickers = classification_universe(operating_only=BOARD_OPERATING_ONLY["module_relatedness"])
     return tickers[:limit] if limit else tickers
@@ -80,10 +80,10 @@ def _layer_documents(tickers: list[str]) -> dict[str, dict] | None:
     reader serves per ticker (``sec/forms``, ``read.form_business``; #841), or None off the layer (build plan PR 20,
     G6). The row carries the cutter's label with its ``;suspect`` flags (#835) and the ``rules_version`` that cut
     it; ``_forms_ready`` stops a run whose rows are not of ``config.FORMS_RULES_VERSION``."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     if not fundamentals_layer.reads_layer():
         return None
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     cik_of = {str(c["ticker"]).upper(): str(c["cik"]) for c in read.fundamental_companies(tickers) if c.get("cik")}
     docs = {str(d["cik"]): d for d in read.form_business(set(cik_of.values()))}
     return {t: docs[c] for t, c in cik_of.items() if c in docs}
@@ -122,7 +122,7 @@ def _filing_source(ticker: str) -> dict | None:
 
 
 def _layer_cik(ticker: str) -> str | None:
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     got = read.fundamental_companies([ticker])
     return str(got[0]["cik"]) if got and got[0].get("cik") else None
 
@@ -136,10 +136,10 @@ def _whole_document(ticker: str) -> dict | None:
     """``{text, source}`` of the newest annual report's whole text (``filing_section`` section ``whole``), or None:
     the fallback (#400) when the business section cannot be profiled from. Layer only: ``chain_filings`` holds no
     whole document."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     if not fundamentals_layer.reads_layer():
         return None
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     cik = _layer_cik(ticker)
     d = next(iter(read.form_whole([cik])), None) if cik else None
     return {"text": d.get("text") or "", "source": _doc_source(d)} if d else None
@@ -220,17 +220,17 @@ NOTE_BLOCKS = (("segment_block", "SegmentReportingDisclosureTextBlock"),
 def _note_block(cik: str, local_name: str) -> str:
     """The text of the newest annual report's ``local_name`` note (``read.form_notes``), its parts joined in
     document order, whole; empty when the filing has none."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     parts = [str(r.get("text") or "").strip() for r in read.form_notes([cik], local_name=local_name)]
     return "\n".join(p for p in parts if p).strip()
 
 
 def _filing_extras(cik: str | None, text: str) -> dict:
     """``filing_sentences`` and ``xbrl_customers`` of the company's newest annual report, for the prompt."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     if not cik or not fundamentals_layer.reads_layer():
         return {}
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     out: dict = {}
     whole = next(iter(read.form_whole([cik])), None) or {}
     sents = filing_sentences(whole.get("text") or "", text)
@@ -262,10 +262,10 @@ MAX_SEGMENT_LINES = 15
 
 def _segment_note(cik: str | None, accession: str | None) -> str:
     """The filing's segment revenue (``segment_revenue`` from ``sec/filings``) as lines, newest period only."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     if not cik or not fundamentals_layer.reads_layer():
         return ""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     rows = read.segments(cik, source="sec/filings")
     if accession:
         rows = [r for r in rows if r.get("accession") == accession] or rows
@@ -329,7 +329,7 @@ def _company_names(tickers: list[str]) -> dict[str, str]:
 def _spine_rows(tickers) -> dict[str, dict]:
     """``{ticker: security row}`` from ``spine.duckdb``. A read that fails raises: the name is part of every profile's
     input hash, so a silent empty answer would re-key the whole run (#642 F7, D3); ``_spine_ready`` stops it first."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return {r["ticker"]: r for r in read.identity(tickers)}
 
 
@@ -337,7 +337,7 @@ def _spine_ready() -> None:
     """Stop a profile run (``RunStopped("spine")``) when the spine cannot name its companies: no ``spine.duckdb``, or
     a read of it that fails (#642 D3). Without it every name would fall back to the ticker and every profile's input
     hash would change, so the run would redo, and pay for, profiles that did not change."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     why = read.missing("spine")
     if why is None:
         try:
@@ -357,10 +357,10 @@ def _forms_ready(tickers: list[str]) -> None:
     Without the first two every company would read ``no_text``. Without the third the run would profile, and pay
     for, a text the next build of ``sec/forms`` replaces: the input hash moves with the text, so that is a second
     rewrite of the same companies. Off the layer (``chain_filings``) there is nothing to check."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     if not fundamentals_layer.reads_layer():
         return
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     why = read.missing("sec_forms", "sec/forms")
     if why is None and config.FORMS_RULES_VERSION:
         ciks = {c for c in _cik_for(tickers).values() if c}
@@ -419,12 +419,12 @@ def _input_hashes(groups: dict[str, list[str]], names: dict[str, str]) -> dict[s
 def _cik_for(tickers: list[str]) -> dict[str, str]:
     """``{ticker: cik}`` (empty string when unknown): the fundamentals layer's company (G6) when the boards read it,
     else the SEC ticker map."""
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     if fundamentals_layer.reads_layer():
-        from RevenueChaser.rcdata import read
+        from revenuechaser.rcdata import read
         got = {str(c["ticker"]).upper(): str(c.get("cik") or "") for c in read.fundamental_companies(tickers)}
         return {t: got.get(t.upper(), "") for t in tickers}
-    from RevenueChaser.core.providers import sec_edgar
+    from revenuechaser.core.providers import sec_edgar
     cmap = sec_edgar._cik_map()
     return {t: str((cmap.get(t.upper()) or {}).get("cik") or "") for t in tickers}
 
@@ -442,7 +442,7 @@ def mirror_service(tickers: list[str]) -> dict[str, dict]:
     changes nothing. The key carries the service's input hash, writer and filing; scoring, embeddings, themes and
     Value Chain read the same two tables as before.
     """
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     from . import store
 
     ciks = _cik_for(tickers)
@@ -824,7 +824,7 @@ def _theme_levels() -> dict[str, dict]:
     failure yields an empty map so a company simply carries empty theme strings.
     """
     try:
-        from RevenueChaser.core.universe import theme_catalog
+        from revenuechaser.core.universe import theme_catalog
         from . import themes as rel_themes
         run_id = rel_themes.current_run_id()
         if not run_id:
@@ -856,9 +856,9 @@ def _cluster_levels() -> dict[str, dict]:
     (a Fetch also stores other windows, #95, which must not displace it), then
     the latest.
     """
-    from RevenueChaser.module_comovement import config as comov_config
-    from RevenueChaser.module_comovement import settings as comov_settings
-    from RevenueChaser.module_comovement import store_reads as comov_reads
+    from revenuechaser.module_comovement import config as comov_config
+    from revenuechaser.module_comovement import settings as comov_settings
+    from revenuechaser.module_comovement import store_reads as comov_reads
 
     as_of = comov_reads.default_run_as_of(
         comov_config.DEFAULT_HORIZON, comov_config.DEFAULT_BENCHMARK,
@@ -902,10 +902,10 @@ def _attach_peer_market(peers: dict) -> None:
     """
     if not peers:
         return
-    from RevenueChaser.module_comovement import config as comov_config
-    from RevenueChaser.module_comovement import ohlc as comov_ohlc
-    from RevenueChaser.module_comovement import returns as comov_returns
-    from RevenueChaser.module_comovement import settings as comov_settings
+    from revenuechaser.module_comovement import config as comov_config
+    from revenuechaser.module_comovement import ohlc as comov_ohlc
+    from revenuechaser.module_comovement import returns as comov_returns
+    from revenuechaser.module_comovement import settings as comov_settings
 
     focals = set(peers)
     peer_tickers = {p.get("peer") for entries in peers.values() for p in entries}
@@ -1052,12 +1052,12 @@ def _score_grid(arr) -> list[float]:
 
 def _payload(profiles: dict[str, dict], stale: set[str] | None = None, model: str | None = None,
              write: bool = False, reuse: dict | None = None) -> dict:
-    from RevenueChaser.core.gics_map import canonical_sector, sector_path
-    from RevenueChaser.core.universe import (BOARD_OPERATING_ONLY, classification_universe, filter_fields,
+    from revenuechaser.core.gics_map import canonical_sector, sector_path
+    from revenuechaser.core.universe import (BOARD_OPERATING_ONLY, classification_universe, filter_fields,
                                              theme_catalog)
     # One read of the company fields (#49): ``filter_fields`` carries name/sector/industry/market_cap already,
     # so the second ``equity_universe`` query this function used to run only risked disagreeing with it.
-    from RevenueChaser.module_value_chain import aliases
+    from revenuechaser.module_value_chain import aliases
     from . import store
     meta = store.profile_meta(list(profiles))
     # Decision C (avo, 16 Nov 2026; #408): one row per CIK. GOOG/GOOGL share a filing and a profile, so each was the
@@ -1271,7 +1271,7 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     # On the layer Relatedness reads its texts
     # from the layer (``_layer_documents``), so downloading ``chain_filings`` again is wasted (plan 11 Nov 2026, F3:
     # about 4,970 SEC files for a full Fetch).
-    from RevenueChaser.core import fundamentals_layer
+    from revenuechaser.core import fundamentals_layer
     vc_engine.fetch_corpus(tickers, no_fetch=no_fetch or fundamentals_layer.reads_layer())
 
     next_off_peak = None

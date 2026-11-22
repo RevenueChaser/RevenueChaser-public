@@ -6,7 +6,7 @@ defaulted, so `TradeCard()` always constructs), and RuleResult invariants
 """
 from dataclasses import fields
 
-from RevenueChaser.module_earnings_radar.models import RuleResult, TradeCard
+from revenuechaser.module_earnings_radar.models import RuleResult, TradeCard
 
 # Field names required by the 30-col grouped radar report.
 RADAR_FIELDS = {

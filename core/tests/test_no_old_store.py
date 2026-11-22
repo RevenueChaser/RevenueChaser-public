@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 _REPO = Path(__file__).resolve().parents[2]
 OLD_DBS = ("raw", "edgar", "history", "prices")
@@ -55,7 +55,7 @@ REMOVED_MODULES = frozenset({
 
 
 def _dotted(rel: str) -> str:
-    mod = "RevenueChaser." + rel[:-3].replace("/", ".")
+    mod = "revenuechaser." + rel[:-3].replace("/", ".")
     return mod[: -len(".__init__")] if mod.endswith(".__init__") else mod
 
 
@@ -141,7 +141,7 @@ def test_no_code_imports_a_removed_module():
                 mod = _module_of(rel, node)
                 names = [mod, *(f"{mod}.{a.name}" for a in node.names)]
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                names = [node.value]                       # importlib.import_module("RevenueChaser....")
+                names = [node.value]                       # importlib.import_module("revenuechaser....")
             else:
                 continue
             hit = [n for n in names if n in _REMOVED_DOTTED]

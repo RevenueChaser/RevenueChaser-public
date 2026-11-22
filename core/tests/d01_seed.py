@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta, timezone
 
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.rcdata.tests import prices_store
 
 
 def seed_d01(ticker: str, days, fetched_at: float, *, close: float = 1.5, replace: bool = True) -> None:

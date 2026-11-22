@@ -12,9 +12,9 @@ once a board's rate is readable.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import baselines, hit_rate, outcomes, rawstore
-from RevenueChaser.core.html_safe import esc
-from RevenueChaser.core.reporting_common import THEME_CSS, THEME_JS, help_html
+from revenuechaser.core import baselines, hit_rate, outcomes, rawstore
+from revenuechaser.core.html_safe import esc
+from revenuechaser.core.reporting_common import THEME_CSS, THEME_JS, help_html
 
 TITLE = "Hit Rate"
 DB = "forecast"

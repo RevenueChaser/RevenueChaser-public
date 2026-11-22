@@ -6,9 +6,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import config, embeddings, engine, similarity, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import config, embeddings, engine, similarity, store
+from revenuechaser.module_relatedness.tests.test_relatedness import _prof, _seed_filings
 
 
 def _fake_embed(calls):

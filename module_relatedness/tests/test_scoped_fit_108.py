@@ -15,18 +15,18 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.module_relatedness import config, engine, store, themes
-from RevenueChaser.module_relatedness.tests.test_themes import _profiles4 as _profiles
+from revenuechaser.core import rawstore
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_relatedness import __main__ as cli
+from revenuechaser.module_relatedness import config, engine, store, themes
+from revenuechaser.module_relatedness.tests.test_themes import _profiles4 as _profiles
 
 
 @pytest.fixture(autouse=True)
 def _deepseek_board(monkeypatch):
     """These CLI runs are DeepSeek's: the board's writer is DeepSeek here (#360 made EVREN the default)."""
-    from RevenueChaser.core.providers import deepseek as _ds
-    from RevenueChaser.module_relatedness import settings as rel_settings
+    from revenuechaser.core.providers import deepseek as _ds
+    from revenuechaser.module_relatedness import settings as rel_settings
     monkeypatch.setattr(rel_settings, "writer", lambda: ("deepseek", _ds.MODEL))
 
 SMALL, STRAY = "SMALL", "STRAY"
@@ -71,7 +71,7 @@ def test_the_stored_fit_leaves_out_profiles_outside_the_universe(stored):
 
 def test_an_explicit_floor_narrows_the_fit(stored):
     """The floor is no longer the default, but a caller that asks for one still gets it."""
-    from RevenueChaser.core.universe import classification_universe
+    from revenuechaser.core.universe import classification_universe
     themes.build_shadow(run_id="s1", universe=classification_universe(300e6))
     assert SMALL not in _members("s1") and STRAY not in _members("s1")
 

@@ -2,7 +2,7 @@
 
 **Purpose:** every rule change that reworks an Earnings Radar scoring rule lives
 here, one entry per rule, newest last. This is the working plan + record. The
-per-rule spec docs under `docs/module_earnings-radar/` stay as the *reference*; this file tracks
+per-rule spec docs under `docs/module_earnings_radar/` stay as the *reference*; this file tracks
 what we decided to change and why, and it is the place to keep adding the next
 rule we touch (we will keep editing this file).
 
@@ -114,7 +114,7 @@ the strikes fresh. Never paste a live EM onto a stale 25.
 | `module_earnings_radar/composite.py` | `recommend_options_structure(..., gex_profile)`, target band |
 | `module_earnings_radar/pipeline.py` | `_gex_profile()` fetch, opt wiring, structure label, raw packet |
 | `core/config.py` | R4 GEX constants |
-| `docs/module_earnings-radar/r4_volatility.md` | updated scoring + honesty rules |
+| `docs/module_earnings_radar/r4_volatility.md` | updated scoring + honesty rules |
 
 Tests: `core/tests/test_gex_profile.py`, R4 profile cases in
 `test_rule4_volatility.py`, target-band cases in `test_composite.py`, wiring
@@ -147,7 +147,7 @@ construction its thresholds were calibrated against.
 | `module_earnings_radar/pipeline.py` | `_yz_rv30` + `_term_slope` wiring into `opt` |
 | `module_earnings_radar/rules/rule4_volatility.py` | 1.25 ceiling, slope term, raw metrics |
 | `core/config.py` | `IV_RV_RICH`…`TS_SLOPE_CONTANGO_POINTS`, `R4_TERM_STRUCTURE_ENABLED` |
-| `docs/module_earnings-radar/r4_volatility.md` | inputs, scoring, honesty rules |
+| `docs/module_earnings_radar/r4_volatility.md` | inputs, scoring, honesty rules |
 
 Tests: `core/tests/test_vol_metrics.py`, slope/boundary cases in
 `test_rule4_volatility.py`, wiring cases in `test_pipeline_score.py`.
@@ -1017,7 +1017,7 @@ header and the 13F period shown on the Owners header.
 
 ### Owners quarter — option A (locked)
 
-- Source: `RevenueChaser.core.provenance.sec13f_period()` (max
+- Source: `revenuechaser.core.provenance.sec13f_period()` (max
   `period` across `sec13f_submissions`, e.g. `2026-03-31`).
 - Format as `YYYY-QN` (2026-03-31 → `2026-Q1`).
 - Header is static for the whole report (single value); no per-ticker

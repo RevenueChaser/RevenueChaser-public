@@ -22,12 +22,12 @@ import pandas as pd
 
 from datetime import date, datetime, timezone
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_fundamentals import pipeline as fp
-from RevenueChaser.module_swing_potential import pipeline as sp
-from RevenueChaser.rcdata.tests import prices_store
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import rawstore
+from revenuechaser.module_fundamentals import pipeline as fp
+from revenuechaser.module_swing_potential import pipeline as sp
+from revenuechaser.rcdata.tests import prices_store
 
 GENERATED_AT = "2026-10-01T06:00:00+00:00"
 SESSION = date(2026, 10, 14)                                                    # the bars' last session

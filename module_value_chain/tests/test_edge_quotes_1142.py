@@ -7,7 +7,7 @@ link (20 Nov 2026), so those quotes must survive: they are the second half of th
 """
 from __future__ import annotations
 
-from RevenueChaser.module_value_chain import edge_quotes, engine
+from revenuechaser.module_value_chain import edge_quotes, engine
 
 
 def _edge(name, quote, relation="customer"):

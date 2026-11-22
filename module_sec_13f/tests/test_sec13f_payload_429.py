@@ -11,9 +11,9 @@ import gzip
 import json
 import re
 
-from RevenueChaser.core.reporting_common import payload_path
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core.reporting_common import payload_path
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_sec_13f import report
 
 
 def _cell(shares, **kw):
@@ -180,9 +180,9 @@ console.log(JSON.stringify({{
 def test_a_refresh_with_no_totals_drops_the_old_payload(tmp_path, monkeypatch):
     """The empty board is written in place of the page; the previous rows must not stay served beside it."""
     import pytest
-    from RevenueChaser.app import runners
-    from RevenueChaser.app.jobs import JobMessage
-    from RevenueChaser.module_sec_13f import engine
+    from revenuechaser.app import runners
+    from revenuechaser.app.jobs import JobMessage
+    from revenuechaser.module_sec_13f import engine
     page = tmp_path / "sec_13f_latest.html"
     monkeypatch.setattr(runners, "SEC_13F_LATEST", page)
     monkeypatch.setattr(engine, "load_totals", lambda: {})

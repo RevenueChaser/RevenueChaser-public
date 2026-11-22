@@ -15,14 +15,14 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_sector_rotation import engine, money_flow as mf, store
-from RevenueChaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed as _seed, sessions as _sessions
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.tests import prices_store
-from RevenueChaser.module_sector_rotation.tests.test_rotation_a5_374 import UNIVERSE, _UW, _stored
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.core import rawstore
+from revenuechaser.module_sector_rotation import engine, money_flow as mf, store
+from revenuechaser.module_sector_rotation.tests.bars_seed import ny, pin_clock, seed as _seed, sessions as _sessions
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.tests import prices_store
+from revenuechaser.module_sector_rotation.tests.test_rotation_a5_374 import UNIVERSE, _UW, _stored
 
 SESSION = date(2026, 10, 7)
 

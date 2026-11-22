@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from RevenueChaser.core.providers import technical as tech
+from revenuechaser.core.providers import technical as tech
 
 
 class _FakeTicker:

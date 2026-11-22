@@ -1,9 +1,9 @@
 """Value Chain Refresh is pure and reads no filing text it does not need (#115)."""
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import engine
-from RevenueChaser.module_value_chain.tests.test_value_chain import _TEN_K
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import engine
+from revenuechaser.module_value_chain.tests.test_value_chain import _TEN_K
 
 
 def _seed():

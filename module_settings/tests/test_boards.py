@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from RevenueChaser.module_comovement import config as cfg
-from RevenueChaser.module_comovement import store_reads as sr
-from RevenueChaser.module_settings import boards
+from revenuechaser.module_comovement import config as cfg
+from revenuechaser.module_comovement import store_reads as sr
+from revenuechaser.module_settings import boards
 
 
 def _steps(result=60):
@@ -120,7 +120,7 @@ def test_the_settings_block_is_there_even_before_the_board_is_rendered(
 def _data_board_keys() -> list[str]:
     """Dashboard tabs that are data boards: ``TABS`` minus Settings, Logs and Runs (#26 PL5-b: read-only run log,
     no data and no Fetch)."""
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
 
     return [t["key"] for t in dashboard.TABS
             if t["type"] == "tab" and t["key"] != "module_settings"]
@@ -155,7 +155,7 @@ def test_a_board_that_emits_no_funnel_is_marked():
 
 
 def _valid_steps():
-    from RevenueChaser.core import funnel
+    from revenuechaser.core import funnel
 
     return [
         funnel.step("universe", "Universe", 3, "start"),
@@ -166,7 +166,7 @@ def _valid_steps():
 
 def test_ag_and_fundamentals_cards_read_the_payload_funnel(monkeypatch, tmp_path):
     """The settings card shows the funnel the board emitted, via core.funnel."""
-    from RevenueChaser.core import funnel
+    from revenuechaser.core import funnel
 
     steps = _valid_steps()
     for key in ("module_asymmetric_growth", "module_fundamentals"):
@@ -181,7 +181,7 @@ def test_ag_and_fundamentals_cards_read_the_payload_funnel(monkeypatch, tmp_path
         assert card["as_of"] == "2026-09-25T20:00:00+00:00"
         # The shared panel accepts the same steps the settings card shows.
         assert "No annual financials" in funnel.funnel_panel_html(card["funnel_steps"])
-        from RevenueChaser.module_settings import report
+        from revenuechaser.module_settings import report
         assert "No annual financials" in report._board_card(card)
 
 
@@ -217,7 +217,7 @@ def test_the_watch_lists_card_reads_the_lists_themselves_and_not_an_artifact(raw
     entry = _entry("module_watchlists")
     assert entry["tables"] == ["wl_list", "wl_section", "wl_item", "wl_change"]
     assert _card("module_watchlists")["state"] == "not_rendered"
-    from RevenueChaser.module_watchlists import store as wl_store
+    from revenuechaser.module_watchlists import store as wl_store
     wl_store.create_list("Growth")
     card = _card("module_watchlists")
     assert card["state"] == "ok" and card["as_of"] and card["as_of"].startswith("20")
@@ -234,7 +234,7 @@ def test_leaps_and_earnings_name_the_stock_watch_list_in_ops_not_the_store_table
 
 
 def test_the_board_card_says_it_reads_the_stock_watch_list_from_ops_sqlite():
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     html = report._board_card(boards._card(_entry("module_leaps")))
     assert ('<span class="ds">Stock watch list</span><span class="tbl">(watchlist_stock)</span>' in html
             and "ops.sqlite" in html)
@@ -256,7 +256,7 @@ def test_ag_and_fundamentals_are_registered_with_a_funnel_reference():
 
 def test_no_card_names_a_store_table_the_store_no_longer_holds():
     """Every retirement took its Settings row with it: a card may name only a table of a board file (#860)."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     named = {t for e in boards.BOARD_INPUTS for t in e["tables"]}
     assert named, "the cards name no table at all"
     assert sorted(named - set(rawstore.MANIFEST)) == []
@@ -265,7 +265,7 @@ def test_no_card_names_a_store_table_the_store_no_longer_holds():
 def test_each_card_carries_the_needs_its_board_declares_or_plans():
     """The served reads are not typed a second time here: the card reads the board's own ``READS`` (or its planned
     reads), so the card and the flow diagram cannot disagree."""
-    from RevenueChaser.rcdata.needs import boards as api_boards
+    from revenuechaser.rcdata.needs import boards as api_boards
     for entry in boards.BOARD_INPUTS:
         reads = api_boards.reads_of(entry["key"])
         card = boards._card(entry)
@@ -276,7 +276,7 @@ def test_each_card_carries_the_needs_its_board_declares_or_plans():
 
 
 def test_the_card_names_a_served_need_with_its_provider_table_and_file():
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     html = report._board_card(boards._card(_entry("module_fundamentals")))
     assert '<span class="ds">prices.bars</span><span class="tbl">(price_bar_daily)</span>' in html
     assert "SEC EDGAR filings" in html and "fundamentals.duckdb" in html
@@ -288,6 +288,6 @@ def test_the_old_identity_health_card_is_gone_with_its_equity_universe_text():
     """#642 N1: the S7 card left the page in PR 5 (``_nd_identity`` replaced it), but its help text stayed in the
     module and still told the reader that a job writes into ``equity_universe``, a table #860 removed."""
     from pathlib import Path
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     assert not hasattr(report, "_identity_card")
     assert "equity_universe" not in Path(report.__file__).read_text(encoding="utf-8")

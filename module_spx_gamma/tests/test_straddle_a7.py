@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import chains, normalize as nm, render, snapshot as snap
-from RevenueChaser.module_spx_gamma.raw_day import load_raw_day
+from revenuechaser.module_spx_gamma import chains, normalize as nm, render, snapshot as snap
+from revenuechaser.module_spx_gamma.raw_day import load_raw_day
 
 
 def _row(expiry, strike, cp, bid, ask):

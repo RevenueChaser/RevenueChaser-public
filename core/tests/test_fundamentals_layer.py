@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import fundamentals_layer as layer
-from RevenueChaser.core import rawstore
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build.fundamentals import companyfacts
-from RevenueChaser.rcdata.tests import fund_fixture as fx
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core import fundamentals_layer as layer
+from revenuechaser.core import rawstore
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata.build.fundamentals import companyfacts
+from revenuechaser.rcdata.tests import fund_fixture as fx
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 CIK = "1000001"
 TICKER = "GRW"
@@ -146,7 +146,7 @@ def test_a_board_on_the_layer_never_downloads_facts(built):
 def test_a_failed_facts_check_keeps_the_last_good_build(built):
     # Opus review S3: one failed ``sec/companyfacts`` run (an SEC 403, a timeout) leaves the served file the last
     # good build, so the boards keep reading it.
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     ops.record_check(layer.FACTS_DATASET, "failed", note="HTTP 403")
     state = layer.source_state()
     assert state["effective"] == layer.LAYER and state["reason"] is None
@@ -154,7 +154,7 @@ def test_a_failed_facts_check_keeps_the_last_good_build(built):
 
 
 def test_without_any_good_facts_check_the_reason_says_so(market_roots):  # noqa: F811
-    from RevenueChaser.rcdata import ops, serving
+    from revenuechaser.rcdata import ops, serving
     serving.live_path("fundamentals").parent.mkdir(parents=True, exist_ok=True)
     serving.live_path("fundamentals").touch()
     assert layer.source_state()["reason"] == f"{layer.FACTS_DATASET} has not built yet"
@@ -165,7 +165,7 @@ def test_without_any_good_facts_check_the_reason_says_so(market_roots):  # noqa:
 def test_a_batch_read_keeps_a_window_per_company(built):
     from datetime import date
 
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     rows = read.statements_many([CIK], annual_years=1, quarters=2)
     assert {r["fiscal_year"] for r in rows if r["period_type"] == "annual"} == {2025}
     assert {r["period_end"] for r in rows if r["period_type"] == "quarterly"} == {date(2026, 3, 31),
@@ -174,7 +174,7 @@ def test_a_batch_read_keeps_a_window_per_company(built):
 
 def test_a_stored_ticker_with_whitespace_still_keys_its_records(monkeypatch):
     # Delta review N-c: the chunk read strips the ticker it asks for, so the layer's own key must too.
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(read, "fundamental_companies", lambda tickers: [{"ticker": " grw ", "cik": "1"}])
     monkeypatch.setattr(read, "statements_many", lambda ciks, years, quarters: [])
     assert set(layer.records_many(["GRW"])) == {"GRW"}

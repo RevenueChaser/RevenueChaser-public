@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.tests import board_js
+from revenuechaser.core.tests import board_js
 
 
 def test_a_page_that_leaves_a_live_timer_fails_and_says_why(tmp_path, monkeypatch):

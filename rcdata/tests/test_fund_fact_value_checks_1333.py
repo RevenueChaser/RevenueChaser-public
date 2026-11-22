@@ -7,7 +7,7 @@ from __future__ import annotations
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata.build.fundamentals import tables as fund_tables
+from revenuechaser.rcdata.build.fundamentals import tables as fund_tables
 
 FACT = ("cik TEXT, field TEXT, period_type TEXT, fiscal_year INTEGER, value DOUBLE, accn TEXT, filed DATE, "
         "preliminary BOOLEAN")

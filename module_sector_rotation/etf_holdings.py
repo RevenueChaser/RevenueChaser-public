@@ -7,15 +7,15 @@ from __future__ import annotations
 
 import logging
 
-from RevenueChaser.core import datahealth
-from RevenueChaser.core.datahealth import Health
+from revenuechaser.core import datahealth
+from revenuechaser.core.datahealth import Health
 
 logger = logging.getLogger(__name__)
 
 
 def synced_etfs() -> list[str]:
     """The ETFs the board shows holdings for: every sector and theme ETF of the Rotation universe."""
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.core import rotation_reference
     return [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") in ("sector", "theme")]
 
 
@@ -30,7 +30,7 @@ def stored_holdings(ticker: str) -> list[dict]:
     never has to guess whether a list is today's or last quarter's: ``provider`` and ``as_of`` of the day it came
     from, and ``truncated`` True for a UW list cut at UW's 250-line cap. ``[]`` only when neither source holds the
     fund (no network either way)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     rows = read.etf_holdings([ticker]) or read.etf_holdings_nport([ticker])
     return [{"ticker": r["ticker"], "name": r.get("name") or "", "weight": r.get("weight"),
              "provider": r.get("provider"), "as_of": r.get("as_of"), "truncated": bool(r.get("truncated"))}
@@ -49,8 +49,8 @@ def ticker_weights() -> dict[str, list[tuple[str, float]]]:
     The share is the line's weight over the sum of that fund's weights, so a fund published in percent and one in
     fractions compare. A line with no ticker or no weight is left out. A map fund with no weighted line is named in
     a warning and gives nothing: it is missing data, never weight 0."""
-    from RevenueChaser.rcdata import read
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.rcdata import read
+    from revenuechaser.core import rotation_reference
     funds = [t for t, info in rotation_reference.rotation_etfs().items() if info.get("group") in WEIGHT_GROUPS]
     by_fund: dict[str, dict[str, float]] = {}
 
@@ -83,8 +83,8 @@ def health_summary() -> dict:
     ``lines`` counts the lines read; ``newest_session`` is the newest ``as_of`` among them, ``in_newest`` the ETFs
     on it; ``providers`` the provider of every ETF's list; ``missing`` the board's ETFs with no line in the spine;
     ``rs_stored`` the theme ETFs with stored RS rows (``rotation_holdings``, which the Rotation Fetch writes)."""
-    from RevenueChaser.rcdata import read
-    from RevenueChaser.core import rotation_reference
+    from revenuechaser.rcdata import read
+    from revenuechaser.core import rotation_reference
 
     from . import store_reads as sr
     expected = synced_etfs()

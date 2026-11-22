@@ -12,9 +12,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.app import jobs, runners
-from RevenueChaser.app.jobs import JobMessage
-from RevenueChaser.core.reporting_common import provider_health_html
+from revenuechaser.app import jobs, runners
+from revenuechaser.app.jobs import JobMessage
+from revenuechaser.core.reporting_common import provider_health_html
 
 
 @pytest.fixture(autouse=True)
@@ -179,9 +179,9 @@ class TestEarningsBoard:
                 return []
 
         monkeypatch.setattr(runners, "EarningsPipeline", _Pipe)
-        import RevenueChaser.module_sector_rotation.engine as rot
+        import revenuechaser.module_sector_rotation.engine as rot
         monkeypatch.setattr(rot, "rotation_quadrant_map", lambda uw: {})
-        from RevenueChaser.module_earnings_radar import report
+        from revenuechaser.module_earnings_radar import report
         seen = {}
         real = report.export_html
 
@@ -199,7 +199,7 @@ class TestEarningsBoard:
         assert "rc-provider-health" in html and "5 of 40" in html
 
     def test_clean_run_has_no_banner(self, tmp_path):
-        from RevenueChaser.module_earnings_radar.report import export_html
+        from revenuechaser.module_earnings_radar.report import export_html
         p = export_html([], [], {}, filename=str(tmp_path / "e.html"),
                         provider_health=_health(failed=0))
         assert "rc-provider-health" not in p.read_text(encoding="utf-8")
@@ -232,8 +232,8 @@ class TestEarningsBoard:
 
 class TestRotationBoard:
     def test_runner_passes_health_and_the_board_shows_the_banner(self, tmp_path, monkeypatch):
-        import RevenueChaser.module_sector_rotation.engine as eng
-        import RevenueChaser.module_sector_rotation.report as rep
+        import revenuechaser.module_sector_rotation.engine as eng
+        import revenuechaser.module_sector_rotation.report as rep
 
         class _Eng:
             def __init__(self, uw, benchmark="SPY"):
@@ -266,7 +266,7 @@ class TestRotationBoard:
 class TestPayloadBoards:
     def test_oipd_asks_no_provider_and_carries_no_health(self, monkeypatch):
         """Decision B: the board fits the stored build, so a failing UW client is never asked and adds no banner."""
-        from RevenueChaser.module_oipd import engine, report
+        from revenuechaser.module_oipd import engine, report
         monkeypatch.setattr(engine, "build", lambda **kw: {"ticker": "AAA", "expiries": [{"x": 1}]})
         monkeypatch.setattr(engine, "run", lambda **kw: {"ticker": "AAA", "expiries": [{"x": 1}]})
         seen = {}
@@ -277,7 +277,7 @@ class TestPayloadBoards:
         assert "rc-provider-health" in html
 
     def test_uw_interaction_renders_the_banner(self):
-        from RevenueChaser.module_uw_interaction.report import render_board
+        from revenuechaser.module_uw_interaction.report import render_board
         html = render_board({"label": "t", "rows": [], "row_count": 0, "provider_health": _BAD,
                              "generated_at": "2026-09-30T00:00:00+00:00"})
         assert "rc-provider-health" in html

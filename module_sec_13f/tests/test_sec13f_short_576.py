@@ -8,8 +8,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import ownership
-from RevenueChaser.module_sec_13f import enrich, report
+from revenuechaser.core import ownership
+from revenuechaser.module_sec_13f import enrich, report
 
 
 def _finra(rows):
@@ -19,7 +19,7 @@ def _finra(rows):
 
 
 def test_the_newest_settlement_wins_and_a_tie_takes_the_tickers_own_symbol(monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(read, "finra_short_interest", _finra([
         {"ticker": "AAA", "symbol": "AAA", "settlement_date": date(2026, 10, 15), "current_short": 10.0},
         {"ticker": "AAA", "symbol": "AAA.X", "settlement_date": date(2026, 10, 31), "current_short": 20.0},
@@ -39,7 +39,7 @@ def test_load_inputs_puts_short_over_the_shares_outstanding(monkeypatch):
         "BBB": {"current_short": 50.0, "settlement_date": date(2026, 10, 31)}})
     monkeypatch.setattr(enrich, "quarter_end_closes", lambda tickers, quarters: {})
     monkeypatch.setattr(ownership, "split_factors_13f", lambda wanted: {})
-    from RevenueChaser.module_sec_13f import store
+    from revenuechaser.module_sec_13f import store
     monkeypatch.setattr(store, "read_breaks", lambda tickers: {})
     got = enrich.load_inputs({"AAA": {"2026-06-30": {}}, "BBB": {"2026-06-30": {}}})
     assert got["AAA"]["short_pct"] == pytest.approx(5.0) and got["AAA"]["short_pct_as_of"] == "2026-10-31"

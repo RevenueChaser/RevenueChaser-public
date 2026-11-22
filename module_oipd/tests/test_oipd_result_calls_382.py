@@ -14,11 +14,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.module_oipd import engine
-from RevenueChaser.module_oipd.tests.test_engine import _SPOT, _FakeUW, fixed_today  # noqa: F401
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.module_oipd import engine
+from revenuechaser.module_oipd.tests.test_engine import _SPOT, _FakeUW, fixed_today  # noqa: F401
 
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
 _ERR = {"status": 503, "error": "HTTP 503", "attempts": 3}

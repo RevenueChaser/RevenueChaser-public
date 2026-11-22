@@ -5,10 +5,10 @@ counted them twice and a focal company saw two incoming lines for one filing.
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_value_chain import engine
-from RevenueChaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
+from revenuechaser.core import rawstore
+from revenuechaser.module_value_chain import engine
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
 
 def _filing(ticker: str, cik: str = "1652044") -> dict:
@@ -49,7 +49,7 @@ def test_an_unlisted_pair_keeps_the_first_ticker_and_other_issuers_are_untouched
 
 
 def test_the_share_class_rule_keeps_one_ticker_per_cik_and_lists_the_rest():
-    from RevenueChaser.module_value_chain import aliases
+    from revenuechaser.module_value_chain import aliases
     rows = [{"ticker": "FOXA", "cik": "0001754301"}, {"ticker": "FOX", "cik": "1754301"},
             {"ticker": "AAPL", "cik": "320193"}, {"ticker": "NOCIK", "cik": ""}]
     assert aliases.share_class_groups(rows) == {"FOXA": ["FOX"]}   # the class SAME_ISSUER names

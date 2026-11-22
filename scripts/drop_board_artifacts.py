@@ -19,8 +19,8 @@ else in the cache root is touched -- not the timestamped archives, the PNGs, the
 module's ``<module>/<module>_latest.json`` snapshot (``uw_interaction``'s is the last answer of a provider call,
 not a re-render) or the dashboard's logs.
 
-    python -m RevenueChaser.scripts.drop_board_artifacts            # report only, removes nothing
-    python -m RevenueChaser.scripts.drop_board_artifacts --apply    # remove them
+    python -m revenuechaser.scripts.drop_board_artifacts            # report only, removes nothing
+    python -m revenuechaser.scripts.drop_board_artifacts --apply    # remove them
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from pathlib import Path
 def _dashboard():
     # Imported inside the functions, not at module level: the report-only form of this script, and its tests,
     # should not pay for Flask and the store bindings unless they are needed.
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     return dashboard
 
 
@@ -70,8 +70,8 @@ def kept_boards() -> dict[str, Path]:
 
 def artifacts_of(html_path) -> list[Path]:
     """The three files a board's page is made of, in the order the dashboard's Refresh drops them."""
-    from RevenueChaser.core.reporting_common import payload_path
-    from RevenueChaser.core.v2_envelope import envelope_path
+    from revenuechaser.core.reporting_common import payload_path
+    from revenuechaser.core.v2_envelope import envelope_path
     p = Path(html_path)
     return [p, payload_path(p), envelope_path(p)]
 

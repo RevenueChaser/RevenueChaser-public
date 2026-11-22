@@ -9,8 +9,8 @@ from datetime import date
 from functools import partial
 from pathlib import Path
 
-from RevenueChaser.core.calendar import is_trading_day, today_ny
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.calendar import is_trading_day, today_ny
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 from .charts import position_map
 from .charts.tornado import build_tornado_fig

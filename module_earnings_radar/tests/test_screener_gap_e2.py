@@ -8,9 +8,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core.providers.result import ProviderResult
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
+from revenuechaser.core.providers.result import ProviderResult
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
+from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
 
 HEALTHY = {"calls": 1, "failed": 0, "failures": [], "auth_error": None, "breaker_open": False,
            "skipped_calls": 0}
@@ -96,8 +96,8 @@ def test_a_watchlist_name_with_no_screener_row_is_still_bypassed():
 
 
 def test_the_board_marks_n_a_liquidity_zero_and_carries_the_new_drawer_fields():
-    from RevenueChaser.module_earnings_radar.models import TradeCard
-    from RevenueChaser.module_earnings_radar.report import export_html
+    from revenuechaser.module_earnings_radar.models import TradeCard
+    from revenuechaser.module_earnings_radar.report import export_html
     card = TradeCard(ticker="AAA", name="A Co", cluster="Technology", earnings_date=date(2026, 8, 11),
                      liquidity_label="N/A", trade_read="NEUTRAL", trade_read_reason="Mixed — no clear edge",
                      past_1w="+1.2%", past_1d="+0.3%")

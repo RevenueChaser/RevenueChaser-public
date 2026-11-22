@@ -12,8 +12,8 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import funnel, price_hygiene as ph
-from RevenueChaser.module_asymmetric_growth import engine
+from revenuechaser.core import funnel, price_hygiene as ph
+from revenuechaser.module_asymmetric_growth import engine
 
 
 def _rows(closes, start=date(2026, 1, 5), highs=None):
@@ -83,7 +83,7 @@ def test_the_preload_reads_the_returns_basis_beside_the_split_basis(monkeypatch)
 
 
 def test_the_two_reads_use_the_same_window_and_session(monkeypatch):
-    from RevenueChaser.rcdata import read as rcread
+    from revenuechaser.rcdata import read as rcread
     calls: list[tuple] = []
     monkeypatch.setattr(engine, "_price_session", lambda: date(2026, 11, 20))
     monkeypatch.setattr(rcread, "ticker_bars",
@@ -131,7 +131,7 @@ def test_the_tripped_cap_is_a_note_step_that_names_the_share():
 def scan(monkeypatch, rawstore_tmp_db):
     """The AG scan with the store stubbed out: every name scores a card, and the bars come from ``bars``."""
     def _run(names, bars, adjusted=None):
-        from RevenueChaser.core import index_registry
+        from revenuechaser.core import index_registry
         monkeypatch.setattr(engine._spine, "universe_with_stats",
                             lambda: ([{"ticker": t} for t in names], {}))
         monkeypatch.setattr(engine._spine, "excluded_tickers", lambda: set())
@@ -151,7 +151,7 @@ def scan(monkeypatch, rawstore_tmp_db):
         monkeypatch.setattr(engine.ownership, "shares_outstanding", lambda t: {})
         monkeypatch.setattr(engine.ownership, "split_factors_13f", lambda p: {})
         monkeypatch.setattr(index_registry, "annotate_cards", lambda cards: None)
-        from RevenueChaser.module_asymmetric_growth import freeze
+        from revenuechaser.module_asymmetric_growth import freeze
         monkeypatch.setattr(freeze, "model_version", lambda: "test")
         return engine.run_asymmetric_growth_hunter(no_fetch=True)
     return _run

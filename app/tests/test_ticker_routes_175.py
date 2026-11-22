@@ -10,8 +10,8 @@ from urllib.parse import quote
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
+from revenuechaser.app import dashboard
+from revenuechaser.core.rotation_reference import SEED_ROTATION_ETFS as ROTATION_ETFS
 
 HOSTILE = ["<img src=x onerror=alert(1)>", "\"'><b>x</b>", "AAPL/../../x", "A B", ".", "-",
            "ABCDEFGHIJK", "a;b", "AAPL%00"]
@@ -71,9 +71,9 @@ def test_the_symbols_the_validator_refuses_never_expand():
 
 
 def test_the_rotation_page_gives_those_rows_no_caret(tmp_path, monkeypatch, rawstore_tmp_db):
-    import RevenueChaser.module_sector_rotation.report as rd
+    import revenuechaser.module_sector_rotation.report as rd
     from datetime import date
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
     monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
     monkeypatch.setattr(rd, "coarse_theme_catalog", lambda: {})
     snap = lambda t, g: ETFRotationSnapshot(

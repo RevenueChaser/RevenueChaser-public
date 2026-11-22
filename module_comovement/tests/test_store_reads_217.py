@@ -20,8 +20,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import store_reads as sr
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
 #: The four tables of the board's file, as the names a stray ``SELECT`` would spell.
@@ -85,7 +85,7 @@ def test_the_peer_row_takes_the_run_from_the_boards_own_reader():
 
 def test_the_settings_record_accounts_for_the_runs_the_board_reads_back():
     """The record said the board reads back no board-file table of its own, and every Refresh does."""
-    from RevenueChaser.module_settings import boards as boards_mod
+    from revenuechaser.module_settings import boards as boards_mod
     row = next(b for b in boards_mod.BOARD_INPUTS if b["key"] == "module_comovement")
     assert set(row["tables"]) == set(TABLE_NAMES), row["tables"]
 

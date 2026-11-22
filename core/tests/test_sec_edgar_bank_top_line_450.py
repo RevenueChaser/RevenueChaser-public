@@ -31,11 +31,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from RevenueChaser.core import fiscal_year
-from RevenueChaser.core.providers import sec_edgar as se
-from RevenueChaser.core.tests.test_sec_edgar_concept_merge_246 import _facts, _recs, _rev, _s
-from RevenueChaser.core.tests.test_sec_edgar_quarters_158 import _f, _q
-from RevenueChaser.core.tests.test_sec_edgar_quarters_158 import _facts as _qfacts
+from revenuechaser.core import fiscal_year
+from revenuechaser.core.providers import sec_edgar as se
+from revenuechaser.core.tests.test_sec_edgar_concept_merge_246 import _facts, _recs, _rev, _s
+from revenuechaser.core.tests.test_sec_edgar_quarters_158 import _f, _q
+from revenuechaser.core.tests.test_sec_edgar_quarters_158 import _facts as _qfacts
 
 REV = "Revenues"
 RFC = "RevenueFromContractWithCustomerExcludingAssessedTax"

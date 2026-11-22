@@ -1,7 +1,7 @@
 """UWClient.expiry_breakdown + option_contracts (chain fetch + paging)."""
 from __future__ import annotations
 
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers.unusual_whales import UWClient
 
 
 class _FakeClient:

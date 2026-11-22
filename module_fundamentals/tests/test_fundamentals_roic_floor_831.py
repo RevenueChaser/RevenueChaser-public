@@ -5,7 +5,7 @@ capital under 5% of total assets (MANH 17,044%, MCK 634%, CAH 405%, LQDT 216%, E
 """
 from __future__ import annotations
 
-from RevenueChaser.module_fundamentals.pipeline import _quality_of
+from revenuechaser.module_fundamentals.pipeline import _quality_of
 
 
 def _rec(**kw):

@@ -5,10 +5,10 @@ from __future__ import annotations
 import functools
 import json
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.module_relatedness import config, naming, store, themes
-from RevenueChaser.rcdata.tests import spine_fixture
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import __main__ as cli
+from revenuechaser.module_relatedness import config, naming, store, themes
+from revenuechaser.rcdata.tests import spine_fixture
 
 
 def _profiles():

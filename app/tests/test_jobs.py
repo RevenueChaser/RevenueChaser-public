@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from RevenueChaser.app import jobs
+from revenuechaser.app import jobs
 
 
 class _FakeUW:
@@ -135,7 +135,7 @@ class TestForecastFreezeNotes:
         assert jobs.current_job_id() is None
 
     def test_a_universe_style_job_notes_name_all_three_families(self, monkeypatch):
-        from RevenueChaser.core import ledger
+        from revenuechaser.core import ledger
         self._sync(monkeypatch)
 
         def universe(uw, **p):
@@ -155,7 +155,7 @@ class TestForecastFreezeNotes:
             "Froze 200 Fundamentals rows for 2026-10-02."]
 
     def test_a_note_left_by_an_earlier_job_does_not_leak_into_the_next(self, monkeypatch):
-        from RevenueChaser.core import ledger
+        from revenuechaser.core import ledger
         self._sync(monkeypatch)
         ledger.add_note("stale note from a job that died")          # same thread, as a worker would be
         jobs.register("t_quiet", lambda uw, **p: None, [], requires_uw=False)
@@ -166,7 +166,7 @@ class TestForecastFreezeNotes:
         assert ledger.take_notes() == []
 
     def test_notes_stay_apart_from_a_job_message_signal(self, monkeypatch):
-        from RevenueChaser.core import ledger
+        from revenuechaser.core import ledger
         self._sync(monkeypatch)
 
         def signal(uw, **p):
@@ -182,7 +182,7 @@ class TestForecastFreezeNotes:
         assert job["notes"] == ["Froze 200 Swing rows for 2026-10-02."]
 
     def test_notes_stay_apart_from_the_provider_gap_message(self, monkeypatch):
-        from RevenueChaser.core import ledger
+        from revenuechaser.core import ledger
         self._sync(monkeypatch)
 
         class _UW:
@@ -209,7 +209,7 @@ class TestForecastFreezeNotes:
         assert jobs.get(jid)["notes"] == []
 
     def test_notes_of_a_failed_job_do_not_leak_into_the_next(self, monkeypatch):
-        from RevenueChaser.core import ledger
+        from revenuechaser.core import ledger
         self._sync(monkeypatch)
 
         def boom(uw, **p):
@@ -225,7 +225,7 @@ class TestForecastFreezeNotes:
 
     def test_a_freeze_note_survives_a_later_step_that_raises(self, monkeypatch):
         """AG froze 4,251 rows, then Swing raised: the job is an error, and the note is not lost."""
-        from RevenueChaser.core import ledger
+        from revenuechaser.core import ledger
         self._sync(monkeypatch)
 
         def universe(uw, **p):
@@ -244,7 +244,7 @@ class TestForecastFreezeNotes:
         assert job["error"] == "swing fetch failed (before the error: Froze 4,251 AG rows for 2026-10-02.)"
 
     def test_every_note_of_a_failed_job_is_in_the_error_text(self, monkeypatch):
-        from RevenueChaser.core import ledger
+        from revenuechaser.core import ledger
         self._sync(monkeypatch)
 
         def universe(uw, **p):

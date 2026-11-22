@@ -5,7 +5,7 @@ from datetime import datetime, time, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import offpeak
+from revenuechaser.core import offpeak
 
 UTC = timezone.utc
 TR = timezone(timedelta(hours=3))  # UTC+3, no DST — a fixed local reference

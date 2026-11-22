@@ -2,9 +2,9 @@
 SEC fetch shows on the board instead of the banner being dead code."""
 from __future__ import annotations
 
-from RevenueChaser.app import runners
-from RevenueChaser.core.reporting_common import provider_health_html
-from RevenueChaser.rcdata import ops
+from revenuechaser.app import runners
+from revenuechaser.core.reporting_common import provider_health_html
+from revenuechaser.rcdata import ops
 
 
 def _checks(monkeypatch, rows):

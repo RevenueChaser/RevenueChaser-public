@@ -5,10 +5,10 @@ from datetime import date, timedelta
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.module_earnings_radar import store_reads
+from revenuechaser.core import calendar
+from revenuechaser.module_earnings_radar import store_reads
 
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve, serve_estimates
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve, serve_estimates
 
 LAST = date(2026, 10, 26)
 
@@ -61,14 +61,14 @@ def test_at_most_the_window_the_board_pairs():
 # ── the board's own warm step: the store, and no provider ──
 
 def _pipeline():
-    from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline
+    from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline
     return EarningsPipeline(["AAPL"], uw=object(), cal_meta={})
 
 
 def test_the_run_warms_the_yield_series_from_the_market_store(monkeypatch):
     # The run measures freshness against the latest complete session; pinned, or the test expires as the
     # calendar moves past LAST (it went red on 3 Nov 2026, MAX_LAG sessions after LAST).
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     monkeypatch.setattr(calendar, "latest_complete_session", lambda *a, **k: LAST)
     serve(_series(LAST, 5))
     p = _pipeline()
@@ -87,7 +87,7 @@ def test_without_a_market_store_the_run_asks_no_provider():
 def test_the_board_no_longer_has_a_live_fred_reader():
     """The cut itself: the board's FRED map and its yfinance weekly reader are gone. The nightly FRED sweep keeps
     ``fred_daily_result``, which is ingestion, not a board read."""
-    from RevenueChaser.module_earnings_radar import macro_watch
+    from revenuechaser.module_earnings_radar import macro_watch
     assert not hasattr(macro_watch, "fred_daily_map")
     assert not hasattr(macro_watch, "macro_weekly_closes")
     assert not hasattr(macro_watch, "_yf_weekly")

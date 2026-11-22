@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard, jobs, runners
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.app import dashboard, jobs, runners
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 
 class _FakeUW:
@@ -61,7 +61,7 @@ def test_the_whole_board_fetch_has_a_registered_runner_on_the_long_lane():
 @pytest.fixture
 def writer_seam(monkeypatch, tmp_path):
     """``engine.run`` and the board files at their seams: the question here is what reaches the writer."""
-    from RevenueChaser.module_relatedness import engine, report
+    from revenuechaser.module_relatedness import engine, report
 
     seen: dict = {}
 

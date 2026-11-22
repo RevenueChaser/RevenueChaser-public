@@ -17,13 +17,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement import config, engine, ohlc
-from RevenueChaser.module_comovement import returns as returns_mod
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.module_comovement.tests import test_recompute_parity as parity
-from RevenueChaser.rcdata import read
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement import config, engine, ohlc
+from revenuechaser.module_comovement import returns as returns_mod
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.module_comovement.tests import test_recompute_parity as parity
+from revenuechaser.rcdata import read
 
 
 def _swing_rows(t: str, closes: pd.Series, at: float = 1.0) -> list[dict]:
@@ -135,8 +135,8 @@ def test_a_new_dividend_retires_the_stored_run(rawstore_tmp_db):
 
 # ── the Relatedness peer market ─────────────────────────────────────────────
 def test_the_peer_market_reads_the_store(rawstore_tmp_db):
-    from RevenueChaser.module_relatedness import engine as rel_engine
-    from RevenueChaser.module_relatedness.tests.test_pure_refresh import _market_peers, _market_prices
+    from revenuechaser.module_relatedness import engine as rel_engine
+    from revenuechaser.module_relatedness.tests.test_pure_refresh import _market_peers, _market_prices
 
     px = _market_prices(n=300)
     prices_bars.write_bars([r for t in px.columns for r in _swing_rows(t, px[t])])
@@ -154,8 +154,8 @@ def test_the_peer_market_reads_the_store(rawstore_tmp_db):
 
 def test_the_board_never_says_a_fetch_downloads_prices():
     # The prices build fills the store; the board's own texts must not send the user to Fetch for prices (RB-8)
-    from RevenueChaser.module_comovement import report
-    from RevenueChaser.module_comovement.tests.test_comovement import _report_payload
+    from revenuechaser.module_comovement import report
+    from revenuechaser.module_comovement.tests.test_comovement import _report_payload
     empty = report.render_comovement_dashboard({"as_of": "2026-09-17T00:00:00+00:00", "clusters": {}, "cuts": []})
     missing = report.render_comovement_dashboard(_report_payload(benchmark_applied=False))
     stale = report.render_comovement_dashboard(_report_payload(benchmark_status="stale", window_end="2026-09-10"))

@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import engine
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import engine
 
 NOW = datetime(2026, 11, 15, 15, 5, 1, tzinfo=timezone.utc)
 

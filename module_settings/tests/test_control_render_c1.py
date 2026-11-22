@@ -4,13 +4,13 @@ from __future__ import annotations
 import copy
 import re
 
-from RevenueChaser.module_settings import control, control_render
-from RevenueChaser.rcdata import serving
+from revenuechaser.module_settings import control, control_render
+from revenuechaser.rcdata import serving
 
 #: One section, one "By file" line and one picture per serving kind: read from the registry, so the next kind
 #: added does not come back here as a count that is one short.
 FILES = len(serving.KINDS)
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
 
 _BASE = None
 

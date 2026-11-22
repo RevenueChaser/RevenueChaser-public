@@ -11,8 +11,8 @@ import time
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_value_chain import config
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_value_chain import config
 
 _TEXT = (
     "Item 1. Business\n"
@@ -30,7 +30,7 @@ def _store_file(store_dir, table: str):
     ``rawstore``'s own routing. Reading the file name off the MANIFEST means a table moving between files
     (#860 stage 1 put the ``chain_*`` tables in ``boards/value_chain.duckdb``) edits this helper, not six paths.
     """
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
 
     db = rawstore.MANIFEST[table].get("db") or "raw"
     if db in rawstore.BOARD_DBS:

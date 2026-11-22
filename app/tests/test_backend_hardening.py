@@ -9,8 +9,8 @@ import threading
 
 import pytest
 
-from RevenueChaser.app import dashboard, jobs
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.app import dashboard, jobs
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 
 @pytest.fixture
@@ -172,7 +172,7 @@ class TestUWClientUse:
         assert closed == [1]
 
     def test_a_successful_verify_is_reused_across_clients(self, monkeypatch):
-        from RevenueChaser.core.providers import unusual_whales as uwmod
+        from revenuechaser.core.providers import unusual_whales as uwmod
         calls = []
 
         class _Resp:
@@ -190,7 +190,7 @@ class TestUWClientUse:
         a.close(); b.close()
 
     def test_a_rejected_key_is_never_cached(self, monkeypatch):
-        from RevenueChaser.core.providers import unusual_whales as uwmod
+        from revenuechaser.core.providers import unusual_whales as uwmod
 
         class _Resp:
             status_code = 401
@@ -207,7 +207,7 @@ class TestUWClientUse:
 # ── S5: B4/B10/B16 — Refresh rewrites, atomic writes, explicit empty 13F ────
 class TestArtifacts:
     def test_write_artifact_is_atomic_and_leaves_no_temp(self, tmp_path):
-        from RevenueChaser.core.reporting_common import write_artifact
+        from revenuechaser.core.reporting_common import write_artifact
         p = tmp_path / "x" / "board_latest.html"
         write_artifact(p, "one")
         write_artifact(p, "two")
@@ -215,14 +215,14 @@ class TestArtifacts:
         assert [q.name for q in p.parent.iterdir()] == ["board_latest.html"]
 
     def test_empty_13f_writes_an_empty_board_and_a_message(self, rawstore_tmp_db):
-        from RevenueChaser.app import runners
+        from revenuechaser.app import runners
         runners.SEC_13F_LATEST.unlink(missing_ok=True)
         with pytest.raises(jobs.JobMessage, match="No 13F totals"):
             runners.run_sec_13f_latest(None)
         assert runners.SEC_13F_LATEST.exists()
 
     def test_13f_refresh_rewrites_the_artifact(self, client, rawstore_tmp_db):
-        from RevenueChaser.app import runners
+        from revenuechaser.app import runners
         runners.SEC_13F_LATEST.write_text("<html>stale-artifact-sentinel</html>", encoding="utf-8")
         r = client.get("/view/module_sec_13f?refresh=1")
         assert r.status_code == 200
@@ -324,14 +324,14 @@ class TestLanesAndCancel:
 class TestHoldingsView:
     def test_no_network_and_no_key_needed(self, client, rawstore_tmp_db, monkeypatch):
         monkeypatch.setattr(dashboard, "UWClient", lambda: pytest.fail("no UW in a GET view"))
-        from RevenueChaser.rcdata.tests import spine_fixture
+        from revenuechaser.rcdata.tests import spine_fixture
         spine_fixture.write_etf_holdings({"SMH": [{"ticker": "NVDA", "name": "NVIDIA <b>", "weight": 18.0}]})
         body = client.get("/view/module_sector_rotation/holdings?ticker=SMH").get_data(as_text=True)
         assert "NVDA" in body and "—" in body
         assert "NVIDIA <b>" not in body  # escaped
 
     def test_old_rs_rows_are_still_shown(self, client, rawstore_tmp_db):
-        from RevenueChaser.core import rawstore
+        from revenuechaser.core import rawstore
         rawstore.write_rows("rotation_holdings", [{"ticker": "SMH", "date": "2020-01-01", "rows": [
             {"ticker": "AMD", "name": "AMD", "weight": 5.0, "close": 100.0,
              "rs_1w": 1.0, "rs_1m": 2.0, "rs_3m": 3.0}]}])
@@ -357,7 +357,7 @@ class TestDecisions:
                            headers={"X-RC-Panel": "dashboard"}).status_code == 403
 
     def test_sec13f_fetch_is_the_ingest_job(self):
-        from RevenueChaser.app import runners
+        from revenuechaser.app import runners
         assert jobs._RUNNERS["module_sec_13f"] is runners.build_sec13f
         assert jobs._REQUIRES_UW["module_sec_13f"] is False  # #206: the SEC ingest needs no UW key
 

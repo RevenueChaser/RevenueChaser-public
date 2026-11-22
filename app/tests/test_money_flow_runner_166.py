@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
 
 GOOD = {"inflows": [{"ticker": "UP", "name": "", "flow_score": 40.0}],
         "outflows": [{"ticker": "DN", "name": "", "flow_score": -40.0}],
@@ -34,7 +34,7 @@ def latest(tmp_path, monkeypatch):
 
 
 def _compute(monkeypatch, result):
-    import RevenueChaser.module_sector_rotation.money_flow as mf
+    import revenuechaser.module_sector_rotation.money_flow as mf
     monkeypatch.setattr(mf, "compute_money_flow", lambda **k: dict(result))
 
 

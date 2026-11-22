@@ -10,9 +10,9 @@ from datetime import datetime, timezone
 
 import httpx
 
-from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import tape, tape_state
-from RevenueChaser.module_news.tests.test_tape import FakeClient
+from revenuechaser.core.providers import ibkr_tws as ibkr
+from revenuechaser.module_news import tape, tape_state
+from revenuechaser.module_news.tests.test_tape import FakeClient
 
 T0 = datetime(2026, 11, 11, 9, 36, 54, tzinfo=timezone.utc).timestamp()
 

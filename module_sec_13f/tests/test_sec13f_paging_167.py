@@ -8,9 +8,9 @@ import shutil
 
 import pytest
 
-from RevenueChaser.core import universe
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core import universe
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_sec_13f import report
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 

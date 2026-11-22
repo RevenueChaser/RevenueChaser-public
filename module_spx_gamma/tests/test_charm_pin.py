@@ -1,7 +1,7 @@
 """Tests for Charm Peak/Pin qualification and Vanna peaks."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma.charm_pin import (
+from revenuechaser.module_spx_gamma.charm_pin import (
     MODE_DIRECTIONALIZED_VOLUME,
     MODE_OPEN_INTEREST,
     net_charm,

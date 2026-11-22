@@ -22,11 +22,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_comovement import engine, ohlc
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.module_comovement.tests import test_recompute_parity as parity
-from RevenueChaser.rcdata import read
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_comovement import engine, ohlc
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.module_comovement.tests import test_recompute_parity as parity
+from revenuechaser.rcdata import read
 
 
 def _rows(t: str, closes: pd.Series, fmt: str = "{}") -> list[dict]:

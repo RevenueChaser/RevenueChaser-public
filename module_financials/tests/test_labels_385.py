@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import copy
 
-from RevenueChaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
-from RevenueChaser.module_financials.engines.dcf_engine import run_dcf
-from RevenueChaser.module_financials.engines.three_statement_engine import run_three_statement
-from RevenueChaser.module_financials.reporting.html_builder import build_report_html
+from revenuechaser.module_financials.engines.credit_capacity_engine import run_credit_capacity
+from revenuechaser.module_financials.engines.dcf_engine import run_dcf
+from revenuechaser.module_financials.engines.three_statement_engine import run_three_statement
+from revenuechaser.module_financials.reporting.html_builder import build_report_html
 
 DNA_WARNING = "D&A: assumed 0 (not reported)"
 

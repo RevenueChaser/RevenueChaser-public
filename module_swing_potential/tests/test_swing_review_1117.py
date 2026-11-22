@@ -17,13 +17,13 @@ from datetime import date, datetime, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import screen_common as sc
-from RevenueChaser.core.tests import screen_parity as scn
-from RevenueChaser.core.tests.d01_seed import write_d01
-from RevenueChaser.module_swing_potential import freeze, indicators, pipeline, screeners
-from RevenueChaser.module_swing_potential import settings as S
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import screen_common as sc
+from revenuechaser.core.tests import screen_parity as scn
+from revenuechaser.core.tests.d01_seed import write_d01
+from revenuechaser.module_swing_potential import freeze, indicators, pipeline, screeners
+from revenuechaser.module_swing_potential import settings as S
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
 
 
 def _run_payload(**overrides) -> dict:
@@ -101,7 +101,7 @@ def test_bar_reads_stop_at_the_latest_complete_session(rawstore_tmp_db, monkeypa
 
 # ── avo's decisions of 17 Nov 2026 (B2, C2, D1) ─────────────────────────────────────────────────
 def _q(**over) -> dict:
-    from RevenueChaser.module_swing_potential.tests.test_gates import _PASS
+    from revenuechaser.module_swing_potential.tests.test_gates import _PASS
     return screeners.evaluate_qullamaggie({**_PASS, **over})
 
 
@@ -117,7 +117,7 @@ def test_b2_qullamaggie_needs_a_tightening():
 
 
 def test_b2_the_tightening_is_measured_from_the_bars():
-    from RevenueChaser.module_swing_potential.tests.test_swing import _ohlcv
+    from revenuechaser.module_swing_potential.tests.test_swing import _ohlcv
     df = _ohlcv()
     df.loc[df.index[-10:], "High"] = df["Close"].iloc[-10:] * 1.002     # a tight last 10 sessions
     df.loc[df.index[-10:], "Low"] = df["Close"].iloc[-10:] * 0.998
@@ -126,14 +126,14 @@ def test_b2_the_tightening_is_measured_from_the_bars():
 
 
 def test_c2_minervini_wants_30_percent_above_the_low():
-    from RevenueChaser.module_swing_potential.tests.test_gates import _PASS
+    from revenuechaser.module_swing_potential.tests.test_gates import _PASS
     g = screeners.evaluate_minervini({**_PASS, "above_52w_low_pct": 1.27}, rs_rating=85.0)
     rule = next(r for r in g["rules"] if r["id"] == "above_52w_low")
     assert rule["passed"] is False and "30%" in rule["label"]
 
 
 def test_d1_a_volume_spike_on_a_down_day_does_not_confirm():
-    from RevenueChaser.module_swing_potential.tests.test_swing import _ohlcv
+    from revenuechaser.module_swing_potential.tests.test_swing import _ohlcv
     df = _ohlcv()
     df["Volume"] = 1_000_000.0
     df.iloc[-1, df.columns.get_loc("Volume")] = 4_000_000.0
@@ -159,7 +159,7 @@ def test_a_price_flag_is_carried_onto_the_card(scenario, monkeypatch):
 def test_the_swing_page_has_no_palette_of_its_own_and_ships_the_theme():
     import re
     from pathlib import Path
-    from RevenueChaser.module_swing_potential import report
+    from revenuechaser.module_swing_potential import report
     assert not re.findall(r"#[0-9a-fA-F]{6}|rgba\(", report.CSS), "colours should be theme tokens, not literals"
     assert not re.findall(r"height:3\dpx", report.CSS), "controls are at least 44 px tall"
     src = Path(report.__file__).read_text(encoding="utf-8")

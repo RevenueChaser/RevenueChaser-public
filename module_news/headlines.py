@@ -24,10 +24,10 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from RevenueChaser.core import config, ibkr_login, rawstore
-from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_news import store_reads, tape, x_reader
-from RevenueChaser.rcdata import read
+from revenuechaser.core import config, ibkr_login, rawstore
+from revenuechaser.core.providers import ibkr_tws as ibkr
+from revenuechaser.module_news import store_reads, tape, x_reader
+from revenuechaser.rcdata import read
 
 # The board's reader owns the table names (#217); the writes below still happen here.
 TABLE = store_reads.HEADLINES

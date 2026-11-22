@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from RevenueChaser.scripts import clean_test_scratch as mod
+from revenuechaser.scripts import clean_test_scratch as mod
 
 
 def _aged(path, hours):

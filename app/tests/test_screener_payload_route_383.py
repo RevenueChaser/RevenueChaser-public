@@ -18,9 +18,9 @@ import json
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core.tests.board_js import run_board_js
+from revenuechaser.app import runners
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core.tests.board_js import run_board_js
 
 _MARK = "ZqxRowName"
 
@@ -49,8 +49,8 @@ def _fund_payload(n: int = 2) -> dict:
 
 
 def _boards():
-    from RevenueChaser.module_fundamentals import report as fr
-    from RevenueChaser.module_swing_potential import report as sr
+    from revenuechaser.module_fundamentals import report as fr
+    from revenuechaser.module_swing_potential import report as sr
     return {
         "swing": (sr.render_swing_board, sr.render_swing_dashboard, _swing_payload, "module_swing_potential"),
         "fund": (fr.render_fundamental_board, fr.render_fundamental_dashboard, _fund_payload,
@@ -130,16 +130,16 @@ console.log(JSON.stringify({asked: asked, count: _els['count'].textContent, grid
 def runner_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(runners, "SWING_LATEST", tmp_path / "swing_potential_latest.html")
     monkeypatch.setattr(runners, "FUNDAMENTALS_LATEST", tmp_path / "fundamentals_latest.html")
-    from RevenueChaser.module_fundamentals import pipeline as fp
-    from RevenueChaser.module_swing_potential import pipeline as sp
+    from revenuechaser.module_fundamentals import pipeline as fp
+    from revenuechaser.module_swing_potential import pipeline as sp
     for mod in (sp, fp):
         monkeypatch.setattr(mod, "save_payload", lambda p: None)
     return tmp_path
 
 
 def _run(board, payload, monkeypatch):
-    from RevenueChaser.module_fundamentals import pipeline as fp
-    from RevenueChaser.module_swing_potential import pipeline as sp
+    from revenuechaser.module_fundamentals import pipeline as fp
+    from revenuechaser.module_swing_potential import pipeline as sp
     mod, run, latest = {"swing": (sp, runners.run_swing, "SWING_LATEST"),
                         "fund": (fp, runners.run_fundamentals, "FUNDAMENTALS_LATEST")}[board]
     monkeypatch.setattr(mod, "run_scan", lambda *a, **k: payload)

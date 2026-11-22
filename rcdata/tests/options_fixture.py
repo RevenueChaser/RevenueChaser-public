@@ -11,7 +11,7 @@ import json
 from datetime import date, timedelta
 from urllib.parse import parse_qs
 
-from RevenueChaser.core import calendar
+from revenuechaser.core import calendar
 
 SESSION = date(2026, 10, 26)
 HEADERS = {"content-type": "application/json"}

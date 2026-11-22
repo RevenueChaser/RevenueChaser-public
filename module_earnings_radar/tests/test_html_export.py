@@ -5,7 +5,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_earnings_radar.report import (
+from revenuechaser.module_earnings_radar.report import (
     _quadrant_badge, _conf_cell, _bias_cell,
     _agh_points_cell, _agh_accel_cell, _agh_owners_cell,
     _render_since_er_chart, export_html, TIER_DESC,
@@ -13,11 +13,11 @@ from RevenueChaser.module_earnings_radar.report import (
     _compute_col_widths, _er_spark_cell, _gex_profile_cell, _gex_nudge, _liquidity_cell,
     _badge, _VIEWS, _COL_IDS, _GROUP_LABELS,
 )
-from RevenueChaser.module_earnings_radar.pipeline import (
+from revenuechaser.module_earnings_radar.pipeline import (
     _compute_earnings_reactions, _compute_price_action, _compute_return_since_er,
     EarningsPipeline,
 )
-from RevenueChaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.models import TradeCard
 
 
 # ──────────────────────────────────────────────
@@ -1250,6 +1250,6 @@ class TestErSparkLabels:
         assert "ER reactions" not in html
 
     def test_column_header_is_not_called_surprises(self):
-        from RevenueChaser.module_earnings_radar.report import _COLUMNS as COLUMNS
+        from revenuechaser.module_earnings_radar.report import _COLUMNS as COLUMNS
         labels = [c[1] for c in COLUMNS if c[0] == "surprises"]
         assert labels == ["Return since print"]

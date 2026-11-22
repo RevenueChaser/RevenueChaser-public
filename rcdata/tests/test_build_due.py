@@ -7,10 +7,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, due
-from RevenueChaser.rcdata.build import __main__ as cli
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, due
+from revenuechaser.rcdata.build import __main__ as cli
 
 pytestmark = pytest.mark.usefixtures("kinds_full")
 
@@ -24,7 +24,7 @@ WED_MORNING = datetime(2026, 10, 28, 15, 0, tzinfo=timezone.utc)
 @pytest.fixture(autouse=True)
 def market_only(monkeypatch):
     """These tests are about the two market datasets' due rule; the spine's datasets (PR 5) are left out."""
-    from RevenueChaser.rcdata import build
+    from revenuechaser.rcdata import build
     only = {k: v for k, v in build.DATASETS.items() if k in (MS, UW)}
     monkeypatch.setattr(build, "DATASETS", only)
     monkeypatch.setitem(globals(), "DATASETS", only)
@@ -195,7 +195,7 @@ def test_a_locked_ops_file_while_queueing_one_dataset_does_not_stop_the_others(b
 
 @pytest.fixture
 def ran(monkeypatch):
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     seen = []
 
     def fake(req, **kw):

@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import DATASETS, base, due
-from RevenueChaser.rcdata.build import __main__ as cli
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import DATASETS, base, due
+from revenuechaser.rcdata.build import __main__ as cli
 
 
 class _Stager:

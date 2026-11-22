@@ -15,7 +15,7 @@ import pytest
 
 
 def _patch_state(monkeypatch, tmp_path):
-    import RevenueChaser.app.runners as rn
+    import revenuechaser.app.runners as rn
     monkeypatch.setattr(rn, "QUICK_STATE", tmp_path / "financials" / "financials_latest.json")
     return rn
 

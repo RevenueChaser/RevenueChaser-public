@@ -7,7 +7,7 @@ dashboard, no request, no POST.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.providers import deepseek
+from revenuechaser.core.providers import deepseek
 
 
 def test_e2e_env_points_deepseek_at_the_mock(e2e_env, provider_routes):

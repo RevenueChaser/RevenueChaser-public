@@ -14,7 +14,7 @@ Two sides:
   without one (a state, not an error). The Windows Task Scheduler backend was removed with
   the rest of the Windows-era code (#1225).
 - ``run_task``: the command every task actually runs
-  (``python -m RevenueChaser.core.automations run <name>``). It appends the job's
+  (``python -m revenuechaser.core.automations run <name>``). It appends the job's
   output and exit code to the entry's ``log_path`` so a red row has a reason.
 
 Registry names are stable: a task that writes tables records them as ``job_runs.registry_name`` (#129 A1).
@@ -35,7 +35,7 @@ from datetime import datetime, time as dtime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Callable
 
-from RevenueChaser.core import config
+from revenuechaser.core import config
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ SEC_READ_UNIT = "life-rc-sec-read"
 REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-Relatedness-OffPeak", label="Relatedness profiling (weekly, Sunday)",
-        args=("-m", "RevenueChaser.scripts.board_fetch", "relatedness"), time="22:15", days=("Sunday",),
+        args=("-m", "revenuechaser.scripts.board_fetch", "relatedness"), time="22:15", days=("Sunday",),
         description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
                      "incremental (only changed filings), then every pair scored (~27 s CPU for 5,111 profiles, "
                      "measured on the server 20 Nov 2026, #884) and the "
@@ -160,7 +160,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         offpeak_gated=True),
     AutomationEntry(
         name="RC-Forecast-Outcomes", label="Forecast outcomes",
-        args=("-m", "RevenueChaser.scripts.forecast_outcomes", "--nightly"), time="23:35",
+        args=("-m", "revenuechaser.scripts.forecast_outcomes", "--nightly"), time="23:35",
         description="Recomputes the 30- and 90-day outcome (reference open, "
                     "MFE, MAE, open/closed) of every frozen pick not closed yet, from the stored bars; no calls "
                     "(#380 S0). 23:35 is its own trigger (avo, #620). A busy forecast-outcomes lock exits 3, and nothing was "
@@ -168,7 +168,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         tables_written=("forecast_outcomes",)),
     AutomationEntry(
         name="RC-Forecast-Baselines", label="Forecast baselines",
-        args=("-m", "RevenueChaser.scripts.forecast_baselines", "--nightly"), time="23:50",
+        args=("-m", "revenuechaser.scripts.forecast_baselines", "--nightly"), time="23:50",
         after="RC-Forecast-Outcomes",
         description="Once tonight's outcomes run exited 0, recomputes the baselines still open: what each freeze "
                     "date's own universe did over the same 30- and 90-day windows, and the same names split into ten "
@@ -178,7 +178,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         tables_written=("forecast_baselines",)),
     AutomationEntry(
         name="RC-IBKR-Login-Check", label="IBKR Gateway login check",
-        args=("-m", "RevenueChaser.scripts.ibkr_login_check"), time="09:15",
+        args=("-m", "revenuechaser.scripts.ibkr_login_check"), time="09:15",
         description="Looks at whether the IBKR Gateway is still logged in: one TCP connection to the "
                     "configured host and port, the TWS API version handshake and startApi up to nextValidId - no "
                     "account, position, order or execution is ever asked for. Writes no table and no store "
@@ -190,7 +190,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=5)),
     AutomationEntry(
         name="RC-Build", label="Market-store builder (hourly)",
-        args=("-m", "RevenueChaser.rcdata.build", "run", "--once"), time="00:05", hourly=True,
+        args=("-m", "revenuechaser.rcdata.build", "run", "--once"), time="00:05", hourly=True,
         unit_name=BUILDER_UNIT,
         description="One pass of the market-store builder (rcdata): takes the queued build requests in order (Fetch, "
                     "Backfill from the Settings page, and the datasets the schedule makes due), builds each serving "
@@ -201,7 +201,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=120)),
     AutomationEntry(
         name="RC-SEC-Read", label="SEC reads (nightly check)",
-        args=("-m", "RevenueChaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"), time="01:10",
+        args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"), time="01:10",
         unit_name=SEC_READ_UNIT,
         description="The SEC reader's daily check (avo, 16 Nov 2026): every night, once the US session is over, one "
                     "run of sec/reads. It asks the registered questions about the filings that are new since the "
@@ -215,7 +215,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=90)),
     AutomationEntry(
         name="RC-ValueChain-Sync", label="Value Chain links (nightly, after the SEC reads)",
-        args=("-m", "RevenueChaser.module_value_chain", "--nightly"), time="04:20", after="RC-SEC-Read",
+        args=("-m", "revenuechaser.module_value_chain", "--nightly"), time="04:20", after="RC-SEC-Read",
         description="Rebuilds the Value Chain links once tonight's SEC reads exited 0 (avo, 17 Nov 2026: the SEC "
                     "engine first, then Value Chain; the Relatedness profiles of the Sunday run are read the night "
                     "after). It reads the SEC layer's annual reports, their XBRL customers and the stored profiles: "
@@ -228,7 +228,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=90)),
     AutomationEntry(
         name="RC-Relatedness-Score", label="Relatedness scoring (weekly, when the SEC reads brought something new)",
-        args=("-m", "RevenueChaser.module_relatedness", "--score"), time="07:30", days=("Saturday",),
+        args=("-m", "revenuechaser.module_relatedness", "--score"), time="07:30", days=("Saturday",),
         after="RC-SEC-Read",
         description=("Copies the SEC reading service's new company.profile answers into the board's profiles, then "
                      "rescores every pair, caches the new company vectors and writes the payload the board renders. "
@@ -245,7 +245,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=90)),
     AutomationEntry(
         name="RC-Backup-Weekly", label="Weekly backup",
-        args=("-m", "RevenueChaser.rcdata", "backup"),
+        args=("-m", "revenuechaser.rcdata", "backup"),
         time="03:30", days=("Sunday",), unit_name=BACKUP_WEEKLY_UNIT,
         description="The one backup job (avo, 8 Nov 2026): every Sunday 03:30 it copies, verifies and keeps the "
                     "newest 4 of every file under RAW_STORE_BACKUP_DIR/weekly-v2/<step>/ on the HDD. The steps: "
@@ -261,7 +261,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=60)),
     AutomationEntry(
         name="RC-Backup-Watchlists-Daily", label="Watch lists daily backup",
-        args=("-m", "RevenueChaser.rcdata", "backup", "--only", "watchlists-daily"),
+        args=("-m", "revenuechaser.rcdata", "backup", "--only", "watchlists-daily"),
         time="03:10", unit_name=BACKUP_WATCHLISTS_DAILY_UNIT,
         description="Decision C of the spine classification plan (avo, 17 Nov 2026; 03:10 on 18 Nov): every day "
                     "it copies boards/watchlists.duckdb (avo's own lists, nothing rebuilds them) into "
@@ -271,7 +271,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=15)),
     AutomationEntry(
         name="RC-SPX-Gamma-Fetch", label="SPX Gamma Fetch (nightly)",
-        args=("-m", "RevenueChaser.module_spx_gamma", "--nightly"), time="06:30", days=_WEEKDAYS,
+        args=("-m", "revenuechaser.module_spx_gamma", "--nightly"), time="06:30", days=_WEEKDAYS,
         description="The SPX Gamma board's Fetch of the latest complete New York session (#291), so every session "
                     "keeps its raw day with the all-expiry ladder the band walls are read from, and the board moves "
                     "to it. About 70 Unusual Whales calls a session, plus the same per session the run's own backfill "
@@ -285,7 +285,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(start_when_available=False, time_limit_minutes=30)),
     *(AutomationEntry(
         name=f"RC-Fetch-{label.replace(' ', '')}", label=f"{label} Fetch (nightly)",
-        args=("-m", "RevenueChaser.scripts.board_fetch", board), time=at, unit_name=f"life-rc-fetch-{board}",
+        args=("-m", "revenuechaser.scripts.board_fetch", board), time=at, unit_name=f"life-rc-fetch-{board}",
         description=(f"The {label} board's Fetch after the nightly prices build (avo 17 Nov 2026, choice a), so the "
                      "forecast ledger freezes every session (#25). It asks nothing until the prices store holds SPY's "
                      "complete bar of the latest complete New York session (exit 3). The Fetch runs in the dashboard "
@@ -302,7 +302,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     # so the quadrant snapshot sat at 6 Nov. Same task as the four above, switched ON at install.
     AutomationEntry(
         name="RC-News-Earnings-Weekly", label="News earnings (weekly)",
-        args=("-m", "RevenueChaser.scripts.board_fetch", "news-earnings"), time="09:00", days=("Sunday",),
+        args=("-m", "revenuechaser.scripts.board_fetch", "news-earnings"), time="09:00", days=("Sunday",),
         unit_name="life-rc-fetch-news-earnings", tables_written=("news_earnings",),
         description="The News board's Earnings tab (#886, avo 20 Nov 2026): every Sunday 09:00 it writes next "
                     "week's report day of every name on the News watch lists into boards/news.duckdb and renders "
@@ -317,7 +317,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     # stored headlines and the reading is stored as fixed-schema fields, each carrying its source sentence.
     AutomationEntry(
         name="RC-News-Reading-Hourly", label="News reading (hourly)",
-        args=("-m", "RevenueChaser.scripts.board_fetch", "news-reading"), time="00:20", hourly=True,
+        args=("-m", "revenuechaser.scripts.board_fetch", "news-reading"), time="00:20", hourly=True,
         unit_name="life-rc-fetch-news-reading", tables_written=("news_reading",),
         description="The News board's reading of the headline flow (#1234): every hour at :20 the EVREN model "
                     "reads the clock hour that has just finished and its reading is written to "
@@ -333,7 +333,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=30)),
     AutomationEntry(
         name="RC-Fetch-SectorRotation", label="Sector Rotation Fetch (nightly)",
-        args=("-m", "RevenueChaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",
+        args=("-m", "revenuechaser.scripts.board_fetch", "rotation"), time="05:40", unit_name="life-rc-fetch-rotation",
         description="The Sector Rotation board's Fetch after the nightly prices build (avo 18 Nov 2026), so the "
                     "quadrant snapshot Earnings Radar reads is the latest complete session's. It asks nothing until "
                     "the prices store holds SPY's complete bar of that session (exit 3). The Fetch runs in the "
@@ -343,7 +343,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=120)),
     AutomationEntry(
         name="RC-Fetch-EarningsRadar", label="Earnings Radar Fetch (nightly)",
-        args=("-m", "RevenueChaser.scripts.board_fetch", "earnings"), time="05:50", days=_WEEKDAYS,
+        args=("-m", "revenuechaser.scripts.board_fetch", "earnings"), time="05:50", days=_WEEKDAYS,
         unit_name="life-rc-fetch-earnings",
         description="The Earnings Radar board's Fetch of the coming New York session's earnings (avo 18 Nov 2026), "
                     "Monday to Friday, after the Sector Rotation Fetch (05:40) stored the quadrants it reads. It asks "
@@ -500,7 +500,7 @@ class FakeScheduler(Scheduler):
 
 
 def package_parent() -> Path:
-    """The dir whose child is ``RevenueChaser``: the tasks' working directory."""
+    """The dir whose child is ``revenuechaser``: the tasks' working directory."""
     return Path(__file__).resolve().parents[2]
 
 
@@ -786,7 +786,7 @@ class LinuxScheduler(Scheduler):
             *(_env_line(k, v) for k, v in env),
             *([f"EnvironmentFile=-{_unit_value(env_file)}"] if env_file else []),
             "ExecStart=" + " ".join(_exec_arg(a) for a in
-                                    (self._python, "-m", "RevenueChaser.core.automations", "run", e.name)),
+                                    (self._python, "-m", "revenuechaser.core.automations", "run", e.name)),
             ("TimeoutStartSec=infinity" if s.no_time_limit else
              f"TimeoutStartSec={int(s.time_limit_minutes)}min" if s.time_limit_minutes is not None
              else f"TimeoutStartSec={int(s.time_limit_hours)}h"),
@@ -973,8 +973,8 @@ def dashboard_job_modules(e: AutomationEntry) -> tuple[str, ...]:
     A ``scripts.board_fetch <board>`` task posts ``/run/<route>`` and polls the job (board_fetch's module
     docstring), and a dashboard job route carries its module's own name, so the route **is** the module.
     """
-    if len(e.args) == 3 and e.args[1] == "RevenueChaser.scripts.board_fetch":
-        from RevenueChaser.scripts.board_fetch import ROUTES    # lazy: core must not import scripts on import
+    if len(e.args) == 3 and e.args[1] == "revenuechaser.scripts.board_fetch":
+        from revenuechaser.scripts.board_fetch import ROUTES    # lazy: core must not import scripts on import
         route = ROUTES.get(e.args[2])
         return (route,) if route else ()
     return _QUEUED_JOB_MODULES.get(e.name, ())
@@ -1281,7 +1281,7 @@ def _run_log_start(run_id: str, name: str) -> bool:
     """Open the run's ``ops.job_runs2`` row; False when the ops records could not take it. Best-effort
     bookkeeping (#282): a task must run even with the ops store busy or absent."""
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         ops.start_run(run_id, None, "schedule", job=name)
     except Exception:  # noqa: BLE001 — bookkeeping, never the reason a task does not run
         logger.debug("could not open the run log row for %s", name, exc_info=True)
@@ -1292,7 +1292,7 @@ def _run_log_start(run_id: str, name: str) -> bool:
 def _run_log_finish(run_id: str, rc: int, counts: dict | None) -> None:
     """Close the run's row with the exit code's status and its counts. Never raises, for the same reason."""
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         ops.finish_run(run_id, "done" if rc == RESULT_OK else "failed",
                        None if rc == RESULT_OK else f"exit {rc}", counts)
     except Exception:  # noqa: BLE001
@@ -1320,7 +1320,7 @@ def _switched_off(name: str) -> str | None:
     if switch is None:
         return None
     try:
-        from RevenueChaser.rcdata import ops
+        from revenuechaser.rcdata import ops
         off = ops.switch_off(switch)
     except Exception:  # noqa: BLE001
         return None
@@ -1402,12 +1402,12 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
         # children too (review of 20 Nov 2026, step 1). ``RC_RUN_ID`` stays what it was: the writer's stamp.
         env = {**os.environ}
         try:
-            from RevenueChaser.rcdata import ops as _ops
+            from revenuechaser.rcdata import ops as _ops
             env[_ops.CHAIN_ID_ENV] = run_id
         except Exception:  # noqa: BLE001 — bookkeeping, never the reason a task does not run
             logger.debug("could not read the chain variable's name for %s", e.name, exc_info=True)
         if e.tables_written:
-            from RevenueChaser.core import rawstore
+            from revenuechaser.core import rawstore
             env.update({rawstore.RUN_ID_ENV: run_id, rawstore.RUN_SOURCE_ENV: e.name})
         logged = _run_log_start(run_id, e.name)
         fh.flush()
@@ -1454,7 +1454,7 @@ def main(argv: list[str] | None = None) -> int:
     except AutomationError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print("usage: python -m RevenueChaser.core.automations "
+    print("usage: python -m revenuechaser.core.automations "
           "run|install|remove <registry-name> | list | names", file=sys.stderr)
     return 2
 

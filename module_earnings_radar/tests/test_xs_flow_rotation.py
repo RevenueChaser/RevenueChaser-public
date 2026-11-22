@@ -12,8 +12,8 @@ import json
 import re
 from datetime import date
 
-from RevenueChaser.module_earnings_radar import report
-from RevenueChaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar import report
+from revenuechaser.module_earnings_radar.models import TradeCard
 
 
 def _card(**kw) -> TradeCard:
@@ -36,7 +36,7 @@ def test_the_quadrant_badge_takes_no_score():
 
 def _structure(card, tmp_path) -> str:
     """The drawer's structure card, rendered by the page's own script under node."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     html = report.export_html([card], [], {}).read_text(encoding="utf-8")
     out = run_board_js(html, "CUR_DETAIL.ticker = 'AAPL'; renderDecision();"
                              "console.log(JSON.stringify({s: _els['dr-structure'].innerHTML}))", tmp_path)

@@ -17,10 +17,10 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import calendar as nyse_calendar
-from RevenueChaser.core.providers import yf_session
-from RevenueChaser.core.providers import yfinance as yfp
-from RevenueChaser.module_spx_gamma import candles
+from revenuechaser.core import calendar as nyse_calendar
+from revenuechaser.core.providers import yf_session
+from revenuechaser.core.providers import yfinance as yfp
+from revenuechaser.module_spx_gamma import candles
 
 
 @pytest.fixture(autouse=True)

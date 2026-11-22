@@ -6,10 +6,10 @@ import json
 import numpy as np
 import pandas as pd
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.module_relatedness import config, engine, profiles, similarity
-from RevenueChaser.rcdata.tests import spine_fixture, universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.module_relatedness import config, engine, profiles, similarity
+from revenuechaser.rcdata.tests import spine_fixture, universe_store
 
 
 # ── profiles ────────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ def _correlated_prices(n: int = 260, seed: int = 7) -> pd.DataFrame:
 
 
 def test_select_pilot_is_the_shared_universe():
-    from RevenueChaser.core.universe import classification_universe
+    from revenuechaser.core.universe import classification_universe
     tickers = ["NVDA", "AMD", "TSM", "AAPL"]
     _seed_universe(tickers)
     pilot = engine.select_pilot()
@@ -135,7 +135,7 @@ def test_run_no_fetch_reads_cached_profiles(rawstore_tmp_db, monkeypatch, tmp_pa
     _seed_filings(tickers)
     monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
     # pre-cache profiles in the durable store
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.module_relatedness import store
     for t, prof in {
         "NVDA": _prof(products=["gpu"], end_markets=["data center"]),
         "AMD": _prof(products=["gpu"], end_markets=["data center"]),
@@ -190,7 +190,7 @@ def test_peer_move_from_ohlc(rawstore_tmp_db):
 
 
 def test_companies_carry_theme_levels(rawstore_tmp_db):
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.module_relatedness import store
     _seed_universe(["NVDA"])
     store.save_profile("NVDA", "cik-NVDA", _prof(products=["gpu"]), "k", "m")
     rawstore.write_rows("theme_runs", [{
@@ -212,7 +212,7 @@ def test_companies_carry_theme_levels(rawstore_tmp_db):
 
 
 def test_report_renders(rawstore_tmp_db, tmp_path, monkeypatch):
-    from RevenueChaser.module_relatedness import report
+    from revenuechaser.module_relatedness import report
     payload = {
         "as_of": "2026-09-19T00:00:00+00:00", "model": "deepseek-v4-flash", "n": 2,
         "companies": [
@@ -263,13 +263,13 @@ def test_report_renders(rawstore_tmp_db, tmp_path, monkeypatch):
 
 
 def test_report_empty_state():
-    from RevenueChaser.module_relatedness import report
+    from revenuechaser.module_relatedness import report
     html = report.render_relatedness_dashboard({"as_of": "", "companies": []})
     assert "No profiles yet" in html
 
 
 def _two_sector_board():
-    from RevenueChaser.module_relatedness import report
+    from revenuechaser.module_relatedness import report
     co = lambda t, sec, ind, theme: {
         "ticker": t, "name": t, "sector": sec, "industry": ind, "market_cap": 1e12,
         "weights": {"gpu": 1.0}, "profile": {}, "theme_coarse": theme}
@@ -282,14 +282,14 @@ def _two_sector_board():
 
 def test_the_focal_line_shows_the_sector_then_the_industry(tmp_path):
     """#266: ``sector · industry``; no theme until #894 (decision E), no sub-industry."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     tail = 'FOCAL = "MSFT"; render(); console.log(JSON.stringify(_els["meta"].textContent));'
     assert run_board_js(_two_sector_board(), tail, tmp_path) == "Technology · Software - Application"
 
 
 def test_the_sector_filter_narrows_the_picker_at_either_level(tmp_path):
     """The shared kit reads each card's ``sector`` and ``industry`` (its ``gics`` path when the payload has one)."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     tail = """
 function pool(){ return DATA.filter(pass).map(function(c){ return c.ticker; }); }
 var log = {all: pool()};
@@ -303,8 +303,8 @@ console.log(JSON.stringify(log));"""
 
 def test_the_board_hides_themes_until_the_sec_service_owns_profiles(tmp_path):
     """Decision E option 2 (avo, 16 Nov 2026): no Theme facet, no cluster chips, no theme in the meta line (#894)."""
-    from RevenueChaser.core.tests.board_js import run_board_js
-    from RevenueChaser.module_relatedness import report
+    from revenuechaser.core.tests.board_js import run_board_js
+    from revenuechaser.module_relatedness import report
     co = lambda t, ids: {"ticker": t, "name": t, "sector": "Technology", "industry": "Semiconductors",
                          "market_cap": 1e12, "theme_coarse": "Chips", "theme_ids": ids}
     html = report.render_relatedness_dashboard({
@@ -324,7 +324,7 @@ def test_the_board_hides_themes_until_the_sec_service_owns_profiles(tmp_path):
 
 def test_no_filter_set_keeps_every_name_and_the_first_one_focal(tmp_path):
     """#383 C1b parity: no filter set = the same names as before the move (all of them), same default focal."""
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     got = run_board_js(_two_sector_board(), "console.log(JSON.stringify({pool: DATA.filter(pass).length, "
                        "n: DATA.length, focal: FOCAL, count: _els['count'].textContent, active: RCF.active()}));",
                        tmp_path)
@@ -333,7 +333,7 @@ def test_no_filter_set_keeps_every_name_and_the_first_one_focal(tmp_path):
 
 def test_companies_carry_the_filter_path_and_theme_ids(rawstore_tmp_db):
     """#383 C1b: each company is a kit row (``gics`` + ``theme_ids``) and the payload carries the theme catalog."""
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.module_relatedness import store
     _seed_universe(["NVDA"])
     store.save_profile("NVDA", "cik-NVDA", _prof(products=["gpu"]), "k", "m")
     payload = engine._payload(store.load_profiles(["NVDA"]), {})
@@ -344,7 +344,7 @@ def test_companies_carry_the_filter_path_and_theme_ids(rawstore_tmp_db):
 
 def test_two_share_classes_are_one_row_and_never_each_others_peer(rawstore_tmp_db):
     """Decision C (avo, 16 Nov 2026; #408): one row per CIK; the kept class lists the other on its row."""
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.module_relatedness import store
     _seed_universe(["GOOG", "GOOGL", "MSFT"])
     for t, cik in (("GOOG", "0001652044"), ("GOOGL", "1652044"), ("MSFT", "789019")):
         store.save_profile(t, cik, _prof(products=["search", "cloud"]), "k", "m")
@@ -357,7 +357,7 @@ def test_two_share_classes_are_one_row_and_never_each_others_peer(rawstore_tmp_d
 
 def test_companies_with_an_unknown_sector_read_unclassified(rawstore_tmp_db):
     """R3 (#86): the legacy vendor ``Other`` and a missing sector both read as the unknown bucket."""
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.module_relatedness import store
     universe_store.replace([
         {"ticker": t, "name": t, "market_cap": 1e9, "sector": sec, "price": 1.0, "industry": "x",
          "quote": {}}
@@ -374,7 +374,7 @@ def test_companies_carry_the_sector_and_the_industry_not_the_gics_levels(rawstor
 
     ``OLD`` is a row the identity master has not re-applied yet: it still holds the GICS spelling.
     """
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.module_relatedness import store
     rows = (("NVDA", "Technology", "Semiconductors"), ("JPM", "Financial Services", "Banks - Diversified"),
             ("OLD", "Information Technology", "Software - Application"), ("NOI", "Energy", ""))
     universe_store.replace([
@@ -397,8 +397,8 @@ def test_the_payload_reads_the_universe_once_for_the_company_fields(rawstore_tmp
 
     Since #642 PR 6 the fields come from the spine, so the count is on ``filter_fields`` itself (the engine's
     "one read of the company fields") rather than on the SQL text of the old table's query."""
-    from RevenueChaser.core import universe as core_universe
-    from RevenueChaser.module_relatedness import store
+    from revenuechaser.core import universe as core_universe
+    from revenuechaser.module_relatedness import store
     rows = (("AAA", "Aaa Corp", "Information Technology", "Software - Application", 2.0e9),
             ("BBB", "Bee Corp", "Energy", "", 1.0e9),
             ("CCC", "", "Utilities", "Regulated Electric", None))
@@ -430,7 +430,7 @@ def test_the_payload_reads_the_universe_once_for_the_company_fields(rawstore_tmp
 
 
 def test_the_universe_tile_says_operating_companies():
-    from RevenueChaser.module_relatedness import report
+    from revenuechaser.module_relatedness import report
     html = report.render_relatedness_dashboard({
         "as_of": "2026-09-19T00:00:00+00:00", "n": 1, "universe_total": 5, "pending": 0,
         "companies": [{"ticker": "NVDA", "name": "NVIDIA", "sector": "Technology",
@@ -446,8 +446,8 @@ def test_the_universe_tile_says_operating_companies():
 
 def test_beyond_spy_label_uses_default_horizon(monkeypatch):
     """DF63: the 'beyond SPY' residual is computed at DEFAULT_HORIZON; the label says so."""
-    from RevenueChaser.module_comovement import config as comov_config
-    from RevenueChaser.module_relatedness import report
+    from revenuechaser.module_comovement import config as comov_config
+    from revenuechaser.module_relatedness import report
     payload = {"as_of": "", "companies": []}
     html = report.render_relatedness_dashboard(payload)
     assert "(5d)'" not in html
@@ -458,8 +458,8 @@ def test_beyond_spy_label_uses_default_horizon(monkeypatch):
 def test_the_kit_meta_filters_by_earnings_and_takes_the_registry_indexes(tmp_path):
     """#383 C1b review (N2): Relatedness mounts the kit as its own board, with the earnings facet as a filter (not a
     mark) and the index list from the registry."""
-    from RevenueChaser.core.index_registry import filter_labels
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.index_registry import filter_labels
+    from revenuechaser.core.tests.board_js import run_board_js
     got = run_board_js(_two_sector_board(), "console.log(JSON.stringify({mode: META.earnings_mode, board: META.board, "
                        "indexes: META.indexes}));", tmp_path)
     assert got == {"mode": "filter", "board": "relatedness", "indexes": filter_labels()}

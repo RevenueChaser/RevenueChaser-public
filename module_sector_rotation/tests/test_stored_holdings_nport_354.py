@@ -7,9 +7,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sector_rotation import etf_holdings
-from RevenueChaser.module_sector_rotation.report import holdings_source_note, render_holdings_fragment
-from RevenueChaser.rcdata import read
+from revenuechaser.module_sector_rotation import etf_holdings
+from revenuechaser.module_sector_rotation.report import holdings_source_note, render_holdings_fragment
+from revenuechaser.rcdata import read
 
 DAILY = date(2026, 11, 20)
 REPORT = date(2026, 6, 30)
@@ -102,7 +102,7 @@ def test_the_fragment_shows_the_source_note_and_escapes_it():
 def test_a_tickerinside_list_is_named_and_linked_because_its_licence_asks_for_it():
     """CC BY 4.0 asks for the source to be named with a link wherever a figure of its is shown, so the board's
     source line carries one. A plain label would meet the board's need and not the licence's."""
-    from RevenueChaser.module_sector_rotation.report import holdings_source_html
+    from revenuechaser.module_sector_rotation.report import holdings_source_html
     rows = [_line("SMH", "NVDA", 20.0, "tickerinside", DAILY, "NVIDIA")]
     assert holdings_source_note(rows).startswith("Source: TickerInside")
     html = holdings_source_html(rows)
@@ -113,13 +113,13 @@ def test_a_tickerinside_list_is_named_and_linked_because_its_licence_asks_for_it
 def test_a_source_whose_licence_asks_for_nothing_stays_plain_text():
     """Only a licence that asks for attribution gets a link: an SEC report or an issuer file is not linked, so a
     link on the line means something."""
-    from RevenueChaser.module_sector_rotation.report import holdings_source_html
+    from revenuechaser.module_sector_rotation.report import holdings_source_html
     for provider in ("nport", "ishares", "uw"):
         assert "<a " not in holdings_source_html([_line("X", "A", 1.0, provider, DAILY)])
 
 
 def test_the_fragment_shows_the_tickerinside_link_once_and_still_escapes_the_rest():
-    from RevenueChaser.module_sector_rotation.report import render_holdings_fragment
+    from revenuechaser.module_sector_rotation.report import render_holdings_fragment
     frag = render_holdings_fragment([{"ticker": "NVDA", "name": "NVIDIA & Co", "weight": 20.0, "close": None,
                                       "rs_1w": None, "rs_1m": None, "rs_3m": None,
                                       "provider": "tickerinside", "as_of": DAILY}])

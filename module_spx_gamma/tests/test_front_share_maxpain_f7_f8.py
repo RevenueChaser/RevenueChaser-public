@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import expiry_table, render
+from revenuechaser.module_spx_gamma import expiry_table, render
 from .conftest import make_snapshot
 
 

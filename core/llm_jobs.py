@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from RevenueChaser.core import llm_writers, settings_store
+from revenuechaser.core import llm_writers, settings_store
 
 #: The shared exception surface of a writer call. EVREN's classes subclass these, so a job catches these names
 #: and names no provider. ``PeakHours`` is raised by the paid writer's off-peak gate only, and
@@ -35,7 +35,7 @@ _ERRORS = {"Error": "DeepSeekError", "AuthError": "DeepSeekAuthError",
 
 def __getattr__(name: str):
     if name in _ERRORS:
-        from RevenueChaser.core.providers import deepseek
+        from revenuechaser.core.providers import deepseek
         return getattr(deepseek, _ERRORS[name])
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

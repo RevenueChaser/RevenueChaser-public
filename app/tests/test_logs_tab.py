@@ -11,8 +11,8 @@ import re
 
 import pytest
 
-from RevenueChaser.app import dashboard, logview
-from RevenueChaser.core import config, provenance
+from revenuechaser.app import dashboard, logview
+from revenuechaser.core import config, provenance
 
 TEMPLATE = dashboard.Path(dashboard.__file__).resolve().parent.parent / "templates" / "dashboard.html"
 
@@ -198,7 +198,7 @@ def test_the_api_is_read_only(client, log_dir):
 
 
 def test_logs_live_in_the_cache_folder_next_to_the_automation_logs():
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     assert config.LOG_DIR == config.OUTPUT_DIR / "logs"
     assert automations.REGISTRY[0].log_path.parent == config.LOG_DIR
 

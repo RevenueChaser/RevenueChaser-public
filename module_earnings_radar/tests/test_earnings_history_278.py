@@ -12,9 +12,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import ledger, rawstore
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.module_earnings_radar.pipeline import nrc_from_card
+from revenuechaser.core import ledger, rawstore
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.pipeline import nrc_from_card
 
 # 2026-10-06 is a Tuesday: 22:00 UTC = 18:00 ET (session complete); 14:00 UTC = 10:00 ET (intraday).
 COMPLETE = datetime(2026, 10, 6, 22, 0, tzinfo=timezone.utc).timestamp()
@@ -113,7 +113,7 @@ def _session_events(n, day=date(2026, 10, 8), when="AMC", source="UW"):
 # ── a card from the real pipeline (not a hand-filled one) ────────────────────
 
 def _real_card(**uw):
-    from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW, _make_pipeline
+    from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW, _make_pipeline
 
     class UW(_FakeUW):
         def term_structure(self, ticker):
@@ -144,7 +144,7 @@ def _real_card(**uw):
 
 
 def test_a_strike_row_is_cut_to_the_13_fields_the_gex_profile_reads():
-    from RevenueChaser.module_earnings_radar.pipeline import _strike_fields
+    from revenuechaser.module_earnings_radar.pipeline import _strike_fields
     full = {"strike": "1", **{f"{s}_{g}{b}": "0" for g in ("gamma", "charm", "vanna") for b in ("_oi", "_vol")
                               for s in ("call", "put")}, "extra": "x", "call_gamma_ask": "1"}
     (row,) = _strike_fields({"data": [full, "junk"]})

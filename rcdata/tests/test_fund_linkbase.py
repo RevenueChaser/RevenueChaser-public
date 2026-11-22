@@ -10,10 +10,10 @@ import re
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops, read
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import filings, linkbase, tables
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops, read
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import filings, linkbase, tables
 
 from . import fund_fixture as fx
 from .sec_answers import MISSING_HEADERS, MISSING_OBJECT

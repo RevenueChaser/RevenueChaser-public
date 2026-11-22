@@ -11,12 +11,12 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.module_leaps import board
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401
-from RevenueChaser.rcdata.tests.options_fixture import SESSION, UWOptions
-from RevenueChaser.rcdata.tests.test_options_far_contracts import (AFTER_CLOSE, MORNING, _swept, at, chain_row,
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.module_leaps import board
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401
+from revenuechaser.rcdata.tests.options_fixture import SESSION, UWOptions
+from revenuechaser.rcdata.tests.test_options_far_contracts import (AFTER_CLOSE, MORNING, _swept, at, chain_row,
                                                                    contract)
 
 
@@ -44,8 +44,8 @@ def stored(http_mock, monkeypatch):
                     "AAA": [chain_row(put, oi=1300)], "SPY": [chain_row(etf, oi=850)],
                     "SPX": [chain_row(idx, oi=60)], "BBB": [chain_row(stale, oi=60, prev_oi=11)]}
     at(monkeypatch, MORNING)
-    from RevenueChaser.rcdata.build import base
-    from RevenueChaser.rcdata.build.options import uw_far_contracts as far_ds
+    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build.options import uw_far_contracts as far_ds
     assert base.run_request({"dataset": far_ds.NAME, "params": {}})["result"] != "failed"
     return {"near": near, "far": far, "put": put, "etf": etf, "idx": idx, "stale": stale}
 
@@ -147,7 +147,7 @@ def test_a_hostile_ticker_cannot_close_the_script(stored, monkeypatch):
 # ── The tab ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 def test_the_tab_serves_the_board_once_a_session_is_stored(stored):
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     c = dashboard.app.test_client()
     body = c.get("/view/module_leaps").get_data(as_text=True)
     assert "No data yet" not in body and "1 / 20 sessions" in body
@@ -275,7 +275,7 @@ def test_the_page_offers_a_names_view_a_ticker_search_and_a_my_lists_filter(stor
 
 
 def test_the_spine_says_what_is_a_fund_and_a_leveraged_one_is_marked_for_the_switch(stored, monkeypatch):
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     plain = board.payload()["rows"]
     assert all("lev" not in r for r in plain), "no spine row: UW's group stands and nothing is marked"
     some = next(r["t"] for r in plain if r["prod"] == "stocks")

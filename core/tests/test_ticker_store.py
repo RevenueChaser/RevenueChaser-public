@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import ticker_store
+from revenuechaser.core import ticker_store
 
 
 @pytest.fixture

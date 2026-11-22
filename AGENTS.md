@@ -14,7 +14,7 @@ these summaries exist to tell you *which*, not to replace it.
 | Dashboard UI (filters + ticker pickers) | [`docs/dashboard_ui.md`](docs/dashboard_ui.md) |
 | Data health / settings board (universe refetch, 10-K sync) | [`docs/data_health.md`](docs/data_health.md) |
 | Areas & data flow (system map) | [`docs/system_map.md`](docs/system_map.md) |
-| Board measurements (what a board was decided on) | [`docs/module_relatedness/`](docs/module_relatedness/README.md), [`docs/module_value-chain/`](docs/module_value-chain/README.md) |
+| Board measurements (what a board was decided on) | [`docs/module_relatedness/`](docs/module_relatedness/README.md), [`docs/module_value_chain/`](docs/module_value_chain/README.md) |
 | Agent orchestration (who plans, who codes) | §5 below |
 
 **Plans are not docs.** A plan — a dated work order with a status — does not belong
@@ -220,7 +220,7 @@ These rules apply to every agent:
 - **Global metadata lives only in the shared parent top header** (`templates/dashboard.html`): the `Regime` badge and the last-run/sync timestamp. Never duplicate these inside a per-tab report.
 - **Per-tab report top bars:** left title (`h1`) + subtitle; right at most `Last sync: <friendly date> EOD`. No `Regime` badge, no raw scan timestamp (`YYYY-MM-DDTHH:MM:SS`).
 - Applies to every tab: Earnings Radar, SPX Gamma, Implied Probability, Financials, UW Interaction, Co-movement, Value Chain, Relatedness, Sector Rotation, Asymmetric Growth, Swing Potential, Fundamentals, SEC 13F, LEAPS. **Remove** Earnings Radar v2 and ER v2 Calibration (tabs, routes, `module_earnings_radar_v2/`) — see `docs/dashboard_ui.md` §8.
-- **Ticker pickers are searchable comboboxes**, not native `<select>`. Type matches ticker **and** name; ranking is exact ticker → ticker prefix → ticker contains → name prefix → name contains. Closed label is `TICKER — full name`. Shared widget belongs in `RevenueChaser/core/reporting_common.py` (`docs/dashboard_ui.md`).
+- **Ticker pickers are searchable comboboxes**, not native `<select>`. Type matches ticker **and** name; ranking is exact ticker → ticker prefix → ticker contains → name prefix → name contains. Closed label is `TICKER — full name`. Shared widget belongs in `revenuechaser/core/reporting_common.py` (`docs/dashboard_ui.md`).
 - **Universal filters** on equity-universe boards, **filters first then ticker combobox**: Detail level (only if coarse/medium/fine exists), search + `{n} names in {k} groups`, Market Cap (default All, min/max $M), Earnings, Index, Sector cascade (sector → industry), then a **Theme** dropdown of pinned NMF **coarse** labels. Import from `reporting_common`; do not fork. Applies to Co-movement, Value Chain, Relatedness, Sector Rotation, **Implied Probability, LEAPS (every tier, the Watchlist too), Earnings Radar (every row, including watchlist and the excluded section; Index, Market cap, Sector, Theme — no Earnings facet; the kit ANDs with the board's search and chips), and SEC 13F (Index, Market cap, Sector, Theme — no Earnings facet; the kit ANDs with the board's search; off-spine tickers are `Unclassified` with no cap)**. Sector Rotation keeps plotting `ROTATION_ETFS`; the Theme pick maps each coarse group to its ETF (KRE, SMH, XLK, …) per `docs/dashboard_ui.md`. Implied Probability: filters only narrow the combobox; retire `#oipd-ticker` in the parent header.
 - **Board HTML trust boundary (ADR-X1, #144, #175).** Boards are same-origin iframes, so one
   unescaped string has the shell's authority. Every string a board renders (issuer names, 10-K
@@ -256,11 +256,11 @@ Load skill `revenuechaser-conventions` before changing filters, GICS/themes, uni
 
 SSoT pointers (do not invent a second source):
 
-- Filters: `RevenueChaser/core/reporting_common.py`
-- Sector (UW's Morningstar names) and the two-level path: `RevenueChaser/core/gics_map.py`
-- Themes: `RevenueChaser/core/taxonomy.py`
+- Filters: `revenuechaser/core/reporting_common.py`
+- Sector (UW's Morningstar names) and the two-level path: `revenuechaser/core/gics_map.py`
+- Themes: `revenuechaser/core/taxonomy.py`
 - Universe spine: `fetch_universe_stats()` → `equity_universe`; no market-cap cut (Tiers A and B are the whole limit, avo 29 Oct 2026) and the security-type filter (funds / ETFs, SPACs, preferred / warrants / units leave the universe; Identity R4) in `core/universe.py`
-- Index: `RevenueChaser/core/index_registry.py` (the boards' reads: the spine)
-- Shared data: `RevenueChaser/.store/boards/` (one file per board) and rcdata's serving layer; module caches in `module_<x>/data/`; dashboards in `.cache/`
-- HTML escaping and the board guard: `RevenueChaser/core/html_safe.py`, `core/tests/board_fixtures.py` (ADR-X1, §6)
-- Data health / settings board (universe stats refetch, 10-K/20-F sync): `RevenueChaser/docs/data_health.md`
+- Index: `revenuechaser/core/index_registry.py` (the boards' reads: the spine)
+- Shared data: `revenuechaser/.store/boards/` (one file per board) and rcdata's serving layer; module caches in `module_<x>/data/`; dashboards in `.cache/`
+- HTML escaping and the board guard: `revenuechaser/core/html_safe.py`, `core/tests/board_fixtures.py` (ADR-X1, §6)
+- Data health / settings board (universe stats refetch, 10-K/20-F sync): `revenuechaser/docs/data_health.md`

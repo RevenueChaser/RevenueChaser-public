@@ -7,8 +7,8 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.app import runners
-from RevenueChaser.app.jobs import JobMessage
+from revenuechaser.app import runners
+from revenuechaser.app.jobs import JobMessage
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def _patch_calendar(monkeypatch, events, raw_cal):
     monkeypatch.setattr(runners, "_fetch_calendar_range", lambda uw, s, e: (list(events), dict(raw_cal)))
     monkeypatch.setattr(runners, "_load_watchlist", lambda: {"QXO", "AAA"})
     monkeypatch.setattr(runners, "EarningsPipeline", _StubPipeline)
-    monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map",
+    monkeypatch.setattr("revenuechaser.module_sector_rotation.engine.rotation_quadrant_map",
                         lambda uw: {})
     _stub_export(monkeypatch)
 
@@ -58,7 +58,7 @@ def _stub_export(monkeypatch):
     def fake_export(cards, events, nrc, filename=None, filter_stats=None, provider_health=None, notice=None, run_at=None):
         runners.EARNINGS_LATEST.write_text("<html>board</html>", encoding="utf-8")
 
-    monkeypatch.setattr("RevenueChaser.module_earnings_radar.report.export_html", fake_export)
+    monkeypatch.setattr("revenuechaser.module_earnings_radar.report.export_html", fake_export)
 
 
 def _event(t):
@@ -87,7 +87,7 @@ class TestDashboardWatchlistAugmentation:
         monkeypatch.setattr(runners, "_fetch_calendar_days", lambda uw, days: ([_event("AAA")], {"AAA": _event("AAA")}))
         monkeypatch.setattr(runners, "_load_watchlist", lambda: {"QXO", "AAA"})
         monkeypatch.setattr(runners, "EarningsPipeline", _StubPipeline)
-        monkeypatch.setattr("RevenueChaser.module_sector_rotation.engine.rotation_quadrant_map", lambda uw: {})
+        monkeypatch.setattr("revenuechaser.module_sector_rotation.engine.rotation_quadrant_map", lambda uw: {})
         _stub_export(monkeypatch)
         uw = _UW({"QXO": {"next_earnings_date": "2026-09-09", "er_time": "premarket"}})   # between the two days
         with pytest.raises(JobMessage):

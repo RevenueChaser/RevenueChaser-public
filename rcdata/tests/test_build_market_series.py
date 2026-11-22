@@ -6,10 +6,10 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.rcdata import ops, read, serving
-from RevenueChaser.rcdata.build import base, market_series as ms
-from RevenueChaser.rcdata.build.sources import bls, cboe, cftc, cftc_schedule, fed, fred, treasury, yahoo
+from revenuechaser.core import calendar
+from revenuechaser.rcdata import ops, read, serving
+from revenuechaser.rcdata.build import base, market_series as ms
+from revenuechaser.rcdata.build.sources import bls, cboe, cftc, cftc_schedule, fed, fred, treasury, yahoo
 
 
 def _keys(rows):
@@ -284,7 +284,7 @@ def test_a_run_that_raises_writes_a_failed_check_and_leaves_the_live_file(source
 
 
 def test_both_datasets_share_the_market_file(sources, http_mock):
-    from RevenueChaser.rcdata.build import uw_spot_expiry_strike as uw
+    from revenuechaser.rcdata.build import uw_spot_expiry_strike as uw
 
     from . import uw_fixture
     _run()
@@ -299,8 +299,8 @@ def test_both_datasets_share_the_market_file(sources, http_mock):
 def test_b2_an_empty_raw_root_never_swaps_in_an_empty_spx_table(sources, http_mock, monkeypatch, tmp_path):
     """The reviewer's case: the HDD is not mounted (or RC_MARKET_RAW_DIR unset), so a market_series run builds the
     market kind from an empty Parquet tree and would swap in spx_gamma_expiry_strike with 0 rows."""
-    from RevenueChaser.core import config
-    from RevenueChaser.rcdata.build import uw_spot_expiry_strike as uw
+    from revenuechaser.core import config
+    from revenuechaser.rcdata.build import uw_spot_expiry_strike as uw
 
     from . import uw_fixture
     _run()
@@ -317,7 +317,7 @@ def test_b2_an_empty_raw_root_never_swaps_in_an_empty_spx_table(sources, http_mo
 def test_with_a_raw_disk_marker_set_an_unmounted_disk_is_refused_before_the_fetch(sources, monkeypatch, tmp_path):
     """#292 N-2: the Parquet-root check ran after the fetch had written the tree onto the mount point. With
     ``RC_MARKET_RAW_MARKER`` set, a run whose raw root lacks that file asks nothing and writes nothing."""
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     monkeypatch.setenv(base.RAW_MARKER_ENV, ".rc-raw-disk")
     monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "unmounted")
     row = _run()
@@ -329,7 +329,7 @@ def test_with_a_raw_disk_marker_set_an_unmounted_disk_is_refused_before_the_fetc
 
 
 def test_b2_a_build_refuses_a_missing_parquet_root(monkeypatch, tmp_path):
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "nowhere")
     ctx = base.RunContext(run_id="r", dataset=ms.NAME)
     with pytest.raises(base.SourceError, match="Parquet root"):
@@ -344,7 +344,7 @@ def test_the_cftc_sidecar_names_both_report_urls(sources):
 
 
 def test_a_date_past_the_calendar_table_has_no_session_date_and_one_issue(tmp_path):
-    from RevenueChaser.core.calendar import MARKET_HOLIDAYS
+    from revenuechaser.core.calendar import MARKET_HOLIDAYS
     last = max(MARKET_HOLIDAYS)
     html = (f'<h4>{last + 1} FOMC Meetings</h4><div class="fomc-meeting__month"><strong>January</strong></div>'
             '<div class="fomc-meeting__date">26-27</div>')

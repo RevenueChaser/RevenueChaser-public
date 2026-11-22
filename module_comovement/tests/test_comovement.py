@@ -11,10 +11,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_comovement.tests import prices_bars
-from RevenueChaser.module_comovement import (cluster, config, engine, label, noise,
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.core import rawstore
+from revenuechaser.module_comovement.tests import prices_bars
+from revenuechaser.module_comovement import (cluster, config, engine, label, noise,
                                              ohlc, returns)
 
 
@@ -897,7 +897,7 @@ def _report_payload(**over):
 
 
 def test_report_has_readability_layer():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     html = report.render_comovement_dashboard(_report_payload())
     assert "About this data" in html              # the board-level explanation
@@ -922,7 +922,7 @@ def test_report_has_readability_layer():
 
 
 def test_report_defaults_spy_and_1d():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     # S7 (decision D4, prior E1): the default horizon is 1d, not 5d. Passing no
     # horizon is what a stored payload without one looks like.
@@ -945,9 +945,9 @@ def test_relatedness_cluster_levels_reads_the_comovement_default_run(monkeypatch
     # default (horizon, benchmark) instead.
     from types import SimpleNamespace
 
-    from RevenueChaser.module_comovement import config as comov_config
-    from RevenueChaser.module_comovement import settings as comov_settings
-    from RevenueChaser.module_relatedness import engine as rel_engine
+    from revenuechaser.module_comovement import config as comov_config
+    from revenuechaser.module_comovement import settings as comov_settings
+    from revenuechaser.module_relatedness import engine as rel_engine
 
     seen = []
 
@@ -967,13 +967,13 @@ def test_relatedness_cluster_levels_reads_the_comovement_default_run(monkeypatch
 
 
 def test_report_empty_state():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard({"as_of": "2026-09-17T00:00:00+00:00", "clusters": {}, "cuts": []})
     assert "No clusters yet" in html
 
 
 def test_report_header_uses_prices_through_not_compute_time():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(
         as_of="2026-09-25T23:21:28+00:00", prices_through="2026-09-17",
         benchmark_status="applied"))
@@ -984,7 +984,7 @@ def test_report_header_uses_prices_through_not_compute_time():
 def test_an_empty_board_names_no_date_and_no_fallback():
     """#392: with no run, the header says there is no data instead of printing the render's date, and no alert
     claims the board fell back to raw returns: there are no groups to fall back for."""
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard({"as_of": "2026-09-17T00:00:00+00:00", "clusters": {}, "cuts": [],
                                                "benchmark": "spy", "benchmark_status": "missing"})
     assert "Prices: <b>no data yet</b>" in html and "September 17" not in html
@@ -993,14 +993,14 @@ def test_an_empty_board_names_no_date_and_no_fallback():
 
 def test_a_benchmark_with_too_few_returns_is_not_called_missing():
     """#392: SPY has prices but fewer than the minimum returns: the alert says so, not "no usable prices"."""
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(benchmark_applied=False, benchmark_status="short"))
     assert "too few returns in the window" in html and "no usable prices" not in html
     assert "fell back to raw returns" in html
 
 
 def test_report_missing_benchmark_note_is_truthful():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(
         benchmark_applied=False, benchmark_status="missing"))
     assert "is not in the store" not in html
@@ -1009,7 +1009,7 @@ def test_report_missing_benchmark_note_is_truthful():
 
 def test_report_names_the_fallback_benchmark():
     """#393: a run that removed the market with the stored S&P 500 level says so, instead of claiming SPY."""
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(benchmark_status="fallback:SPX"))
     assert "after removing" in html                  # residual board, not the raw one
     assert "SPY has no usable prices" in html        # the asked ETF is absent, said as state
@@ -1020,7 +1020,7 @@ def test_report_names_the_fallback_benchmark():
 
 
 def test_report_raw_direction_is_not_called_vs_market():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(
         benchmark="off", benchmark_applied=False, benchmark_status="off"))
     assert "'market'" not in html          # old: "% vs ' + (res ? b.etf : 'market')"
@@ -1028,7 +1028,7 @@ def test_report_raw_direction_is_not_called_vs_market():
 
 
 def test_report_stale_benchmark_note_names_window_end():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(
         benchmark_status="stale", window_end="2026-08-31"))
     assert "ends 2026-08-31" in html
@@ -1037,7 +1037,7 @@ def test_report_stale_benchmark_note_names_window_end():
 
 
 def test_report_shows_drop_accounting():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(
         universe_total=3751, eligible=3489, no_prices=["AAC"] * 145, dropped=["X"] * 118))
     # The funnel: ≥ floor slice → drops → clustered, even for an old payload
@@ -1048,7 +1048,7 @@ def test_report_shows_drop_accounting():
 
 
 def test_report_shows_flat_print_accounting():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(
         universe_total=3751, eligible=3392, no_prices=["AAC"] * 145,
         dropped=["X"] * 118, flat_prints=["ZZZ"] * 97))
@@ -1059,7 +1059,7 @@ def test_report_shows_flat_print_accounting():
 
 # ── card and limits UX (S11) ────────────────────────────────────────────────
 def test_report_states_its_limits_under_the_sub_title():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload(n_factors=21))
     assert ("Groups, not pairs · 21 common moves above noise · membership moves "
             "week to week") in html
@@ -1073,7 +1073,7 @@ def test_report_states_its_limits_under_the_sub_title():
 
 
 def test_one_name_groups_cannot_comove_and_merge_away():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _report_payload(clusters={"20": [
         _report_cluster("1", mean=0.72, tickers=("AAA", "BBB"),
@@ -1088,7 +1088,7 @@ def test_one_name_groups_cannot_comove_and_merge_away():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_merges_a_one_name_group_into_no_shared_move(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _report_payload(clusters={"20": [
         _report_cluster("1", mean=0.72, tickers=("AAA", "BBB"),
@@ -1104,7 +1104,7 @@ def test_board_js_merges_a_one_name_group_into_no_shared_move(tmp_path):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_shows_group_composition_top_two_plus_other(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     industries = (["Semiconductors"] * 7 + ["Semiconductor Equipment & Materials"] * 3
                   + ["Banks - Regional"] * 2)
@@ -1127,7 +1127,7 @@ def test_board_js_shows_group_composition_top_two_plus_other(tmp_path):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_counts_the_industries_behind_other(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     industries = (["Biotechnology"] * 4 + ["Drug Manufacturers - General"] * 3
                   + ["Medical Devices"] * 2 + ["Diagnostics & Research"] * 1)
@@ -1141,7 +1141,7 @@ def test_board_js_counts_the_industries_behind_other(tmp_path):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_composition_uses_one_level_and_adds_up_to_n(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     meta = {
         # no industry text: the sector is NOT a segment of its own
@@ -1172,7 +1172,7 @@ def test_board_js_composition_uses_one_level_and_adds_up_to_n(tmp_path):
 def test_board_js_composition_treats_the_master_unknown_like_the_old_other(tmp_path):
     """R3 (#86): the identity master writes ``Unclassified``; the board treats it as "no industry" exactly
     as it treated ``Other`` (the legacy value still on rows with no master entry)."""
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     meta = {
         "AAA": {"industry": "Unclassified", "sector": "Unclassified",
@@ -1191,7 +1191,7 @@ def test_board_js_composition_treats_the_master_unknown_like_the_old_other(tmp_p
 
 
 def test_member_rows_default_the_sector_to_unclassified():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _report_payload(clusters={"20": [_report_cluster(
         "1", tickers=("AAA",), member_meta={"AAA": {"sector": "", "industry": ""}})]})
@@ -1203,7 +1203,7 @@ def test_member_rows_default_the_sector_to_unclassified():
 
 
 def test_member_rows_carry_the_industry_and_a_two_level_gics_path():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     meta = {
         "AAA": {"sector": "Technology", "industry": "Software - Application"},
@@ -1226,7 +1226,7 @@ def test_member_rows_carry_the_industry_and_a_two_level_gics_path():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_renders_no_composition_line_when_industry_is_wiped(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     # A store with no usable industry: every industry is '' / 'Other' / 'Unclassified' and the sector
     # is the unknown default, so the card must not claim "Other x 3".
@@ -1243,7 +1243,7 @@ def test_board_js_renders_no_composition_line_when_industry_is_wiped(tmp_path):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_explains_a_name_by_the_shared_industry(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     named = _report_cluster(
         "1", label="Semiconductors", tickers=("AAA", "BBB", "CCC", "DDD"),
@@ -1274,7 +1274,7 @@ def test_board_js_explains_a_name_by_the_shared_industry(tmp_path):
 def test_board_js_escapes_the_industry_text_a_group_is_named_after(tmp_path):
     """The industry is a provider string and now also the group's name: every place the board
     prints it (title, bar, legend, panel, the "why" text) must go through ``rcEsc``."""
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     hostile = "<img src=x onerror=alert(1)>"
     tickers = ("AAA", "BBB", "CCC", "DDD")
@@ -1335,7 +1335,7 @@ def _tooltip_payload():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_chip_tooltip_names_the_industry_then_the_sector_then_says_none(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     html = report.render_comovement_dashboard(_tooltip_payload())
     tips = _run_board_js_probe(html, tmp_path, '{a: _tip("AAA"), b: _tip("BBB"), c: _tip("CCC")}')
@@ -1346,7 +1346,7 @@ def test_chip_tooltip_names_the_industry_then_the_sector_then_says_none(tmp_path
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_filter_to_this_industry_selects_the_industry_level(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     html = report.render_comovement_dashboard(_tooltip_payload())
     gics = _run_board_js_probe(html, tmp_path, '_filterTo("AAA")')
@@ -1384,7 +1384,7 @@ def _mixed_significance_payload(**over):
 
 
 def test_member_rows_flag_only_explicitly_non_significant_groups():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     rows = report._member_rows(_mixed_significance_payload(), applied=True)
     assert {r["ticker"]: r["no_shared"] for r in rows} == {
@@ -1399,7 +1399,7 @@ def test_member_rows_flag_only_explicitly_non_significant_groups():
 
 
 def test_report_has_the_merge_but_not_the_old_leftover_constant():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     html = report.render_comovement_dashboard(_mixed_significance_payload())
     assert "No shared move" in html
@@ -1469,7 +1469,7 @@ def _run_board_js(html, tmp_path, filters=None):
 def test_board_js_merges_non_significant_groups_into_one_card(tmp_path):
     # The merge lives in JS, so run the real script: a string assertion on the
     # HTML would pass with the bug still in place.
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     got = _run_board_js(report.render_comovement_dashboard(_mixed_significance_payload()),
                         tmp_path)
@@ -1489,7 +1489,7 @@ def test_board_js_merges_non_significant_groups_into_one_card(tmp_path):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_keeps_every_card_on_a_raw_board(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _mixed_significance_payload(benchmark="off", benchmark_applied=False)
     got = _run_board_js(report.render_comovement_dashboard(payload), tmp_path)
@@ -1500,7 +1500,7 @@ def test_board_js_keeps_every_card_on_a_raw_board(tmp_path):
 
 # ── stability badge + fringe chips (S9) ─────────────────────────────────────
 def test_member_rows_carry_persistence_and_member_core():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     held = {"jaccard": 0.7, "new": False, "held": True, "oos_r": 0.2, "oos_base": 0.05}
     rows = report._member_rows(_report_payload(clusters={"20": [_report_cluster(
@@ -1516,7 +1516,7 @@ def test_member_rows_carry_persistence_and_member_core():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_dims_names_that_joined_this_quarter(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _report_payload(clusters={"20": [_report_cluster(
         "1", mean=0.72, tickers=("AAA", "BBB", "CCC"), significant=True,
@@ -1537,7 +1537,7 @@ def test_board_js_dims_names_that_joined_this_quarter(tmp_path):
 
 
 def test_member_rows_carry_the_catchall_flag():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     big = _report_cluster("1", tickers=("AAA", "BBB"), stability=0.9)
     big["catchall"] = True
@@ -1574,7 +1574,7 @@ def _catchall_payload(**over):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_catch_all_card_says_so_and_does_not_split_core_fringe(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     grid = _run_board_js(report.render_comovement_dashboard(_catchall_payload()),
                          tmp_path)["grid"]
@@ -1594,7 +1594,7 @@ def test_board_js_catch_all_card_says_so_and_does_not_split_core_fringe(tmp_path
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_catch_all_line_is_residual_only(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _catchall_payload(benchmark="off", benchmark_applied=False)
     grid = _run_board_js(report.render_comovement_dashboard(payload), tmp_path)["grid"]
@@ -1603,7 +1603,7 @@ def test_board_js_catch_all_line_is_residual_only(tmp_path):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_omits_the_badge_when_stability_is_unknown(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     payload = _report_payload(clusters={"20": [_report_cluster(
         "1", mean=0.72, tickers=("AAA", "BBB"), significant=True, baseline_r=0.06)]})
@@ -1666,7 +1666,7 @@ def test_refresh_without_a_persisted_lag_has_no_persistence_verdict(rawstore_tmp
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_shows_the_persistence_badges_and_the_oos_line(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     held = {"jaccard": 0.72, "new": False, "held": True, "oos_r": 0.21, "oos_base": 0.05}
     broke = {"jaccard": 0.6, "new": False, "held": False, "oos_r": 0.01, "oos_base": 0.05}
@@ -1695,7 +1695,7 @@ def test_board_js_shows_the_persistence_badges_and_the_oos_line(tmp_path):
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_board_js_hides_the_oos_line_without_a_lagged_test(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     got = _run_board_js(report.render_comovement_dashboard(_report_payload()), tmp_path)
     assert got["oos"] == ""
@@ -1755,7 +1755,7 @@ def _two_sector_payload():
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_filters_select_groups_and_dim_members_but_keep_whole_group_numbers(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     f = {"v": 1, "index": "all", "mc": {"b": [], "min": None, "max": None},
          "gics": {"key": "Financial Services", "label": "Financial Services", "level": 1},
@@ -1773,7 +1773,7 @@ def test_filters_select_groups_and_dim_members_but_keep_whole_group_numbers(tmp_
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 def test_no_filters_shows_every_group_undimmed(tmp_path):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     got = _run_board_js(report.render_comovement_dashboard(_two_sector_payload()), tmp_path)
     assert "match filters" not in got["grid"] and "chip dim" not in got["grid"]
@@ -1806,7 +1806,7 @@ def test_floor_step_label_states_the_floor_the_run_used():
 def test_funnel_steps_only_change_the_about_funnel_rows():
     """The steps drive the "Universe → clustered names" rows (#40: the split
     short-history steps read as on the Settings card); nothing else on the board."""
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
 
     base = _report_payload()
     with_steps = {**base, "funnel_steps": [{"key": "scanned", "label": "x",
@@ -1845,7 +1845,7 @@ def _win_payload(window=252, custom=False, settings_over=None, **over):
 
 
 def _render(**kw):
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     return report.render_comovement_dashboard(_win_payload(**kw))
 
 
@@ -1921,7 +1921,7 @@ def test_a_non_default_window_leaves_no_stale_config_text():
 
 
 def test_a_legacy_payload_without_settings_still_renders_the_defaults():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload())
     assert f"({config.WINDOW} trading sessions)" in html
     assert re.search(rf'data-v="{config.WINDOW}" aria-checked="true"', html)
@@ -2017,8 +2017,8 @@ def _typed_funnel(**over):
 
 
 def test_funnel_steps_state_the_type_filter_right_after_no_market_cap():
-    from RevenueChaser.core import funnel as funnel_mod
-    from RevenueChaser.core import universe as universe_mod
+    from revenuechaser.core import funnel as funnel_mod
+    from revenuechaser.core import universe as universe_mod
 
     steps = engine.funnel_steps(_typed_funnel())
     assert [s["key"] for s in steps] == [
@@ -2034,7 +2034,7 @@ def test_funnel_steps_state_the_type_filter_right_after_no_market_cap():
 
 
 def test_an_unknown_type_note_follows_the_type_rows_and_is_not_counted():
-    from RevenueChaser.core import funnel as funnel_mod
+    from revenuechaser.core import funnel as funnel_mod
 
     steps = engine.funnel_steps(_typed_funnel(unknown_type=7))
     assert [s["key"] for s in steps][3:8] == [
@@ -2053,7 +2053,7 @@ def test_no_note_when_every_kept_name_is_typed_or_the_count_is_absent():
 
 
 def test_a_funnel_persisted_before_the_type_filter_has_no_type_rows_and_no_note():
-    from RevenueChaser.core import funnel as funnel_mod
+    from revenuechaser.core import funnel as funnel_mod
 
     old = {"scanned_total": 10, "below_floor": 1, "no_market_cap": 0, "no_prices": 0,
            "short_history": 2, "flat": 0, "clustered": 7, "floor": 3e8,
@@ -2251,7 +2251,7 @@ def test_last_move_skips_members_without_a_latest_value():
 
 
 def test_report_uses_the_shared_help_box_once():
-    from RevenueChaser.module_comovement import report
+    from revenuechaser.module_comovement import report
     html = report.render_comovement_dashboard(_report_payload())
     # One board-level "About this data" panel replaces the help box.
     assert html.count('<details class="about"') == 1

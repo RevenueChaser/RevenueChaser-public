@@ -6,8 +6,8 @@ from datetime import datetime
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_news import calendar as cal, report
+from revenuechaser.core import rawstore
+from revenuechaser.module_news import calendar as cal, report
 
 NOW = datetime(2026, 11, 9, 15, 0, tzinfo=cal.AMS).timestamp()        # Mon 9 Nov 15:00 Amsterdam
 HOUR = 3600.0

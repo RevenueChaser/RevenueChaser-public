@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import chains, normalize as nm, snapshot as snap
+from revenuechaser.module_spx_gamma import chains, normalize as nm, snapshot as snap
 
 
 def _row(expiry, strike, cp, delta, iv):
@@ -76,7 +76,7 @@ def test_the_twin_block_guess_is_retired():
 
 def test_a_stored_day_reads_its_skew_chains_back(tmp_path):
     import json
-    from RevenueChaser.module_spx_gamma.raw_day import load_raw_day
+    from revenuechaser.module_spx_gamma.raw_day import load_raw_day
     from .conftest import store_day
     store_day("2026-11-04", {"effective_date": "2026-11-04"}, {"skew_chain_1m.json": _chain("2026-12-04")})
     raw = load_raw_day("2026-11-04")

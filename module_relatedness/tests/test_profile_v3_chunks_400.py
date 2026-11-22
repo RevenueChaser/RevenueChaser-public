@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import random
 
-from RevenueChaser.module_relatedness import profile_v3 as v3
+from revenuechaser.module_relatedness import profile_v3 as v3
 
 _WORDS = ("the company designs manufactures sells products services customers markets revenue segment operations "
           "through our we its and of in for to with").split()

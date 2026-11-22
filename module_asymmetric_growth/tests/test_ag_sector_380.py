@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.gics_map import GicsPath
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_asymmetric_growth import engine, freeze, report, sector_rules
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
-from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
+from revenuechaser.core.gics_map import GicsPath
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_asymmetric_growth import engine, freeze, report, sector_rules
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
+from revenuechaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
 
 
 def _scored(spine_sector: str, vendor_sector: str = "Technology") -> dict:

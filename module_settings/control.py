@@ -28,12 +28,12 @@ from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from RevenueChaser.rcdata import caps, scaffold
-from RevenueChaser.rcdata.needs import boards as api_boards
-from RevenueChaser.rcdata.needs import catalog
-from RevenueChaser.rcdata.needs import screen
-from RevenueChaser.module_settings.control_sources import PV_LABELS  # noqa: F401 - re-exported for the render
-from RevenueChaser.module_settings import control_sources
+from revenuechaser.rcdata import caps, scaffold
+from revenuechaser.rcdata.needs import boards as api_boards
+from revenuechaser.rcdata.needs import catalog
+from revenuechaser.rcdata.needs import screen
+from revenuechaser.module_settings.control_sources import PV_LABELS  # noqa: F401 - re-exported for the render
+from revenuechaser.module_settings import control_sources
 
 #: The page shows avo's clock (CLAUDE.md: Europe/Amsterdam).
 LOCAL = ZoneInfo("Europe/Amsterdam")
@@ -240,7 +240,7 @@ NO_TIMER = {"state": None, "last": None, "next": None, "minute": None}
 
 def bars_dataset() -> str:
     """The dataset that serves ``price_bar_daily`` (#484: ``wrds/prices``; ``alpaca/bars`` only cross-checks it)."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     return read.DATASET_OF_TABLE["price_bar_daily"]
 
 
@@ -267,7 +267,7 @@ def longest_build(runs, now: datetime) -> dict | None:
 
 def _read_job_runs(now: datetime) -> list[dict]:
     """The finished ``job_runs2`` rows of the last two days (a read; the file is not created when missing)."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     return ops._select("SELECT dataset, started_at, finished_at FROM job_runs2 WHERE finished_at IS NOT NULL "
                        "AND started_at >= ?", ((now - timedelta(days=2)).timestamp(),))
 
@@ -421,7 +421,7 @@ def _gateway(ibkr: dict | None) -> tuple[str, str, str]:
 def universe(nd: dict, applied: dict | None) -> dict:
     """The universe bar: each tier set with its count and whether the applied universe holds it, the named groups
     a narrowed request adds, and how many names of it have a bar on the newest session."""
-    from RevenueChaser.core import board_settings
+    from revenuechaser.core import board_settings
     u = nd.get("universe") or {}
     counts = u.get("counts") or {}
     applied = applied or {}
@@ -497,7 +497,7 @@ def _coverage(card: dict) -> dict | None:
 def _fill(ds_name: str, ds, kind: str, universe_view: dict, card: dict) -> dict:
     """The "Fill by tier set" row: cells for the offered sets when the dataset honours a scope, else the words why
     it has none. A cell's press is off unless ``RC_FILL_ENABLED`` is set (avo's word, "başla")."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     if card.get("attended"):
         return {"cells": [], "why": screen.NO_TIER_ATTENDED}
     if not base.honours_scope(ds):
@@ -516,7 +516,7 @@ def _dataset_row(card: dict, ds, kind: str, universe_view: dict, now: datetime, 
                  mode: str = "full", file_mode: str | None = None, own: str | None = None) -> dict:
     name = str(card["dataset"])
     meta = screen.DATASETS.get(name)
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     status = _status_of(card)
     pill, words = STATUS_PILL.get(status, ("p-bad", status))
     providers = tuple(getattr(ds, "providers", ()) or ())
@@ -606,8 +606,8 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
     the dataset's ``as_of_kind``; ``timer`` the hourly builder timer (``view["timer"]``); ``mode`` its serving kind's
     automation (``ops.KIND_MODES``); ``starts`` the New York time its day starts at when the dataset names one
     (``due_from_ny``: the SEC reads' night check)."""
-    from RevenueChaser.core import calendar
-    from RevenueChaser.rcdata.build import due
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata.build import due
     schedule = schedule or {}
     if schedule.get("paused"):
         return "skips until Resume"
@@ -668,7 +668,7 @@ RUN_ALERT = 0.8
 
 
 def _read_runs_now() -> list[dict]:
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     return ops.running_runs()          # routed: under Redis the runs live there, not in ops.sqlite
 
 
@@ -690,7 +690,7 @@ def _unit_of(cgroup: str | None) -> str | None:
 def _unit_limit_s(unit: str) -> tuple[bool, float | None]:
     """``(known, limit in seconds or None)`` for a ``life-rc-*`` unit, from the registry (#527 step 1 keeps it the
     installed unit's limit)."""
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     base = unit[:-len(".service")]
     for e in automations.REGISTRY:
         if base in (e.unit, "life-" + e.name.lower()):
@@ -746,14 +746,14 @@ def running_jobs(active: list[dict], runs: list[dict], cgroup, alive, now: datet
 
 
 def _read_switches() -> dict:
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     return ops.read_switches()
 
 
 def switches_view(rows, now: datetime | None = None) -> dict:
     """``{name: {"on", "by", "at"}}`` for the board's two switches (#527). ``rows`` is ``ops.read_switches``'s answer,
     or None when the store could not be read: then ``on`` is None (not known), never a guessed on."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     out = {}
     for name in ops.SWITCHES:
         if rows is None:
@@ -768,12 +768,12 @@ def switches_view(rows, now: datetime | None = None) -> dict:
 
 
 def _read_kind_modes() -> dict:
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     return ops.read_kind_modes()
 
 
 def _read_dataset_modes() -> dict:
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     return ops.read_dataset_modes()
 
 
@@ -873,7 +873,7 @@ def files(nd: dict, datasets: dict, universe_view: dict, reads: dict, now: datet
 # ── The Backfill calendars ────────────────────────────────────────────────────────────────────────────────────
 
 def _cal_bars(nd: dict, providers: dict) -> dict:
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
     sessions = nd.get("sessions") or {}
     p = providers.get("alpaca") or {}
     return {"dataset": "alpaca/bars", "provider": "Alpaca", "from": screen.CALENDAR_FIRST["alpaca/bars"],
@@ -922,7 +922,7 @@ def board_files() -> tuple[list[dict], list[list[str]], list[list[str]]]:
     MANIFEST ``"db"``); ``own`` is ``[board label, file]`` for the board package that writes it (``module_<db>``);
     ``reads`` is ``[board label, file]`` for a board package whose source names a table of another board's file.
     shortcut: a quoted table name in the package's code counts as a read; a READS declaration would be exact."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     tables: dict[str, list[str]] = {}
     for name, m in rawstore.MANIFEST.items():
         if m.get("db") in rawstore.BOARD_DBS:
@@ -958,7 +958,7 @@ def board_file_cards() -> list[dict]:
     ``board_files()`` plus what a section needs: each table's columns from the MANIFEST, the boards that read the
     file besides its writer, and the file on the disk from one ``stat`` (size and when it was last written). The
     file is never opened here: its board holds the writer, and a row count would need a connection."""
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     files, _own, reads = board_files()
     also: dict[str, list[str]] = {}
     for label, name in reads:
@@ -1091,7 +1091,7 @@ def read_system_timer(unit: str, system=None) -> tuple[str | None, str | None, s
     """``(state, last, next)`` of the system timer ``<unit>.timer`` (#527: on homesrv the builder is a system unit
     installed from home-server, which the user-unit scheduler never sees). Not installed, failed, or unreadable:
     all None."""
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     rc, out, _ = (system or _systemctl_system)(
         ["show", "--timestamp=unix", "--property=" + ",".join(SYSTEM_TIMER_PROPS), f"{unit}.timer"])
     if rc != 0:
@@ -1110,7 +1110,7 @@ def read_timer(scheduler=None, system=None) -> dict:
     ``OnCalendar``. The scheduler answers first; when it has no row (no user unit, or no scheduler on this host)
     the system unit of the same name is read (``system`` runs ``systemctl``, injectable). Not installed anywhere,
     or a read that fails: every value None."""
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     try:
         e = automations.entry(BUILDER_ENTRY)
         minute = int(automations.on_calendar(e).split()[-1].split(":")[1])
@@ -1150,7 +1150,7 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
     (``ops.read_kind_modes``); unreadable, every kind reads off, which is also what the builder does without a row.
     ``dataset_modes`` reads each source's own (``ops.read_dataset_modes``, #527); unreadable, every source follows its
     file."""
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     now = now or datetime.now(timezone.utc)
     if nd.get("error"):
         return {"error": nd["error"], "read_at": _local(now).strftime("%H:%M")}
@@ -1181,7 +1181,7 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
     except Exception:  # noqa: BLE001 - an unreadable ops store shows the switches as not known
         switch_rows = None
     try:
-        from RevenueChaser.core import procs
+        from revenuechaser.core import procs
         running = running_jobs((nd.get("queue") or {}).get("active") or [],
                                runs_now() if runs_now else _read_runs_now(), cgroup or _read_cgroup,
                                alive or procs.pid_alive, now)

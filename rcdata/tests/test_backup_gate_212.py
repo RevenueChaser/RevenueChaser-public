@@ -12,9 +12,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import config
-from RevenueChaser.rcdata import backup
-from RevenueChaser.rcdata.build import base
+from revenuechaser.core import config
+from revenuechaser.rcdata import backup
+from revenuechaser.rcdata.build import base
 
 NOW = datetime(2026, 11, 20, 12, 0, tzinfo=timezone.utc)
 
@@ -116,5 +116,5 @@ def test_the_builders_gate_reads_the_same_record(folder):
 
 def test_the_limit_is_the_red_line_the_settings_card_draws():
     """One number, so the card cannot say "ok" while the builder refuses (``module_settings/newdata.py``)."""
-    from RevenueChaser.module_settings import newdata
+    from revenuechaser.module_settings import newdata
     assert backup.STALE_DAYS == newdata.BACKUP_ALERT_DAYS

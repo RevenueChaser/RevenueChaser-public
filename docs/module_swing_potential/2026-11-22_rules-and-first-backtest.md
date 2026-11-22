@@ -62,7 +62,7 @@ bar is more than 14 days old, is not scored. Unfinished forward windows are null
 **It is not a portfolio backtest.** No positions, entries, exits, stops, sizing, costs, slippage, equity curve,
 drawdown or Sharpe. It produces a dataset — the board's score as of each week plus what each name then did.
 
-Script and the `--ticker-slice` option for running stage 1 on four cores: `RevenueChaser/claude-coordinator`
+Script and the `--ticker-slice` option for running stage 1 on four cores: `revenuechaser/claude-coordinator`
 PR #1215. Report: PR #1216.
 
 ## 3. The #1266 verdict: do not adopt Option A

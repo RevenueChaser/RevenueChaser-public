@@ -15,7 +15,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 HIST = "t_history_demo"
 

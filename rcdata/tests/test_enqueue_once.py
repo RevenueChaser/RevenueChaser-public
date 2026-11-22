@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import threading
 
-from RevenueChaser.rcdata import ops
+from revenuechaser.rcdata import ops
 
 MS, UW = "market_series", "uw/spot_expiry_strike"
 

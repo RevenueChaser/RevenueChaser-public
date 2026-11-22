@@ -1,7 +1,7 @@
 """Public #17 (C2) — the rotation record lives in `module_sector_rotation/models.py`.
 
 Two invariants:
-  1. the old home, `RevenueChaser.core.models.rotation`, is gone (no re-export shim:
+  1. the old home, `revenuechaser.core.models.rotation`, is gone (no re-export shim:
      a shim keeps the board -> core edge the move exists to remove);
   2. the move was pure — `ETFRotationSnapshot` keeps its field names, order and
      defaults, pinned below from the file as it stood on 3670e76.
@@ -17,11 +17,11 @@ import pytest
 
 def test_old_home_is_gone():
     with pytest.raises(ModuleNotFoundError):
-        importlib.import_module("RevenueChaser.core.models.rotation")
+        importlib.import_module("revenuechaser.core.models.rotation")
 
 
 def test_new_home_imports_the_record():
-    from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+    from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
 
     assert dataclasses.is_dataclass(ETFRotationSnapshot)
 
@@ -67,6 +67,6 @@ EXPECTED = {
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_field_parity(name):
-    import RevenueChaser.module_sector_rotation.models as models
+    import revenuechaser.module_sector_rotation.models as models
 
     assert _spec(getattr(models, name)) == EXPECTED[name]

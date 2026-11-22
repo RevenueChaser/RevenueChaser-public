@@ -1,9 +1,9 @@
 """PR 2: Fundamentals' price and dollar-volume floors and its type filter are settings (defaults unchanged)."""
 from __future__ import annotations
 
-from RevenueChaser.core import board_settings
-from RevenueChaser.module_fundamentals import config, freeze
-from RevenueChaser.module_fundamentals import settings as fsettings
+from revenuechaser.core import board_settings
+from revenuechaser.module_fundamentals import config, freeze
+from revenuechaser.module_fundamentals import settings as fsettings
 
 
 def test_effective_reads_the_config_defaults_with_no_override(rawstore_tmp_db):

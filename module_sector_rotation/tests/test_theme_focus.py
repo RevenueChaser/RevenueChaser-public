@@ -2,8 +2,8 @@
 import json
 from datetime import date
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.core import rawstore
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
 
 
 def _pin_run(run_id: str = "tf-run"):
@@ -32,18 +32,18 @@ def _etf_rows(theme_id: str, pairs: list[tuple[str, int]]):
 
 class TestThemeEtfsForCoarse:
     def test_empty_unknown_label(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
         assert theme_etfs_for_coarse("") == []
         assert theme_etfs_for_coarse(None) == []  # type: ignore[arg-type]
         assert theme_etfs_for_coarse("no-such-theme") == []
 
     def test_missing_tables_fail_empty(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
         # no pin, no themes
         assert theme_etfs_for_coarse("Semiconductors") == []
 
     def test_jaccard_ordered_by_rank_intersect_rotation(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
         run = _pin_run()
         tid = f"{run}:c0"
         rawstore.write_rows("relatedness_themes", [
@@ -56,7 +56,7 @@ class TestThemeEtfsForCoarse:
         assert theme_etfs_for_coarse("Semiconductors") == ["SMH", "SOXX", "XLK"]
 
     def test_drops_holdings_only_etfs(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
         run = _pin_run()
         tid = f"{run}:c0"
         rawstore.write_rows("relatedness_themes", [_coarse(run, "c0", "Shipping")])
@@ -66,7 +66,7 @@ class TestThemeEtfsForCoarse:
         assert theme_etfs_for_coarse("Shipping") == []
 
     def test_prefers_jaccard_over_overlay(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
         run = _pin_run()
         tid = f"{run}:c0"
         rawstore.write_rows("relatedness_themes", [
@@ -79,7 +79,7 @@ class TestThemeEtfsForCoarse:
         assert theme_etfs_for_coarse("Regional community banks") == ["XLF", "KRE"]
 
     def test_overlay_when_jaccard_empty(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
         run = _pin_run()
         rawstore.write_rows("relatedness_themes", [
             _coarse(run, "c0", "Regional / community banks"),
@@ -94,7 +94,7 @@ class TestThemeEtfsForCoarse:
         assert theme_etfs_for_coarse("Totally unknown niche") == []
 
     def test_only_current_run_coarse(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import theme_etfs_for_coarse
         run = _pin_run("cur")
         rawstore.write_rows("theme_runs", [{
             "id": "old", "created_at": "2025-01-01", "k_fine": 1, "k_medium": 1,
@@ -112,11 +112,11 @@ class TestThemeEtfsForCoarse:
 
 class TestCoarseCatalog:
     def test_empty_when_no_pin(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import coarse_theme_catalog
+        from revenuechaser.module_sector_rotation.theme_focus import coarse_theme_catalog
         assert coarse_theme_catalog() == {}
 
     def test_catalog_maps_labels_to_etfs(self, rawstore_tmp_db):
-        from RevenueChaser.module_sector_rotation.theme_focus import coarse_theme_catalog
+        from revenuechaser.module_sector_rotation.theme_focus import coarse_theme_catalog
         run = _pin_run()
         rawstore.write_rows("relatedness_themes", [
             _coarse(run, "c0", "Semiconductors"),
@@ -131,7 +131,7 @@ class TestCoarseCatalog:
 
     def test_two_coarse_themes_sharing_a_label_get_distinct_keys(self, rawstore_tmp_db):
         """C-F5: the catalog uniquifies in appearance order, and the overlay reads the raw label."""
-        from RevenueChaser.module_sector_rotation.theme_focus import coarse_theme_catalog
+        from revenuechaser.module_sector_rotation.theme_focus import coarse_theme_catalog
         run = _pin_run()
         rawstore.write_rows("relatedness_themes", [
             _coarse(run, "c0", "Regional Banks"),
@@ -146,7 +146,7 @@ class TestCoarseCatalog:
 
     def test_a_suffixed_label_without_jaccard_rows_still_gets_the_overlay(self, rawstore_tmp_db):
         """C-F5: the overlay looks up the raw label, so ``Label (2)`` with no Jaccard rows keeps its ETF."""
-        from RevenueChaser.module_sector_rotation.theme_focus import coarse_theme_catalog
+        from revenuechaser.module_sector_rotation.theme_focus import coarse_theme_catalog
         run = _pin_run()
         rawstore.write_rows("relatedness_themes", [
             _coarse(run, "c0", "Regional Banks"),
@@ -159,7 +159,7 @@ class TestCoarseCatalog:
         """avo's card on the R2 review (2026-10-14, "Eski etikete bağlı"): the catalog renames "Financials (2)" to its
         largest medium child for display, but the overlay still reads the stored label, so it keeps XLF (not the
         child's KRE)."""
-        from RevenueChaser.module_sector_rotation.theme_focus import coarse_theme_catalog, theme_etfs_for_coarse
+        from revenuechaser.module_sector_rotation.theme_focus import coarse_theme_catalog, theme_etfs_for_coarse
         run = _pin_run()
         rawstore.write_rows("relatedness_themes", [
             _coarse(run, "c0", "Financials (2)"),
@@ -188,7 +188,7 @@ class TestThemeFocusRender:
     def test_omits_control_when_no_coarses(self, tmp_path, monkeypatch, rawstore_tmp_db):
         # The no-catalog path hides the Theme row and must not invent one from a hard-coded list
         # (the keyword taxonomy's theme list is gone, #383 C21).
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         p = rd.export_rotation_dashboard(self._snaps(), filename="no_theme.html", uw=None)
         c = p.read_text(encoding="utf-8")
@@ -200,7 +200,7 @@ class TestThemeFocusRender:
         assert 'class="filter-btn active" data-group="sector"' in c
 
     def test_theme_control_and_js_map(self, tmp_path, monkeypatch, rawstore_tmp_db):
-        import RevenueChaser.module_sector_rotation.report as rd
+        import revenuechaser.module_sector_rotation.report as rd
         monkeypatch.setattr(rd, "OUTPUT_DIR", tmp_path)
         run = _pin_run()
         rawstore.write_rows("relatedness_themes", [
@@ -229,7 +229,7 @@ class TestThemeFocusRender:
 
 def test_catalog_reads_only_the_current_run(rawstore_tmp_db):
     """A run whose id extends the current one (``r1`` vs ``r10``) is not mixed in."""
-    from RevenueChaser.module_sector_rotation.theme_focus import coarse_theme_catalog
+    from revenuechaser.module_sector_rotation.theme_focus import coarse_theme_catalog
     _pin_run("r1")
     rawstore.write_rows("relatedness_themes", [
         _coarse("r1", "c0", "Semiconductors"), _coarse("r10", "c0", "Old Banks")])
@@ -237,18 +237,18 @@ def test_catalog_reads_only_the_current_run(rawstore_tmp_db):
 
 
 def test_theme_focus_reuses_the_relatedness_reader():
-    from RevenueChaser.module_relatedness import themes
-    from RevenueChaser.module_sector_rotation import theme_focus
+    from revenuechaser.module_relatedness import themes
+    from revenuechaser.module_sector_rotation import theme_focus
     assert not hasattr(theme_focus, "_in_run") and not hasattr(themes, "_in_run")
 
 
 def test_theme_control_escapes_a_markup_label(rawstore_tmp_db):
     """A coarse label with ``</script>`` reaches neither the <select> nor THEME_ETFS raw."""
-    from RevenueChaser.module_sector_rotation.report import _theme_control_html
+    from revenuechaser.module_sector_rotation.report import _theme_control_html
     label = "</script><img src=x onerror=alert(1)>"
     _pin_run("xs")
     rawstore.write_rows("relatedness_themes", [_coarse("xs", "c0", label)])
-    from RevenueChaser.module_sector_rotation.theme_focus import coarse_theme_catalog
+    from revenuechaser.module_sector_rotation.theme_focus import coarse_theme_catalog
     html, etfs_json = _theme_control_html(coarse_theme_catalog())
     assert "&lt;/script&gt;&lt;img" in html and "</script><img" not in html
     assert "</script><img" not in etfs_json

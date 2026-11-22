@@ -7,7 +7,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, read
+from revenuechaser.rcdata import ops, read
 
 from .test_prices_serving import AAPL, FLG, M, built, env  # noqa: F401 - the built prices store of the week
 

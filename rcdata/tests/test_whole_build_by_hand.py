@@ -15,11 +15,11 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import DATASETS, base, dirty, market_series as ms
-from RevenueChaser.rcdata.build import uw_greek_expiry_strike as greek, uw_spot_expiry_strike as spot
-from RevenueChaser.rcdata.build.prices import serving as prices_serving
-from RevenueChaser.rcdata.build.sources import fred, treasury
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import DATASETS, base, dirty, market_series as ms
+from revenuechaser.rcdata.build import uw_greek_expiry_strike as greek, uw_spot_expiry_strike as spot
+from revenuechaser.rcdata.build.prices import serving as prices_serving
+from revenuechaser.rcdata.build.sources import fred, treasury
 
 D1, D3 = date(2026, 10, 26), date(2026, 10, 28)
 MEMBERS = (ms.DATASET, spot.DATASET, greek.DATASET)

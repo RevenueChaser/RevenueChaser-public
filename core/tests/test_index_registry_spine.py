@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import index_registry as ir
-from RevenueChaser.core import universe
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
-from RevenueChaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
+from revenuechaser.core import index_registry as ir
+from revenuechaser.core import universe
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401 - market roots per test
+from revenuechaser.rcdata.tests.test_spine_security import built, run_all  # noqa: F401 - the 10 names
 
 
 def test_the_registry_does_not_import_the_old_store():

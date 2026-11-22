@@ -11,8 +11,8 @@ import time
 
 import pytest
 
-from RevenueChaser.app import activity, dashboard, runview
-from RevenueChaser.rcdata import ops
+from revenuechaser.app import activity, dashboard, runview
+from revenuechaser.rcdata import ops
 
 DAY = 86_400.0
 

@@ -6,10 +6,10 @@ import os
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.module_leaps import board as leaps_board
-from RevenueChaser.module_watchlists import board as wl_board
-from RevenueChaser.rcdata.tests.conftest import market_roots  # noqa: F401
+from revenuechaser.app import dashboard
+from revenuechaser.module_leaps import board as leaps_board
+from revenuechaser.module_watchlists import board as wl_board
+from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401
 
 
 @pytest.fixture

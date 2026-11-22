@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import newdata_fixture
-from RevenueChaser.module_settings import control, newdata
-from RevenueChaser.rcdata import scaffold, serving
-from RevenueChaser.rcdata.needs import screen
+from revenuechaser.core.tests.board_fixtures import newdata_fixture
+from revenuechaser.module_settings import control, newdata
+from revenuechaser.rcdata import scaffold, serving
+from revenuechaser.rcdata.needs import screen
 
 NOW = datetime(2026, 10, 30, 17, 31, tzinfo=timezone.utc)
 
@@ -62,7 +62,7 @@ def _build(nd=None, **kw):
 
 
 def test_the_board_menu_is_the_dashboards():
-    from RevenueChaser.app import dashboard
+    from revenuechaser.app import dashboard
     menu, group = [], None
     for t in dashboard.TABS:
         if t["type"] == "header":
@@ -206,7 +206,7 @@ def test_the_flow_sources_are_the_datasets_providers():
 
 
 def test_the_bars_calendar_reads_the_sessions_and_the_page_size():
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
     cal = _build()["calendars"]["alpaca/bars"]
     assert cal["names_per_session"] == control_nd()["sessions"], "by set: the page sums the sets the universe holds"
     # No ``universe``: the cells are coloured in the page from the applied sets, so the size never travelled
@@ -247,14 +247,14 @@ def test_the_providers_card_names_alpha_vantage_with_its_cap_and_the_sec_with_n_
 def test_the_listing_status_card_reads_the_weekly_cadence_so_a_weekly_run_is_not_late():
     """Weekly since 21 Nov 2026 (avo): the card has to read the dataset's own cadence, or a list fetched once a
     week would show "late" after one day and "stale" after two (``newdata._missed``)."""
-    from RevenueChaser.module_settings import newdata as nd_mod
+    from revenuechaser.module_settings import newdata as nd_mod
     assert nd_mod._cadence("alphavantage/listing_status", None) == "weekly"
     assert nd_mod.CYCLE_DAYS["weekly"] == 8
 
 
 def test_ncens_monthly_cadence_is_the_datasets_own_not_a_second_copy_on_its_card():
     """Review N6 of PR 349: the dataset carries ``cadence = "monthly"``; the screen's card does not repeat it."""
-    from RevenueChaser.module_settings import newdata as nd_mod
+    from revenuechaser.module_settings import newdata as nd_mod
     assert screen.DATASETS["sec/ncen"].cadence == "daily"           # the card's default, not read for this dataset
     assert nd_mod._cadence("sec/ncen", None) == "monthly"
 
@@ -265,7 +265,7 @@ def test_the_folder_line_tells_not_walked_from_no_folder_from_counted():
     """#434: the counts come from the storage-picture job, so "I have not looked" is a third state. Before it, a
     board with no picture rendered every dataset as "no folder yet" -- the same words as a dataset whose folder
     really is missing."""
-    from RevenueChaser.module_settings import control_render
+    from revenuechaser.module_settings import control_render
 
     walked = control_render.render_data(_build())
     assert "52 files" in walked and "not walked yet" not in walked
@@ -284,7 +284,7 @@ def test_the_folder_line_tells_not_walked_from_no_folder_from_counted():
 
 
 def test_the_roots_line_says_when_the_picture_was_taken_and_offers_the_control():
-    from RevenueChaser.module_settings import control_render
+    from revenuechaser.module_settings import control_render
 
     assert control_render._walked(None) == "not walked yet"
     fresh = control_render._walked("2026-11-05T12:00:00+00:00", datetime(2026, 11, 5, 13, 0, tzinfo=timezone.utc))
@@ -296,7 +296,7 @@ def test_the_roots_line_says_when_the_picture_was_taken_and_offers_the_control()
 
 def test_a_dataset_row_carries_its_limits_and_its_night_pass():
     """The SEC reads' daily check on the Settings page (avo, 16 Nov 2026): when it runs next, and its caps."""
-    from RevenueChaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build import DATASETS
     row = control._dataset_row(_card("sec/reads", last_result="changed", next_check_due="2026-11-13"),
                                DATASETS["sec/reads"], "sec_reads", {}, NOW, {"state": "on", "minute": 5})
     assert row["limits"] == "EVREN: no day cap · DeepSeek: 200 companies a day"

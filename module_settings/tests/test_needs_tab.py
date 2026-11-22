@@ -10,14 +10,14 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import H, hostile
-from RevenueChaser.core.tests.board_js import assert_scripts_parse
-from RevenueChaser.core.tests.test_board_html_guard import assert_inert
-from RevenueChaser.core.tests.test_one_escaper_175 import check_page
-from RevenueChaser.module_settings import needs_tab, report
-from RevenueChaser.module_settings.tests.test_control_view import control_nd
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.needs import catalog
+from revenuechaser.core.tests.board_fixtures import H, hostile
+from revenuechaser.core.tests.board_js import assert_scripts_parse
+from revenuechaser.core.tests.test_board_html_guard import assert_inert
+from revenuechaser.core.tests.test_one_escaper_175 import check_page
+from revenuechaser.module_settings import needs_tab, report
+from revenuechaser.module_settings.tests.test_control_view import control_nd
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.needs import catalog
 
 TODAY = date(2026, 11, 1)
 
@@ -62,7 +62,7 @@ def test_the_catalog_has_one_row_per_need_with_its_file_dataset_rule_and_state()
 
 
 def test_readers_split_into_declared_and_planned(monkeypatch):
-    from RevenueChaser.rcdata.needs import boards
+    from revenuechaser.rcdata.needs import boards
     monkeypatch.setattr(boards, "all_reads", lambda: {"module_earnings_radar": ("earnings.next", "prices.bars")})
     monkeypatch.setattr(boards, "PLANNED_READS", {"module_swing_potential": ("prices.bars",),
                                                   "module_earnings_radar": ("market.vix",)})
@@ -231,8 +231,8 @@ def test_the_tokens_are_the_control_boards_and_both_are_names_of_the_shared_them
     """Theme D (avo, 12 Nov 2026: "Yeni design principlelarini burada da uygula"): the tab strip, the Needs tab and
     the control board carry no palette of their own. Their short names are aliases of the shared tokens, so light and
     dark come from ``THEME_CSS`` alone."""
-    from RevenueChaser.core.reporting_common import THEME_SCALE, THEME_TOKENS
-    from RevenueChaser.module_settings import control_render
+    from revenuechaser.core.reporting_common import THEME_SCALE, THEME_TOKENS
+    from revenuechaser.module_settings import control_render
     ctl, nds = control_render.CTL_CSS, needs_tab.NEEDS_CSS
     names_c, names_n = _tokens(ctl, ".ctl{"), _tokens(nds, "#needs,#settings-tabs{")
     assert names_n
@@ -274,7 +274,7 @@ def test_no_style_or_script_escapes_the_tab_scope():
 
 def test_the_board_fixture_carries_the_hostile_payload_into_the_needs_tab(tmp_path, monkeypatch):
     """The board HTML guard renders Settings from ``board_fixtures``; its payload must reach this tab's strings."""
-    from RevenueChaser.core.tests.board_fixtures import BOARDS
+    from revenuechaser.core.tests.board_fixtures import BOARDS
     html = BOARDS["module_settings"].render(tmp_path, monkeypatch)
     assert_inert(html)
     needs = html[html.index('id="database-more"'):html.index('<div id="panel-health" role="tabpanel"')]

@@ -7,9 +7,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.core.providers import spend
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build.fundamentals import estimates
+from revenuechaser.core.providers import spend
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build.fundamentals import estimates
 
 from . import fund_fixture as fx
 
@@ -107,7 +107,7 @@ def test_failures_in_a_row_stop_the_run(yf, monkeypatch):
 
 
 def test_each_estimate_request_waits_for_the_yfinance_window(yf, monkeypatch):
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     waits, real = [], base.run_pacer
 
     def run_pacer(ctx, provider):

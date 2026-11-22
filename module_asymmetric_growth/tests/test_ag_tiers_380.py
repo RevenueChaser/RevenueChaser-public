@@ -17,15 +17,15 @@ import json
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.rcdata.tests import fund_store
-from RevenueChaser.app import runners
-from RevenueChaser.core import ledger, rawstore, ticker_store
-from RevenueChaser.core import reporting_common as rc
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_asymmetric_growth import engine, freeze, report
-from RevenueChaser.module_asymmetric_growth.engine import score_ticker
-from RevenueChaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.rcdata.tests import fund_store
+from revenuechaser.app import runners
+from revenuechaser.core import ledger, rawstore, ticker_store
+from revenuechaser.core import reporting_common as rc
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_asymmetric_growth import engine, freeze, report
+from revenuechaser.module_asymmetric_growth.engine import score_ticker
+from revenuechaser.module_asymmetric_growth.tests.test_ag_payload_route_380 import _card, _result
 
 
 def _sig(*passed):
@@ -49,14 +49,14 @@ def test_a_signal_with_two_known_passes_of_three_is_strong_whatever_is_unknown()
 
 
 def test_a_3_2_1_card_has_tier_2():
-    from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
+    from revenuechaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
     card = score_ticker("TEST", _fin(), _tech(dist=0.30, vol=1.0))    # momentum 1/3
     assert [s["passed"] for s in card["signals"]] == [3, 2, 1]   # survival 2/2: runway not counted (C1)
     assert card["tier"] == 2
 
 
 def test_a_full_card_has_tier_3():
-    from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
+    from revenuechaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
     assert score_ticker("TEST", _fin(), _tech())["tier"] == 3
 
 

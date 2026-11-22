@@ -23,8 +23,8 @@ import json
 import sys
 import time
 
-from RevenueChaser.rcdata import backup, serving
-from RevenueChaser.rcdata.build import base
+from revenuechaser.rcdata import backup, serving
+from revenuechaser.rcdata.build import base
 
 
 # The one kind whose tables may never be narrowed, whatever a run asks for (avo's standing rule; DECISIONS S18).

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import board_settings, llm_jobs, llm_writers, settings_store
+from revenuechaser.core import board_settings, llm_jobs, llm_writers, settings_store
 
 REPO = Path(__file__).resolve().parents[2]
 KEY = "LITELLM_RC_KEY"
@@ -164,7 +164,7 @@ def test_theme_naming_has_no_fixed_provider_import():
 
 
 def test_the_shared_exception_names_cover_both_writers():
-    from RevenueChaser.core.providers import evren
+    from revenuechaser.core.providers import evren
     assert issubclass(evren.EvrenError, llm_jobs.Error)
     assert issubclass(evren.EvrenAuthError, llm_jobs.AuthError)
     assert issubclass(evren.EvrenTransientError, llm_jobs.TransientError)

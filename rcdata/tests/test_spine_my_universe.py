@@ -18,8 +18,8 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.spine import etf, my_universe, security
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.spine import etf, my_universe, security
 
 
 def _plain(schema):
@@ -53,7 +53,7 @@ def _etf(ticker, aum=None, adv=None, **kw) -> dict:
 def live_my_universe():
     """Write a live ``spine.duckdb`` holding ``my_universe`` and ``my_universe_changes`` rows, as a build left them."""
     def write(rows=(), changes=()):
-        from RevenueChaser.rcdata import serving
+        from revenuechaser.rcdata import serving
         path = serving.live_path("spine")
         path.parent.mkdir(parents=True, exist_ok=True)
         con = duckdb.connect(str(path))
@@ -134,8 +134,8 @@ def test_listed_funds_the_etf_table_does_not_hold_are_one_issue_never_a_row():
 
 
 def test_a_list_that_cannot_be_read_fails_the_build(monkeypatch):
-    from RevenueChaser.core import rotation_reference
-    from RevenueChaser.rcdata import read
+    from revenuechaser.core import rotation_reference
+    from revenuechaser.rcdata import read
 
     def unreadable(feed):
         raise read.JobListUnreadable("watchlists.duckdb: no such file")
@@ -581,7 +581,7 @@ def test_every_held_fund_is_one_issue_between_them_naming_them_all(live_my_unive
 def test_a_live_table_written_before_a_column_existed_is_read_anyway():
     """The build reads its whole live row to carry a fund forward, so it asks for today's columns of a file an
     older build wrote. A column that file does not hold is NULL, not a broken build."""
-    from RevenueChaser.rcdata import serving
+    from revenuechaser.rcdata import serving
     path = serving.live_path("spine")
     path.parent.mkdir(parents=True, exist_ok=True)
     old = duckdb.connect(str(path))

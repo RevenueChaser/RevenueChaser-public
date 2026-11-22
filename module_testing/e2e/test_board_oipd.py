@@ -15,7 +15,7 @@ import pytest
 
 import duckdb
 
-from RevenueChaser.module_oipd import opd_math
+from revenuechaser.module_oipd import opd_math
 
 from .harness.shared import shared_dashboard
 
@@ -61,7 +61,7 @@ def _seed(dashboard) -> date:
     """
     from pathlib import Path
 
-    from RevenueChaser.rcdata.build.options import tables
+    from revenuechaser.rcdata.build.options import tables
 
     market = Path(dashboard.env["RC_MARKET_DIR"])
     market.mkdir(parents=True, exist_ok=True)

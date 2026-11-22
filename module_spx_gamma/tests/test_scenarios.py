@@ -1,7 +1,7 @@
 """Tests for the scenario set: regime-dependent bands, the report's probabilities, asymmetry."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma import scenarios
+from revenuechaser.module_spx_gamma import scenarios
 from .conftest import make_snapshot
 
 

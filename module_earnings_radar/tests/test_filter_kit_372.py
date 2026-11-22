@@ -9,10 +9,10 @@ import re
 
 import pytest
 
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.core.tests.board_js import run_board_js
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.core.tests.board_js import run_board_js
 
-import RevenueChaser.module_earnings_radar.report as er
+import revenuechaser.module_earnings_radar.report as er
 
 
 def _card(ticker="AAPL", **overrides) -> TradeCard:
@@ -36,8 +36,8 @@ def _fields(tickers):
 @pytest.fixture
 def render(tmp_path, monkeypatch):
     monkeypatch.setattr(er, "OUTPUT_DIR", tmp_path)
-    monkeypatch.setattr("RevenueChaser.core.universe.filter_fields", _fields)
-    monkeypatch.setattr("RevenueChaser.core.universe.theme_catalog", lambda *a, **k: {"t1": {"label": "AI"}})
+    monkeypatch.setattr("revenuechaser.core.universe.filter_fields", _fields)
+    monkeypatch.setattr("revenuechaser.core.universe.theme_catalog", lambda *a, **k: {"t1": {"label": "AI"}})
 
     def go(cards, **kw):
         path = er.export_html(cards, filename="earnings/x.html", **kw)
@@ -149,7 +149,7 @@ def test_failed_filter_fields_still_renders_with_notice(tmp_path, monkeypatch):
 
     def boom(_t):
         raise RuntimeError("store down")
-    monkeypatch.setattr("RevenueChaser.core.universe.filter_fields", boom)
+    monkeypatch.setattr("revenuechaser.core.universe.filter_fields", boom)
     page = er.export_html([_card("IN"), _card("OUT", filter_status="excluded")],
                           filename="earnings/x.html").read_text(encoding="utf-8")
     assert "could not be read" in page
@@ -167,8 +167,8 @@ def test_hostile_ticker_and_name_are_escaped_in_data(tmp_path, monkeypatch):
     def fields(tickers):
         return {t: {"ticker": t, "name": bad, "index": [], "market_cap": None,
                     "gics": ["Unclassified"], "theme_ids": [], "earnings_date": None} for t in tickers}
-    monkeypatch.setattr("RevenueChaser.core.universe.filter_fields", fields)
-    monkeypatch.setattr("RevenueChaser.core.universe.theme_catalog", lambda *a, **k: {})
+    monkeypatch.setattr("revenuechaser.core.universe.filter_fields", fields)
+    monkeypatch.setattr("revenuechaser.core.universe.theme_catalog", lambda *a, **k: {})
     page = er.export_html([_card("IN", name=bad)], filename="earnings/x.html").read_text(encoding="utf-8")
     assert bad not in page
     assert "\\u003c/script\\u003e" in page

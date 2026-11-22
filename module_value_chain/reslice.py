@@ -26,7 +26,7 @@ from pathlib import Path
 
 import duckdb
 
-from RevenueChaser.core import config, edgar_docs, job_lock, ledger, rawstore
+from revenuechaser.core import config, edgar_docs, job_lock, ledger, rawstore
 
 from . import edgar_text, engine, splitter
 

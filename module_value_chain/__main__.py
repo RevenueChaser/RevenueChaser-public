@@ -1,11 +1,11 @@
 """Value Chain CLI.
 
-    python -m RevenueChaser.module_value_chain --fetch [--limit N] [--floor M | --tickers A,B]
-    python -m RevenueChaser.module_value_chain --reslice-dry-run \\
+    python -m revenuechaser.module_value_chain --fetch [--limit N] [--floor M | --tickers A,B]
+    python -m revenuechaser.module_value_chain --reslice-dry-run \\
         --edgar PATH --docs DIR [--out DIR]
-    python -m RevenueChaser.module_value_chain --reslice-apply [--out DIR]
-    python -m RevenueChaser.module_value_chain --resolve-rate
-    python -m RevenueChaser.module_value_chain --nightly
+    python -m revenuechaser.module_value_chain --reslice-apply [--out DIR]
+    python -m revenuechaser.module_value_chain --resolve-rate
+    python -m revenuechaser.module_value_chain --nightly
 
 ``--resolve-rate`` reads the stored Relatedness profiles and the spine and prints how many named customers,
 suppliers and competitors resolve to a ticker (#410; read only, no network).
@@ -85,7 +85,7 @@ def _selection(args) -> list[str] | None:
     if args.tickers:
         return [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
     if args.floor is not None:
-        from RevenueChaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
+        from revenuechaser.core.universe import BOARD_OPERATING_ONLY, classification_universe
         return classification_universe(args.floor * 1_000_000,
                                        operating_only=BOARD_OPERATING_ONLY["module_value_chain"])
     return None
@@ -128,8 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.nightly:
         return _nightly()
     if args.resolve_rate:
-        from RevenueChaser.module_relatedness import store
-        from RevenueChaser.rcdata import read
+        from revenuechaser.module_relatedness import store
+        from revenuechaser.rcdata import read
         print(json.dumps(aliases.resolve_rate(store.load_profile_json(), aliases.spine_names(read.identity()))))
         return 0
     # The re-slice commands run before the selection, which (with --floor) would read the live store

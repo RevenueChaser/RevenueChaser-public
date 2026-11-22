@@ -12,8 +12,8 @@ import time
 
 import pytest
 
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_testing.e2e.harness.screener_seed import bars_to, seed_d01
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_testing.e2e.harness.screener_seed import bars_to, seed_d01
 
 _ANNUAL = [
     {"fiscal_year": "2024", "revenue": 100.0e6, "gross_profit": 60.0e6, "operating_cash_flow": 25.0e6,

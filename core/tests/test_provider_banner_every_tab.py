@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core.tests.board_fixtures import BOARDS
-from RevenueChaser.core.tests.test_help_every_tab import HELP_TABS
+from revenuechaser.core.tests.board_fixtures import BOARDS
+from revenuechaser.core.tests.test_help_every_tab import HELP_TABS
 
 BANNER = 'class="rc-provider-health"'
 #: Tabs that call no provider, so have no run that can fail: Welcome reads only stored data (its Fetch is a build);

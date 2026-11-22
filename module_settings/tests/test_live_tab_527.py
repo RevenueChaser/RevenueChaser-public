@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from RevenueChaser.module_settings import report
+from revenuechaser.module_settings import report
 
 
 def _page() -> str:

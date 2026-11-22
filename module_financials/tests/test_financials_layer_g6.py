@@ -19,9 +19,9 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core.tests.test_fundamentals_layer import CIK, TICKER, built, grw_facts  # noqa: F401
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.core.tests.test_fundamentals_layer import CIK, TICKER, built, grw_facts  # noqa: F401
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 
 def _serve_dgs10(points):
@@ -36,21 +36,21 @@ def _serve_dgs10(points):
 
 
 def _clock(monkeypatch):
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 28, 15, 0, tzinfo=timezone.utc))
 
 
 
 
 def test_a_stale_market_series_yield_is_not_used(monkeypatch, market_roots):  # noqa: F811
-    import RevenueChaser.module_financials.run as fm
+    import revenuechaser.module_financials.run as fm
     _clock(monkeypatch)
     _serve_dgs10([("2026-10-13", 4.1)])                                         # fifteen days old
     assert fm._stored_risk_free() is None
 
 
 def test_the_statements_are_the_secs_on_the_layer(built):  # noqa: F811
-    import RevenueChaser.module_financials.run as fm
+    import revenuechaser.module_financials.run as fm
     annual, meta = fm._sec_statements(TICKER)
     assert [r["fiscal_year"] for r in annual] == ["2024", "2025"]
     assert [r["period_end"] for r in annual] == ["2024-12-31", "2025-12-31"]
@@ -65,7 +65,7 @@ def test_the_statements_are_the_secs_on_the_layer(built):  # noqa: F811
 
 
 def test_ebitda_is_operating_income_plus_depreciation():
-    import RevenueChaser.module_financials.run as fm
+    import revenuechaser.module_financials.run as fm
     row = fm._financials_record({"fiscal_year": "2025", "revenue": 100.0, "ebit": 20.0, "depreciation": 5.0,
                                  "period_ends": {"revenue": "2025-12-31"}})
     assert row["ebitda"] == 25.0 and row["period_end"] == "2025-12-31"
@@ -73,7 +73,7 @@ def test_ebitda_is_operating_income_plus_depreciation():
 
 
 def test_off_the_layer_there_are_no_sec_statements(monkeypatch):
-    import RevenueChaser.module_financials.run as fm
+    import revenuechaser.module_financials.run as fm
     # No fundamentals.duckdb: no years, and the meta still comes back so the header has a name to try (#645).
     annual, meta = fm._sec_statements(TICKER)
     assert annual is None and meta.get("available") is False
@@ -93,8 +93,8 @@ def _year(fy, drop=(), **extra):
 
 def test_the_sec_statements_end_on_the_newest_year_with_revenue(monkeypatch):
     # Opus review S2: a newest year the layer serves with only balance-sheet fields is not the DCF's base year.
-    import RevenueChaser.module_financials.run as fm
-    from RevenueChaser.core import fundamentals_layer
+    import revenuechaser.module_financials.run as fm
+    from revenuechaser.core import fundamentals_layer
     years = [{"fiscal_year": "2024", "revenue": 90.0}, {"fiscal_year": "2025", "revenue": 100.0},
              {"fiscal_year": "2026", "cash": 5.0}]
     monkeypatch.setattr(fundamentals_layer, "reads_layer", lambda: True)
@@ -106,7 +106,7 @@ def test_the_sec_statements_end_on_the_newest_year_with_revenue(monkeypatch):
 def test_a_bank_names_no_working_capital_gap():
     # Opus review N4: no model of a Financial Services target reads working capital (P/E only), so the gaps
     # neither count it nor name it there.
-    import RevenueChaser.module_financials.run as fm
+    import revenuechaser.module_financials.run as fm
     bare = [_year(2025, drop=("receivables", "inventory", "payables"))]
     assert fm._statement_gaps(bare) == ["working capital"]
     assert fm._statement_gaps(bare, bank=True) == []

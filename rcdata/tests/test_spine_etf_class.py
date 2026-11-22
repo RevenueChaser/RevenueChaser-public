@@ -13,9 +13,9 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build import DATASETS, base, dirty
-from RevenueChaser.rcdata.build.spine import etf, etf_class, my_universe, security
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build import DATASETS, base, dirty
+from revenuechaser.rcdata.build.spine import etf, etf_class, my_universe, security
 
 from .test_spine_my_universe_build import built  # noqa: F401  (the real spine build, as a fixture)
 
@@ -328,7 +328,7 @@ def test_a_fund_with_no_series_is_linked_by_its_registered_name_and_a_unit_trust
 def _fund_lines(con, weights=(60.0, 39.0)):
     """SPY's issuer file as ``funds/index_holdings`` stages it: an older day (not read), then JPM by CUSIP and
     Microsoft by ticker."""
-    from RevenueChaser.rcdata.build.spine import funds
+    from revenuechaser.rcdata.build.spine import funds
     line = {"index_slug": "sp500", "provider": "ssga", "fund": "SPY"}
     base.rows_table(con, etf_class.FUND_LINES, _plain(funds.SCHEMA), [
         {**line, "as_of": date(2026, 11, 13), "ticker": "RF", "cusip": "7591EP100", "weight": 99.0},
@@ -358,7 +358,7 @@ def test_an_issuer_file_without_weights_is_not_read_and_the_fund_says_so(nport):
 
 def _world(con):
     """Compustat Global as ``wrds/co_hgic`` stages it: one Dutch company with an ISIN, and two code names."""
-    from RevenueChaser.rcdata.build.spine import wrds
+    from revenuechaser.rcdata.build.spine import wrds
     base.rows_table(con, etf_class.G_COMPANY, wrds.G_COMPANY, [{"gvkey": "001166", "loc": "NLD", "gsubind": "45301010"}])
     base.rows_table(con, etf_class.G_SECURITY, wrds.G_SECURITY, [{"gvkey": "001166", "iid": "01W",
                                                                     "isin": "NL0000334118"}])
@@ -490,7 +490,7 @@ def test_a_us_line_takes_its_companys_own_country(nport):
     """Plan v5 step 4, gap B: a company listed in the US has a US line whatever country its business is in (ARGT
     read US 87 %). Where the line's CUSIP finds one Compustat company, the line counts for that company's country
     (``comp.company.loc``, alpha-3, read through the ISO list). With no company table staged nothing moves."""
-    from RevenueChaser.rcdata.build.spine import wrds
+    from revenuechaser.rcdata.build.spine import wrds
     nport([h for h in HOLDINGS if h["accession"] != "A3"]
           + [_line("A3", 70.0, cusip="00000AR10"), _line("A3", 29.0, ticker="MSFT")])
 

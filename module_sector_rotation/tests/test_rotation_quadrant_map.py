@@ -6,9 +6,9 @@ day is missing, and never touch the network when told ``compute=False``.
 """
 from datetime import date
 
-from RevenueChaser.module_sector_rotation.models import ETFRotationSnapshot
-from RevenueChaser.module_sector_rotation import engine as rotation_engine
-from RevenueChaser.module_sector_rotation import store as rotation_store
+from revenuechaser.module_sector_rotation.models import ETFRotationSnapshot
+from revenuechaser.module_sector_rotation import engine as rotation_engine
+from revenuechaser.module_sector_rotation import store as rotation_store
 
 
 def _row(asof, ticker="ITA", quadrant="IMPROVING"):

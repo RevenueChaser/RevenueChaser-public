@@ -3,8 +3,8 @@ fine thing folds into one "all good" line; the full tiles stay one tap away."""
 from __future__ import annotations
 
 
-from RevenueChaser.module_settings import control
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.module_settings import control
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
 
 
 def _alerts(nd=None, **kw):
@@ -17,7 +17,7 @@ def test_a_stale_dataset_is_a_card_that_names_it():
 
 
 def test_a_provider_past_80_percent_of_its_cap_is_a_card_and_below_is_not(monkeypatch):
-    from RevenueChaser.rcdata import caps
+    from revenuechaser.rcdata import caps
     monkeypatch.setitem(caps.DAY_CAPS, "uw", 100_000)              # UW has no cap since 2026-11-10: a test cap
     nd = control_nd()
     assert "cap" not in _alerts(nd), "uw at 60 % is fine"

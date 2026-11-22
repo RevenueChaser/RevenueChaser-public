@@ -5,9 +5,9 @@ runs under node (``board_js``) and the tree markup is read back.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.tests.board_js import run_board_js
-from RevenueChaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
-from RevenueChaser.module_asymmetric_growth.tests.test_agh_escaping import _result
+from revenuechaser.core.tests.board_js import run_board_js
+from revenuechaser.module_asymmetric_growth.report import board_payload, render_asymmetric_growth_hunter_html
+from revenuechaser.module_asymmetric_growth.tests.test_agh_escaping import _result
 
 _EVIL = "<img src=x onerror=alert(1)>"
 
@@ -39,7 +39,7 @@ document.querySelector = function(sel){ return __arm(__docQS.call(document, sel)
 
 
 def _page(monkeypatch):
-    from RevenueChaser.module_asymmetric_growth import report as ag_report
+    from revenuechaser.module_asymmetric_growth import report as ag_report
 
     def fields(tickers):
         out = {}

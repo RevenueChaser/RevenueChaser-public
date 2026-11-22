@@ -7,8 +7,8 @@
 """
 from __future__ import annotations
 
-from RevenueChaser.core.tests.board_js import PROBE, assert_scripts_intact
-from RevenueChaser.module_comovement import report
+from revenuechaser.core.tests.board_js import PROBE, assert_scripts_intact
+from revenuechaser.module_comovement import report
 
 
 def _member(t: str) -> dict:
@@ -31,7 +31,7 @@ def test_a_comment_opener_or_placeholder_in_a_label_keeps_the_script_intact(tmp_
 
 def test_the_last_move_is_labelled_as_log_points_not_percent():
     """DF56: ``last_residual_pct`` is a mean of log returns x 100, so the card must not call it a percent."""
-    from RevenueChaser.module_comovement import report as rep
+    from revenuechaser.module_comovement import report as rep
     src = rep.render_comovement_dashboard({
         "as_of": "2026-09-17T00:00:00+00:00", "eligible": 2, "universe_total": 2, "cuts": [20], "fetch": {},
         "horizon": 5, "benchmark": "spy", "benchmark_applied": True, "theme_catalog": {},

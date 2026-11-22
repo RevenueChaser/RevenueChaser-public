@@ -15,8 +15,8 @@ import inspect
 
 import pytest
 
-from RevenueChaser.app import dashboard
-from RevenueChaser.rcdata import needs
+from revenuechaser.app import dashboard
+from revenuechaser.rcdata import needs
 
 
 def _required(need) -> list[str]:
@@ -126,7 +126,7 @@ def test_a_filtered_needs_summary_counts_its_own_series_only(monkeypatch):
 def test_a_summary_of_a_table_the_file_does_not_have_is_no_rows_not_an_error():
     """m1: ``_rows`` grew a guard for a table a file built before it existed does not have; the summary of the same
     table still raised, which on the Settings page is a 500 where "no rows yet" is the truth."""
-    from RevenueChaser.rcdata import read, scaffold
+    from revenuechaser.rcdata import read, scaffold
     scaffold.create_empty("prices")
     import duckdb
     con = duckdb.connect(str(read.serving.live_path("prices")))
@@ -148,7 +148,7 @@ def test_a_filtered_summary_counts_only_its_own_series_over_real_rows():
     """The same C2 guard over the store rather than over a stub: the mutation that drops the filter must not pass."""
     import duckdb
 
-    from RevenueChaser.rcdata import read, scaffold, serving
+    from revenuechaser.rcdata import read, scaffold, serving
     scaffold.create_empty("market")
     con = duckdb.connect(str(serving.live_path("market")))
     con.execute("INSERT INTO market_series (series_id, obs_date, source, value) VALUES "
@@ -169,7 +169,7 @@ def test_on_a_day_whose_session_is_not_closed_the_card_and_the_filter_agree(monk
     fresh - the same data, two answers."""
     from datetime import date as _date
 
-    from RevenueChaser.core import earnings_dates
+    from revenuechaser.core import earnings_dates
 
     tuesday, wednesday, thursday = _date(2026, 10, 27), _date(2026, 10, 28), _date(2026, 10, 29)
     monkeypatch.setattr(needs.serve.calendar, "latest_complete_session", lambda: wednesday)
@@ -211,7 +211,7 @@ def test_a_need_that_cannot_answer_without_an_ask_says_so_instead_of_missing():
     The need declares that it must be asked, and the ask is refused in words instead."""
     import duckdb
 
-    from RevenueChaser.rcdata import scaffold, serving
+    from revenuechaser.rcdata import scaffold, serving
     scaffold.create_empty("market")
     con = duckdb.connect(str(serving.live_path("market")))
     con.execute("INSERT INTO market_series (series_id, obs_date, source, value) VALUES "
@@ -257,7 +257,7 @@ def test_an_empty_ask_is_refused_like_a_missing_one():
     from an empty selection box lands there."""
     import duckdb
 
-    from RevenueChaser.rcdata import scaffold, serving
+    from revenuechaser.rcdata import scaffold, serving
     scaffold.create_empty("market")
     con = duckdb.connect(str(serving.live_path("market")))
     con.execute("INSERT INTO market_series (series_id, obs_date, source, value) VALUES "
@@ -304,7 +304,7 @@ def test_leaving_the_parameter_out_still_means_every_row():
     named ticker answers for that ticker; only the empty ask is new."""
     import duckdb
 
-    from RevenueChaser.rcdata import scaffold, serving
+    from revenuechaser.rcdata import scaffold, serving
     scaffold.create_empty("spine")
     con = duckdb.connect(str(serving.live_path("spine")))
     con.execute("INSERT INTO security (ticker, tier, source, source_as_of) VALUES "
@@ -328,7 +328,7 @@ def test_a_need_that_names_its_own_rows_is_not_refused_an_empty_ask():
     empty list by habit."""
     import duckdb
 
-    from RevenueChaser.rcdata import scaffold, serving
+    from revenuechaser.rcdata import scaffold, serving
     scaffold.create_empty("market")
     con = duckdb.connect(str(serving.live_path("market")))
     con.execute("INSERT INTO market_series (series_id, obs_date, source, value) VALUES "
@@ -341,7 +341,7 @@ def test_a_need_that_names_its_own_rows_is_not_refused_an_empty_ask():
 def test_a_market_series_need_declares_the_provider_whose_source_writes_its_series():
     """#335: a need's ``providers`` is the provider of the builder source that writes its series, so the Settings flow
     chart and ``/needs`` name the real provider (``market.vix`` said yfinance; its rows come from Cboe)."""
-    from RevenueChaser.rcdata.build.sources import cboe, cftc, cftc_schedule, fred, yahoo
+    from revenuechaser.rcdata.build.sources import cboe, cftc, cftc_schedule, fred, yahoo
     writers = {**{s: cboe for s in cboe.SYMBOLS}, **{s: fred for s in fred.SERIES}, **{s: yahoo for s in yahoo.SYMBOLS},
                cftc_schedule.SERIES: cftc_schedule}
     provider = lambda src: getattr(src, "PROVIDER", src.SOURCE)     # noqa: E731 - Yahoo counts under yfinance

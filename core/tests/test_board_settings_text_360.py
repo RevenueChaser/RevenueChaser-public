@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.core import board_settings, rawstore
-from RevenueChaser.core.board_settings import Setting
+from revenuechaser.core import board_settings, rawstore
+from revenuechaser.core.board_settings import Setting
 
 BOARD = "test_text_board"
 

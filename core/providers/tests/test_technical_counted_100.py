@@ -12,8 +12,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from RevenueChaser.core.providers import yf_session
-from RevenueChaser.core.providers import yfinance as yfp
+from revenuechaser.core.providers import yf_session
+from revenuechaser.core.providers import yfinance as yfp
 
 AUTH = "HTTP Error 401: Invalid Crumb"
 
@@ -34,7 +34,7 @@ def _hist(n: int = 100) -> pd.DataFrame:
 
 
 def test_technical_counts_both_of_its_reads_for_the_banner(monkeypatch):
-    from RevenueChaser.core.providers import technical as tech
+    from revenuechaser.core.providers import technical as tech
     import yfinance
 
     class _T:
@@ -58,7 +58,7 @@ def test_technical_counts_both_of_its_reads_for_the_banner(monkeypatch):
 
 
 def test_technical_counts_a_refused_info_read_as_failed(monkeypatch):
-    from RevenueChaser.core.providers import technical as tech
+    from revenuechaser.core.providers import technical as tech
     import yfinance
 
     class _T:
@@ -83,7 +83,7 @@ def test_technical_counts_a_refused_info_read_as_failed(monkeypatch):
 
 
 def test_technical_retries_its_info_read_after_a_401(monkeypatch, resets):
-    from RevenueChaser.core.providers import technical as tech
+    from revenuechaser.core.providers import technical as tech
     import yfinance
 
     tries: list[int] = []

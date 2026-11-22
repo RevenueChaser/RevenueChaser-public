@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import job_lock
+from revenuechaser.core import job_lock
 
 HOLDER_TOKEN = "test-holder"
 

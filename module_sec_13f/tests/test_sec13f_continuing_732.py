@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.module_sec_13f import report
 
 Q1, Q2 = "2026-03-31", "2026-06-30"
 META = {"AAA": {"name": "Alpha", "sector": "Technology"}}

@@ -12,7 +12,7 @@ import subprocess
 
 import pytest
 
-from RevenueChaser.core import html_safe
+from revenuechaser.core import html_safe
 
 _node = pytest.mark.skipif(shutil.which("node") is None, reason="node not on PATH")
 

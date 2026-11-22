@@ -1,7 +1,7 @@
 """Shared funnel format: one start, per-rule drops, one result."""
 from __future__ import annotations
 
-from RevenueChaser.core import funnel
+from revenuechaser.core import funnel
 
 
 

@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sec_13f import engine as sf
+from revenuechaser.module_sec_13f import engine as sf
 
 
 class TestQuarterEnds:
@@ -36,7 +36,7 @@ class TestNormalize:
 class TestDashboard:
     def test_no_sector_chips_are_left(self):
         """KF (#375): the old sector chips are gone; the shared filter kit handles Sector."""
-        from RevenueChaser.module_sec_13f.report import render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import render_sec13f_dashboard
         cell = {"shares": 100.0, "value": 1000.0, "holders": 2}
         totals = {t: {"2025-03-31": dict(cell), "2025-06-30": dict(cell, shares=120.0)} for t in ("AAA", "BBB")}
         meta = {"AAA": {"name": "A", "sector": "Technology"}, "BBB": {"name": "B", "sector": "Healthcare"}}
@@ -47,7 +47,7 @@ class TestDashboard:
 
     def test_the_filter_bar_mounts_with_the_four_facets(self):
         """KF (#375): Index, Market cap, Sector and Theme are present; Earnings is not."""
-        from RevenueChaser.module_sec_13f.report import render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import render_sec13f_dashboard
         cell = {"shares": 100.0, "value": 1000.0, "holders": 2}
         totals = {"AAA": {"2025-03-31": dict(cell), "2025-06-30": dict(cell, shares=120.0)}}
         h = render_sec13f_dashboard(totals, {"AAA": {"name": "A"}}, {})
@@ -61,7 +61,7 @@ class TestDashboard:
 
     def test_filter_rows_ride_the_payload_not_the_html(self):
         """KF (#375): the K1 rows are in the payload's ``fields`` key, not embedded in the page."""
-        from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
         cell = {"shares": 100.0, "value": 1000.0, "holders": 2}
         totals = {"AAA": {"2025-03-31": dict(cell), "2025-06-30": dict(cell, shares=120.0)},
                   "BBB": {"2025-03-31": dict(cell), "2025-06-30": dict(cell, shares=120.0)}}
@@ -76,7 +76,7 @@ class TestDashboard:
 
     def test_unknown_sectors_read_unclassified_in_the_rows(self):
         """R3 (#86): ``Other`` (stored before R3 / the vendor fallback) and ``Unclassified`` are one bucket."""
-        from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
         cell = {"shares": 100.0, "value": 1000.0, "holders": 2}
         totals = {t: {"2025-03-31": dict(cell), "2025-06-30": dict(cell, shares=120.0)} for t in ("AAA", "BBB", "CCC")}
         meta = {"AAA": {"name": "A", "sector": "Other"}, "BBB": {"name": "B", "sector": "Unclassified"},
@@ -89,7 +89,7 @@ class TestDashboard:
     def test_a_stored_gics_spelling_reads_as_its_morningstar_sector(self):
         """#266: a meta row stored before the rename (``Information Technology``, ``Health Care``, ``Financials``)
         gets the Morningstar row value; no row keeps the old spelling."""
-        from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
         cell = {"shares": 100.0, "value": 1000.0, "holders": 2}
         totals = {t: {"2025-03-31": dict(cell), "2025-06-30": dict(cell, shares=120.0)} for t in ("AAA", "BBB", "CCC")}
         meta = {"AAA": {"name": "A", "sector": "Information Technology"},
@@ -103,7 +103,7 @@ class TestDashboard:
 
     def test_an_asset_class_row_keeps_its_label(self):
         """Crypto / indices carry an asset class instead of a sector: shown on the row."""
-        from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
         cell = {"shares": 100.0, "value": 1000.0, "holders": 2}
         totals = {"BTC": {"2025-03-31": dict(cell), "2025-06-30": dict(cell, shares=120.0)}}
         meta = {"BTC": {"name": "Bitcoin", "sector": "Crypto / Digital Assets"}}
@@ -112,7 +112,7 @@ class TestDashboard:
         assert 'data-sector=' not in h
 
     def test_render_with_new_columns(self):
-        from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
         totals = {"RKT": {"2025-03-31": {"shares": 100.0, "value": 1000.0, "holders": 2,
                                           "new_holders": None, "exited_holders": None,
                                           "top10_pct": 100.0, "hhi": 5000.0,
@@ -140,7 +140,7 @@ class TestDashboard:
 
     def test_render_suppresses_delta_for_missing_quarter(self):
         """A quarter with no SEC data must not produce a misleading QoQ delta."""
-        from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
         totals = {"RKT": {
             "2026-03-31": {"shares": 100.0, "value": 1000.0, "holders": 5,
                            "new_holders": None, "exited_holders": None,
@@ -160,7 +160,7 @@ class TestDashboard:
 
     def test_render_shows_sec_to_sec_deltas(self):
         """Full-SEC consecutive quarters keep their QoQ metrics."""
-        from RevenueChaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
+        from revenuechaser.module_sec_13f.report import board_payload, render_sec13f_dashboard
         totals = {"RKT": {
             "2026-03-31": {"shares": 100.0, "value": 1000.0, "holders": 5,
                            "new_holders": None, "exited_holders": None,

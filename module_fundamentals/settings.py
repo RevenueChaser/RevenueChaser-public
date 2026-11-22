@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-from RevenueChaser.core import board_settings
+from revenuechaser.core import board_settings
 
 from . import config
 

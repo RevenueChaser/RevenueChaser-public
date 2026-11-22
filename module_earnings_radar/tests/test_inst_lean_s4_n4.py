@@ -10,10 +10,10 @@ N4 was about the squeeze Z's peer group. The Z ladder is gone with #256 (the squ
 tag), so the N4 pins live in ``test_rule5_positioning.TestSqueezeTag``; this file keeps the lean.
 """
 
-from RevenueChaser.core.config import INST_PRINT_MIN_PREMIUM
-from RevenueChaser.core.providers.unusual_whales import UWClient
-from RevenueChaser.module_earnings_radar.pipeline import _institutional_flow_comment, _trade_flow_part
-from RevenueChaser.module_earnings_radar.rules.rule5_positioning import score as r5_score
+from revenuechaser.core.config import INST_PRINT_MIN_PREMIUM
+from revenuechaser.core.providers.unusual_whales import UWClient
+from revenuechaser.module_earnings_radar.pipeline import _institutional_flow_comment, _trade_flow_part
+from revenuechaser.module_earnings_radar.rules.rule5_positioning import score as r5_score
 
 QUOTE = {"nbbo_bid": "1.00", "nbbo_ask": "1.10"}
 

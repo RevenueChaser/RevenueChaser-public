@@ -3,7 +3,7 @@ import logging
 import webbrowser
 from pathlib import Path
 
-from RevenueChaser.core.providers.unusual_whales import UWClient
+from revenuechaser.core.providers.unusual_whales import UWClient
 from .engine import RotationEngine, fetch_all_holdings, sector_etf_trees
 from .report import export_rotation_dashboard
 

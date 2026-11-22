@@ -6,12 +6,12 @@ ticker that had a price — leaving only excluded/no-data tickers in the report.
 These tests drive _score end-to-end with a fake client to ensure string prices
 are coerced and a card is always produced.
 """
-from RevenueChaser.rcdata.tests import universe_store
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline, _safe_float
-from RevenueChaser.module_earnings_radar.models import TradeCard
-from RevenueChaser.module_earnings_radar.rules import rule5_positioning
-from RevenueChaser.core.tests.d01_seed import write_d01
-from RevenueChaser.core.config import R6_RATE_VETO
+from revenuechaser.rcdata.tests import universe_store
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline, _safe_float
+from revenuechaser.module_earnings_radar.models import TradeCard
+from revenuechaser.module_earnings_radar.rules import rule5_positioning
+from revenuechaser.core.tests.d01_seed import write_d01
+from revenuechaser.core.config import R6_RATE_VETO
 
 import pytest
 
@@ -145,8 +145,8 @@ def _serve_shorts(monkeypatch, rows):
     """#287: the board reads R5's inputs only through ``store_reads.short_interest`` (FINRA's settlement series).
     Serve these short rows through it, mapped the way the UW client maps a short row, so the R5 values below stay
     the hand-checked ones."""
-    from RevenueChaser.core.providers.unusual_whales import UWClient
-    from RevenueChaser.module_earnings_radar import store_reads
+    from revenuechaser.core.providers.unusual_whales import UWClient
+    from revenuechaser.module_earnings_radar import store_reads
     parsed = {t: UWClient._parse_short_row(r) for t, r in rows.items()}
     monkeypatch.setattr(store_reads, "short_interest", lambda tickers, today=None: (
         {t: parsed[t] for t in tickers if t in parsed}, {"source_as_of": None, "label": "fixture"}))
@@ -270,9 +270,9 @@ class TestR6YieldBetaWiring:
     def test_the_market_store_series_is_what_r6_scores(self, monkeypatch):
         """The yield series comes from the market store and nothing is fetched: the board has no FRED reader left."""
         from datetime import datetime, timezone
-        from RevenueChaser.core import calendar
-        from RevenueChaser.module_earnings_radar import macro_watch
-        from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
+        from revenuechaser.core import calendar
+        from revenuechaser.module_earnings_radar import macro_watch
+        from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve as serve_market
         monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 1, 30, 23, 0, tzinfo=timezone.utc))
         ohlc, yld = _duration_ohlc_and_yields(duration=EXTREME_DURATION)       # 2026-01-05 .. 01-29: fresh on Jan 30
         serve_market(dict(yld))
@@ -497,8 +497,8 @@ class TestStoredOhlcWiring:
 
     def test_a_stored_year_of_bars_replaces_the_ohlc_request(self, monkeypatch):
         from datetime import date, datetime, timedelta, timezone
-        from RevenueChaser.core import calendar
-        from RevenueChaser.module_earnings_radar import stored_inputs
+        from revenuechaser.core import calendar
+        from revenuechaser.module_earnings_radar import stored_inputs
         end = date(2026, 10, 14)
         monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 10, 14, 21, 0, tzinfo=timezone.utc))
         days, d = [], end
@@ -577,7 +577,7 @@ class TestSectorIsTheSpine:
 
     @staticmethod
     def _label(sector, industry):
-        from RevenueChaser.module_earnings_radar.classifier import classify_ticker, get_cluster_label
+        from revenuechaser.module_earnings_radar.classifier import classify_ticker, get_cluster_label
         return get_cluster_label(classify_ticker("ZZZZ", sector, industry))
 
     def test_cluster_follows_the_spine_sector_not_the_calendar_sector(self):
@@ -594,7 +594,7 @@ class TestSectorIsTheSpine:
         assert self._card().cluster == "SaaS/Software"
 
     def test_the_spine_is_read_once_per_run_not_per_ticker(self, monkeypatch):
-        from RevenueChaser.core import universe
+        from revenuechaser.core import universe
         self._seed_spine([("AAAA", "Energy", "Oil & Gas E&P"), ("BBBB", "Utilities", "Utilities - Regulated Electric")])
         calls = []
         real = universe.spine_gics
@@ -707,7 +707,7 @@ class TestR5SqueezeTagWiring:
 
 def test_e18_edge_counts_a_zero_eps_print():
     # A reported EPS of exactly 0.0 is a completed print (the `or` chain dropped it).
-    from RevenueChaser.module_earnings_radar.pipeline import _compute_edge
+    from revenuechaser.module_earnings_radar.pipeline import _compute_edge
     hist = [{"actual_eps": 0.0, "report_date": "2026-01-10", "post_earnings_move_1d": 0.05}
             for _ in range(3)]
     median, ratio = _compute_edge(hist, 4.0)

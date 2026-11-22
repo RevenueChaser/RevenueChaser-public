@@ -7,13 +7,13 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import ibkr_iv, uw_list
-from RevenueChaser.core.providers import ibkr_tws as ibkr
-from RevenueChaser.module_watchlists import store as wl_store
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import ibkr_iv, uw_list
+from revenuechaser.core.providers import ibkr_tws as ibkr
+from revenuechaser.module_watchlists import store as wl_store
 
 from .ibkr_fixture import ACCOUNT_PLACEHOLDER, FakeGateway
 from .options_fixture import SESSION, UWOptions
@@ -140,7 +140,7 @@ def test_requests_are_paced_at_six_a_minute(gateway):
 
 def test_a_60_name_list_gets_every_iv_year_in_one_run(gateway):
     """IBKR publishes no day quota (master plan Order 5, rule 3), so ``ibkr`` has no day cap and 60 names are 61 calls."""
-    from RevenueChaser.rcdata import caps
+    from revenuechaser.rcdata import caps
     for i in range(60):
         wl_store.job_set("option", f"N{i}", True, by="test")
     now = [0.0]
@@ -165,7 +165,7 @@ def test_no_data_for_a_name_is_kept_once_with_an_issue(gateway):
 
 
 def test_the_dataset_starts_by_hand_and_needs_no_first_day():
-    from RevenueChaser.rcdata.build import DATASETS, due
+    from revenuechaser.rcdata.build import DATASETS, due
     assert DATASETS[ibkr_iv.NAME] is ibkr_iv.DATASET and ibkr_iv.DATASET.providers == ("ibkr",)
     assert due.is_due(ibkr_iv.DATASET) == (False, due.BY_HAND_WHY)
     assert ibkr_iv.DATASET.backfill_needs_from is False

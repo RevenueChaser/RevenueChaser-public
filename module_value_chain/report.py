@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from RevenueChaser.core.config import PLOTLY_CDN_URL
-from RevenueChaser.core.gics_map import sector_or_unclassified, sector_path
-from RevenueChaser.core.html_safe import esc, fill, script_json
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core.config import PLOTLY_CDN_URL
+from revenuechaser.core.gics_map import sector_or_unclassified, sector_path
+from revenuechaser.core.html_safe import esc, fill, script_json
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     combobox_html,

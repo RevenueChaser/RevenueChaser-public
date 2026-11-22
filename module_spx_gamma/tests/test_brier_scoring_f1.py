@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import brier
-from RevenueChaser.module_spx_gamma.scenarios import realized_class
+from revenuechaser.module_spx_gamma import brier
+from revenuechaser.module_spx_gamma.scenarios import realized_class
 
 BANDS = {"consolidation": (7700.0, 7750.0), "upside": (7750.0, 7800.0), "downside": (7600.0, 7700.0)}
 P = {"Consolidation": 0.35, "Upside": 0.30, "Downside": 0.35}
@@ -89,7 +89,7 @@ def test_scorecard_two_se_threshold(tmp_path):
 
 def test_run_scores_pending_records_from_stored_closes(tmp_path, monkeypatch):
     """The Fetch run scores what it can from the stored SPX closes before it records today's set."""
-    from RevenueChaser.module_spx_gamma import run, store_reads
+    from revenuechaser.module_spx_gamma import run, store_reads
 
     brier.record_probs("2026-10-23", P, bands=BANDS)
     rows = [{"date": "2026-10-29", "close": 7740.0}, {"date": "2026-10-30", "close": 7810.0}]
@@ -99,7 +99,7 @@ def test_run_scores_pending_records_from_stored_closes(tmp_path, monkeypatch):
 
 
 def test_run_scoring_survives_missing_closes(tmp_path, monkeypatch):
-    from RevenueChaser.module_spx_gamma import run, store_reads
+    from revenuechaser.module_spx_gamma import run, store_reads
 
     brier.record_probs("2026-10-23", P, bands=BANDS)
     monkeypatch.setattr(store_reads, "spx_candles", lambda day: {"stored": False, "rows": []})

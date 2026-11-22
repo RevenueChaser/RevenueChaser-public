@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from RevenueChaser.module_comovement import cluster, noise
-from RevenueChaser.module_comovement import returns
+from revenuechaser.module_comovement import cluster, noise
+from revenuechaser.module_comovement import returns
 
 
 def _noise_returns(n=120, t=250, seed=0):
@@ -186,8 +186,8 @@ def test_at_five_day_returns_a_real_common_move_still_counts():
 
 
 def test_a_fetch_at_five_days_gives_the_null_the_daily_returns_under_its_matrix(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_comovement import engine
-    from RevenueChaser.module_comovement.tests.test_settings import _market_run
+    from revenuechaser.module_comovement import engine
+    from revenuechaser.module_comovement.tests.test_settings import _market_run
 
     seen = {}
     real_null, real_factors = noise.selected_group_null, noise.factors_above_noise

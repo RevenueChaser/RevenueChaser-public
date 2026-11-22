@@ -10,12 +10,12 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from RevenueChaser.core import calendar, rawstore
-from RevenueChaser.module_earnings_radar import store_reads
-from RevenueChaser.module_earnings_radar.tests.market_store_fixture import serve_estimates
-from RevenueChaser.module_earnings_radar.pipeline import EarningsPipeline, nrc_from_card
-from RevenueChaser.module_earnings_radar.rules import rule1_drivers
-from RevenueChaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
+from revenuechaser.core import calendar, rawstore
+from revenuechaser.module_earnings_radar import store_reads
+from revenuechaser.module_earnings_radar.tests.market_store_fixture import serve_estimates
+from revenuechaser.module_earnings_radar.pipeline import EarningsPipeline, nrc_from_card
+from revenuechaser.module_earnings_radar.rules import rule1_drivers
+from revenuechaser.module_earnings_radar.tests.test_pipeline_score import _FakeUW
 
 SESSION = date(2026, 10, 14)
 NOW = datetime(2026, 10, 14, 21, 0, tzinfo=timezone.utc)
@@ -99,7 +99,7 @@ def test_coverage_is_the_share_of_the_nine_fields_present():
 
 
 def test_the_rule_has_no_weight_of_its_own():
-    from RevenueChaser.core.config import RULE_WEIGHTS
+    from revenuechaser.core.config import RULE_WEIGHTS
     assert RULE_WEIGHTS["rule1_drivers"] == 0.0
 
 
@@ -178,7 +178,7 @@ def test_an_incomplete_estimate_row_stays_out_of_the_thesis():
 
 def test_the_drawer_names_r1_as_logged_with_no_weight(tmp_path):
     """The board's decision drawer lists R1 with its role, so a reader sees it carries 0% (spec E6)."""
-    from RevenueChaser.module_earnings_radar.report import export_html
+    from revenuechaser.module_earnings_radar.report import export_html
     _seed()
     p = _pipeline()
     p._warm_estimates()

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from ..config import to_float
 from ._inputs import net_debt as _net_debt, not_for_a_bank
-from RevenueChaser.core.providers.validator import validate_annual
+from revenuechaser.core.providers.validator import validate_annual
 
 # Genel eşikler (sektöre göre ayarlanabilir)
 DEBT_EBITDA_SAFE = 3.0

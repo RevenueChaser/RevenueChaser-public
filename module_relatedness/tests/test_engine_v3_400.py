@@ -10,9 +10,9 @@ import json
 
 import pytest
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_relatedness import config, engine, profile_v3, profiles, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
+from revenuechaser.core import rawstore
+from revenuechaser.module_relatedness import config, engine, profile_v3, profiles, store
+from revenuechaser.module_relatedness.tests.test_relatedness import long_body
 
 REPLY = {"summary": "Makes gpus.", "segments": [{"name": "Compute", "share": 0.8, "source": "table",
                                                 "products": ["gpu"], "end_markets": ["data center"]}],
@@ -74,7 +74,7 @@ def test_the_whole_item_is_read_no_12k_cut(rawstore_tmp_db, monkeypatch, calls):
 
 
 def test_a_long_item_is_read_in_chunks_and_merged(rawstore_tmp_db, monkeypatch, calls):
-    from RevenueChaser.module_relatedness.tests.test_profile_v3_chunks_400 import conglomerate
+    from revenuechaser.module_relatedness.tests.test_profile_v3_chunks_400 import conglomerate
     text = conglomerate()
     _text(monkeypatch, text)
 
@@ -202,7 +202,7 @@ def test_a_context_change_alone_does_not_redo_a_profile(rawstore_tmp_db, monkeyp
 
 def test_a_chunk_that_stays_unusable_is_recorded_and_retried_within_the_attempts(rawstore_tmp_db, monkeypatch,
                                                                                 calls):
-    from RevenueChaser.module_relatedness.tests.test_profile_v3_chunks_400 import conglomerate
+    from revenuechaser.module_relatedness.tests.test_profile_v3_chunks_400 import conglomerate
     _text(monkeypatch, conglomerate())
     n = len(profile_v3.split_chunks(conglomerate()))
     calls.fake.reply = lambda user: "junk" if ", part 2 of" in user else REPLY
@@ -266,7 +266,7 @@ def test_the_batched_hash_pass_matches_a_dual_class_group(rawstore_tmp_db, monke
 
 
 def test_a_spent_partial_is_redone_for_a_new_text(rawstore_tmp_db, monkeypatch, calls):
-    from RevenueChaser.module_relatedness.tests.test_profile_v3_chunks_400 import conglomerate
+    from revenuechaser.module_relatedness.tests.test_profile_v3_chunks_400 import conglomerate
     _text(monkeypatch, conglomerate())
     monkeypatch.setattr(profiles.deepseek, "complete",
                         lambda system, user, **kw: calls.append({"user": user}) or

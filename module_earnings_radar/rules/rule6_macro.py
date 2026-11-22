@@ -19,13 +19,13 @@ Not wired (optional kwargs, pipeline does not pass them):
 """
 from typing import Optional
 
-from RevenueChaser.core.config import (
+from revenuechaser.core.config import (
     SCORE_RANGE,
     R6_MIN_OBS as MIN_OBS,
     R6_RATE_HIGH as RATE_HIGH,
     R6_RATE_VETO as RATE_VETO,
 )
-from RevenueChaser.module_earnings_radar.models import RuleResult
+from revenuechaser.module_earnings_radar.models import RuleResult
 
 
 def yield_beta(

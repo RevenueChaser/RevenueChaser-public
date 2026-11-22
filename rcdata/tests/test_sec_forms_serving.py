@@ -15,12 +15,12 @@ from datetime import date
 import duckdb
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.fundamentals import common, filings
-from RevenueChaser.rcdata.build.sec_forms import forms
-from RevenueChaser.rcdata.needs import serve
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.fundamentals import common, filings
+from revenuechaser.rcdata.build.sec_forms import forms
+from revenuechaser.rcdata.needs import serve
 
 from . import fund_fixture as fx
 from . import sec_notes_fixture as nf
@@ -375,7 +375,7 @@ def test_the_document_readers_serve_the_one_cutters_rows_under_their_old_names(s
     ``kind = 'document'`` rows. Since #858 it cuts nothing, and ``read.filing_text`` / ``filing_documents`` /
     ``filing_texts`` read ``filing_section`` instead, keeping the names and the row shape their callers read, so
     the boards move to ``form_business`` in their own changes (#856, #841) rather than in this one."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
 
     _stored(sec)
     fx.run(forms.NAME, AS_OF)
@@ -421,7 +421,7 @@ def moved(monkeypatch, http_mock):
     """MSFT's filings now belong to a successor CIK that has filed only its 8-K12B and a proxy, as ExxonMobil
     Holdings had (its FY2025 10-K is under CIK 34088). MSFT itself is no longer in the universe. A spine of its own
     (not ``sec``'s): a second spine build that drops five of six names is refused as a shrink."""
-    from RevenueChaser.rcdata.build import cik_history
+    from revenuechaser.rcdata.build import cik_history
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     monkeypatch.setattr(sec_edgar, "SEC_DATA_BASE", "https://data.sec.test")
     monkeypatch.setattr(cik_history, "seed", lambda: {MSFT: NEWCO})

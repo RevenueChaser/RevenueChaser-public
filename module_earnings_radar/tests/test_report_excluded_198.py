@@ -1,6 +1,6 @@
 """#198: names the gates exclude are no longer scored, so the board lists them (and why) in the
 filter summary instead of as full cards."""
-from RevenueChaser.module_earnings_radar.report import export_html
+from revenuechaser.module_earnings_radar.report import export_html
 
 
 def _stats(excluded):

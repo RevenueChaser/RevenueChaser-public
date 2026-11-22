@@ -16,13 +16,13 @@ import re
 
 import pytest
 
-from RevenueChaser.core import board_settings, rawstore
-from RevenueChaser.module_relatedness.tests.test_relatedness import v3_reply
-from RevenueChaser.core.providers import deepseek, evren
-from RevenueChaser.module_relatedness import __main__ as cli
-from RevenueChaser.core import llm_writers as writers
-from RevenueChaser.module_relatedness import engine, settings, store
-from RevenueChaser.module_relatedness.tests.test_relatedness import long_body
+from revenuechaser.core import board_settings, rawstore
+from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
+from revenuechaser.core.providers import deepseek, evren
+from revenuechaser.module_relatedness import __main__ as cli
+from revenuechaser.core import llm_writers as writers
+from revenuechaser.module_relatedness import engine, settings, store
+from revenuechaser.module_relatedness.tests.test_relatedness import long_body
 
 TICKERS = ["AAA", "BBB", "CCC"]
 EVREN_KEY = "sentinel-evren-key-360"
@@ -91,8 +91,8 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
 # these two are about the default itself, so they put the registry's own back.
 
 def test_a_module_call_without_a_writer_runs_on_the_free_one(monkeypatch):
-    from RevenueChaser.module_relatedness import config as rel_config
-    from RevenueChaser.module_relatedness import profiles as profiles_mod
+    from revenuechaser.module_relatedness import config as rel_config
+    from revenuechaser.module_relatedness import profiles as profiles_mod
     assert writers.DEFAULT == "evren" and not writers.get(writers.DEFAULT).paid
     monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
     assert profiles_mod.llm() is profiles_mod._writers().client("evren")
@@ -100,7 +100,7 @@ def test_a_module_call_without_a_writer_runs_on_the_free_one(monkeypatch):
 
 
 def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.module_relatedness import config as rel_config
+    from revenuechaser.module_relatedness import config as rel_config
     monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
     store.save_profile("ZZZ", "1", {}, "{}", "a-model")
     rows = [r for r in rawstore.get_all("relatedness_profiles") if r["ticker"] == "ZZZ"]
@@ -110,7 +110,7 @@ def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db, mo
 def test_the_naming_cli_banner_names_the_free_writer(rawstore_tmp_db, monkeypatch, capsys):
     """``--name-themes`` printed DeepSeek's off-peak gate although naming calls its own pair (#404, EVREN)."""
     monkeypatch.setenv("LITELLM_RC_KEY", EVREN_KEY)
-    monkeypatch.setattr("RevenueChaser.module_relatedness.naming.name_themes",
+    monkeypatch.setattr("revenuechaser.module_relatedness.naming.name_themes",
                         lambda run_id=None: {"named": 0, "pending": 0})
     assert cli.main(["--name-themes"]) == 0
     out = capsys.readouterr().out
@@ -167,10 +167,10 @@ def test_a_writer_without_its_key_stops_before_any_call(rawstore_tmp_db, monkeyp
 
 def test_the_scheduled_job_carries_the_10_usd_deepseek_cap():
     """Since #1255 the run happens in the dashboard, so the cap travels in the request, not on a command line."""
-    from RevenueChaser.core import automations
-    from RevenueChaser.scripts import board_fetch
+    from revenuechaser.core import automations
+    from revenuechaser.scripts import board_fetch
     e = automations.entry("RC-Relatedness-OffPeak")
-    assert e.args == ("-m", "RevenueChaser.scripts.board_fetch", "relatedness")
+    assert e.args == ("-m", "revenuechaser.scripts.board_fetch", "relatedness")
     assert board_fetch.FORM["relatedness"] == {"usd_cap": "10"}
     assert e.time == "22:15" and e.days == ("Sunday",)          # weekly Sunday (avo 20 Nov 2026: "Tamam haftalik")
 
@@ -188,7 +188,7 @@ def test_the_scheduled_job_carries_the_10_usd_deepseek_cap():
 
 
 def test_the_writer_modules_take_the_model_per_call(rawstore_tmp_db, monkeypatch):
-    from RevenueChaser.core.providers import evren as ev
+    from revenuechaser.core.providers import evren as ev
     posts = []
 
     class _C:
@@ -209,7 +209,7 @@ def test_an_evren_call_waits_longer_than_two_minutes_and_the_wait_is_a_process_s
     """A profile over a whole document took longer than the old 120 s and the read timeout killed the night's SEC
     read (20 Nov 2026, 01:10); a cold full-size call was then measured at 235 s. The wait is twice that over, and
     ``RC_EVREN_TIMEOUT_S`` sets it."""
-    from RevenueChaser.core.providers import evren as ev
+    from revenuechaser.core.providers import evren as ev
     monkeypatch.delenv("RC_EVREN_TIMEOUT_S", raising=False)
     assert ev.DEFAULT_TIMEOUT_S == 600.0 and ev.timeout_s() == ev.DEFAULT_TIMEOUT_S
     client = ev._new_client()

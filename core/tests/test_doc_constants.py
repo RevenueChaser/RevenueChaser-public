@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from RevenueChaser.core import config, rawstore
+from revenuechaser.core import config, rawstore
 
 _REPO = Path(__file__).resolve().parents[2]
 
@@ -48,14 +48,14 @@ def test_data_architecture_gives_no_retired_table_a_row_of_its_own():
 
 def test_data_architecture_names_how_long_a_runs_rows_are_kept():
     """The one year of ops.prune_runs is a value the code owns (step 9, 20 Nov 2026)."""
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     assert f"**{ops.RUN_ROWS_DAYS} days** (`ops.RUN_ROWS_DAYS`)" in text
 
 
 def test_data_architecture_names_the_current_per_id_shrink_tolerance():
     """The prices swap guard's per-security tolerance is a value the code owns (#1096)."""
-    from RevenueChaser.rcdata.build.prices import serving as prices_serving
+    from revenuechaser.rcdata.build.prices import serving as prices_serving
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     m = re.search(r"tolerance of `(\d+)` bars \(`PER_ID_SHRINK_BARS`\)", text)
     assert m, "docs/data_architecture.md no longer states the per-id shrink tolerance"
@@ -79,7 +79,7 @@ def _env_example_lines() -> list[str]:
 
 
 def test_env_example_lists_every_provider_variable_and_the_known_extras():
-    from RevenueChaser.core import credentials
+    from revenuechaser.core import credentials
     wanted = {p.env_var for p in credentials.PROVIDERS.values()} | set(_ENV_EXTRAS)
     listed = {m.group(1) for line in _env_example_lines() if (m := re.match(r"([A-Z][A-Z0-9_]*)=", line))}
     assert listed == wanted, (f"missing from .env.example: {sorted(wanted - listed)}; "
@@ -146,7 +146,7 @@ def test_the_stage_2_table_names_the_file_each_table_lives_in():
 
 def test_data_architecture_names_the_weekly_backup_the_code_owns():
     """Backups section: the root, the steps, the retention and the restore command, as ``rcdata/backup.py`` has them."""
-    from RevenueChaser.rcdata import backup
+    from revenuechaser.rcdata import backup
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text.split("## Backups, restore and compaction", 1)[1]
     assert not hasattr(config, "RAW_STORE_BACKUP_WEEKLY") and not hasattr(config, "RAW_STORE_BACKUP_MIRROR")
@@ -188,8 +188,8 @@ _MARKDOWN_READ_BY_TESTS = (
     "docs/data_architecture.md",        # test_doc_constants.py, test_store_schema_refuse.py:36, test_rawstore_history.py:595
     "docs/data_health.md",             # test_doc_constants.py:179, test_automation_chain.py:125
     "docs/data_retrieval.md",          # test_doc_constants.py:56
-    "docs/module_earnings-radar/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
-    "docs/module_earnings-radar/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
+    "docs/module_earnings_radar/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
+    "docs/module_earnings_radar/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
     "docs/v2/door.md",                          # test_door_deployment.py (port, probe budget), test_door_proxy.py (the route table)
     "module_spx_gamma/tests/golden/position_map.base.md",   # module_spx_gamma/tests/test_autoescape_175.py:106
 )
@@ -228,7 +228,7 @@ def _market_store_section() -> str:
 
 def test_the_market_store_section_states_the_versions_and_kinds_the_code_owns():
     """#206: the ops schema version, each serving kind and its serving schema version, as rcdata has them."""
-    from RevenueChaser.rcdata import ops, serving
+    from revenuechaser.rcdata import ops, serving
     section = _market_store_section()
     assert f"ops schema version `{ops.OPS_SCHEMA_VERSION}`" in section
     for kind, version in serving.SERVING_SCHEMA_VERSION.items():
@@ -238,7 +238,7 @@ def test_the_market_store_section_states_the_versions_and_kinds_the_code_owns():
 
 
 def test_the_market_store_section_names_every_ops_table_root_and_cap():
-    from RevenueChaser.rcdata import backup, caps, ops
+    from revenuechaser.rcdata import backup, caps, ops
     section = _market_store_section()
     for table in ops.TABLES:
         assert f"`{table}`" in section, table
@@ -261,7 +261,7 @@ def test_the_market_store_section_names_every_ops_table_root_and_cap():
 
 def test_data_architecture_names_the_builder_units_and_their_times():
     """PR 2: the builder service's unit names, schedule and limits are the registry's (core/automations.py)."""
-    from RevenueChaser.core import automations
+    from revenuechaser.core import automations
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     for name in ("RC-Build", "RC-Backup-Weekly"):
         e = automations.entry(name)
@@ -274,7 +274,7 @@ def test_data_architecture_names_the_builder_units_and_their_times():
 
 def test_data_health_states_the_new_section_limits_the_code_owns():
     """PR 2: the cycle lengths, the backup warning, the backfill confirm threshold and the handle rule."""
-    from RevenueChaser.module_settings import newdata, report
+    from revenuechaser.module_settings import newdata, report
     text = (_REPO / "docs" / "data_health.md").read_text(encoding="utf-8")
     section = text[text.index('### 2.0 The "New data system" section'):text.index("### 2.1 The summary tiles")]
     assert f"for {newdata.CYCLE_DAYS['weekly']} days" in section
@@ -289,15 +289,15 @@ def test_data_health_states_the_new_section_limits_the_code_owns():
 
 def test_data_architecture_states_the_spx_gamma_store_reads_the_code_owns():
     """PR 3: the market-store section says how SPX Gamma reads it; the lags and the requester are the code's."""
-    from RevenueChaser.app import runners
-    from RevenueChaser.module_spx_gamma import store_reads
+    from revenuechaser.app import runners
+    from revenuechaser.module_spx_gamma import store_reads
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text[text.index("**The first board on it: SPX Gamma"):].split("\n\n")[0].replace("\n", " ")
     for kind in ("vix", "cot"):
         assert f"inside {store_reads.MAX_LAG[kind]} sessions" in section, kind
     assert f"Tuesday + {store_reads.RELEASE_DAYS} days" in section
     # #330: the board reads through the needs layer, judged against the rendered day; the needs are its READS.
-    from RevenueChaser import module_spx_gamma
+    from revenuechaser import module_spx_gamma
     assert "`needs.ask(need, as_of=day)`" in section
     for need in module_spx_gamma.READS:
         assert f"`{need}`" in section, need
@@ -315,8 +315,8 @@ def test_data_retrieval_says_spx_gamma_reads_through_the_needs_layer():
 
 def test_the_spine_section_states_what_the_code_owns():
     """PR 5: the spine's datasets, tables, views, tier rule version, issue kinds and the flag, as the code has them."""
-    from RevenueChaser.rcdata.build import DATASETS
-    from RevenueChaser.rcdata.build.spine import KIND, security, tier, views
+    from revenuechaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build.spine import KIND, security, tier, views
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text[text.index("### The identity spine (`spine.duckdb`, PR 5)"):text.index("## Migration")]
     for name, ds in DATASETS.items():
@@ -334,10 +334,10 @@ def test_the_spine_section_states_what_the_code_owns():
 
 def test_the_prices_section_states_what_the_code_owns():
     """PR 7 (G2): the prices store's datasets, tables, views, issue kinds and the numbers its rules use."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata import caps, read
-    from RevenueChaser.rcdata.build import DATASETS
-    from RevenueChaser.rcdata.build.prices import KIND, actions, bars, floats, serving, wrds_history
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata import caps, read
+    from revenuechaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build.prices import KIND, actions, bars, floats, serving, wrds_history
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text[text.index("### The prices store (`prices.duckdb` in `RC_MARKET_DIR`, PR 7)"):text.index("## Migration")]
     for name, ds in DATASETS.items():
@@ -367,8 +367,8 @@ def test_the_prices_section_states_what_the_code_owns():
 
 def test_the_ownership_section_states_what_the_code_owns():
     """PR 16: the ownership store's datasets, served tables, views and build issue kinds, as the code has them."""
-    from RevenueChaser.rcdata.build import DATASETS
-    from RevenueChaser.rcdata.build.ownership import KIND, serve
+    from revenuechaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build.ownership import KIND, serve
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text[text.index("### The ownership store (`ownership.duckdb`, PR 16)"):text.index("## Migration")]
     for name, ds in DATASETS.items():
@@ -385,9 +385,9 @@ def test_the_ownership_section_states_what_the_code_owns():
 def test_the_fundamentals_section_states_what_the_code_owns():
     """PR 12: the fundamentals layer's datasets and cadences, served tables, views, issue kinds, flag, attended
     command and read API, as the code has them."""
-    from RevenueChaser.module_settings import newdata
-    from RevenueChaser.rcdata.build import DATASETS
-    from RevenueChaser.rcdata.build.fundamentals import KIND, tables
+    from revenuechaser.module_settings import newdata
+    from revenuechaser.rcdata.build import DATASETS
+    from revenuechaser.rcdata.build.fundamentals import KIND, tables
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text[text.index("### Fundamentals (`fundamentals.duckdb`, PR 12)"):text.index("## Migration")]
     for name, ds in DATASETS.items():
@@ -404,7 +404,7 @@ def test_the_fundamentals_section_states_what_the_code_owns():
     # must still carry is the by-hand whole-build line, because the monthly snapshot is ``whole_build_by_hand``.
     assert newdata.attended_command(KIND) is None
     flat = section.replace("\n", " ")
-    assert "python -m RevenueChaser.rcdata.build backfill wrds/fundq wrds/funda" in flat
+    assert "python -m revenuechaser.rcdata.build backfill wrds/fundq wrds/funda" in flat
     for fn in ("statements", "earnings_events", "estimates", "filing_text", "segments", "customers", "peers",
                "revisions", "statements_many", "fundamental_companies", "filing_items", "filing_texts",
                "customer_shares"):
@@ -418,9 +418,9 @@ def test_the_fundamentals_section_states_what_the_code_owns():
 
 def test_the_options_section_states_what_the_code_owns():
     """G8: the options data's datasets, tables, window, page sizes, pacing, call arithmetic and retention rule."""
-    from RevenueChaser.rcdata import caps, retention
-    from RevenueChaser.rcdata.build import DATASETS, options
-    from RevenueChaser.rcdata.build.options import ibkr_iv, tables, uw, uw_screener
+    from revenuechaser.rcdata import caps, retention
+    from revenuechaser.rcdata.build import DATASETS, options
+    from revenuechaser.rcdata.build.options import ibkr_iv, tables, uw, uw_screener
     text = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
     section = text[text.index("### The options data (`options.duckdb`, G8)"):text.index("## Migration")]
     flat = " ".join(section.split())
@@ -445,8 +445,8 @@ def test_the_options_section_states_what_the_code_owns():
 
 def test_data_health_states_the_control_boards_values_the_code_owns():
     """Design v28: the control board's thresholds, its fill switch and its one read route, as the code has them."""
-    from RevenueChaser.module_settings import control, control_render, newdata
-    from RevenueChaser.rcdata.needs import screen
+    from revenuechaser.module_settings import control, control_render, newdata
+    from revenuechaser.rcdata.needs import screen
     text = (_REPO / "docs" / "data_health.md").read_text(encoding="utf-8")
     section = text[text.index("### 2.0a The control board"):text.index('### 2.0 The "New data system" section')]
     assert f"silent for over {control.BUILDER_SILENT_MINUTES} minutes" in section
@@ -459,7 +459,7 @@ def test_data_health_states_the_control_boards_values_the_code_owns():
 
 def test_data_health_states_the_news_tape_values_the_code_owns():
     """#727: the listener's beat, its re-ask interval and the card's staleness, as the code has them."""
-    from RevenueChaser.module_news import tape, tape_state
+    from revenuechaser.module_news import tape, tape_state
     text = (_REPO / "docs" / "data_health.md").read_text(encoding="utf-8")
     section = " ".join(text[text.index("### 3.2a IBKR news feeds"):text.index("### 3.3 Backups")].split())
     assert f"with its {tape.TRIGGER_S // 60}-minute trigger" in section
@@ -469,7 +469,7 @@ def test_data_health_states_the_news_tape_values_the_code_owns():
 
 def test_the_metrics_table_in_data_health_matches_the_code():
     """#527 plan B1: the /metrics names are a contract with the Grafana boards; the doc lists exactly the code's."""
-    from RevenueChaser.module_settings import metrics
+    from revenuechaser.module_settings import metrics
     text = (_REPO / "docs" / "data_health.md").read_text(encoding="utf-8")
     section = text.split("## 9. Live in Grafana", 1)[1]
     listed = re.findall(r"^\| `(rc_[a-z_]+)` \|", section, flags=re.M)
@@ -477,14 +477,14 @@ def test_the_metrics_table_in_data_health_matches_the_code():
 
 
 def test_r6_doc_states_the_calibrated_rate_thresholds_and_the_measurement():
-    """``docs/module_earnings-radar/r6_macro.md``'s |β| table states values ``core/config`` owns (#635).
+    """``docs/module_earnings_radar/r6_macro.md``'s |β| table states values ``core/config`` owns (#635).
 
     The doc said "> 4 veto / > 2 reason" while the constants were recalibrated to the beta's measured scale,
     which is the drift #134 is about: a reader takes the table for the contract. The percentiles the cuts were
     set from have to be in the doc too — a threshold whose measurement is not written down cannot be judged or
     re-taken (#1250).
     """
-    text = (_REPO / "docs" / "module_earnings-radar" / "r6_macro.md").read_text(encoding="utf-8")
+    text = (_REPO / "docs" / "module_earnings_radar" / "r6_macro.md").read_text(encoding="utf-8")
     veto = re.search(r"\| > ([\d.]+) \| \*\*veto\*\*", text)
     high = re.search(r"\| > ([\d.]+) \| reason only", text)
     assert veto and high, "r6_macro.md no longer states the |beta| thresholds in its table"
@@ -500,7 +500,7 @@ def test_llm_spend_doc_states_the_day_cap_and_the_measured_price_the_code_owns()
     The measured figure names its pilot in the doc as well: ``rcdata/caps.py``'s rule is that a number states
     where it came from, and a price with no measurement behind it cannot be judged or re-taken.
     """
-    from RevenueChaser.core import llm_prices, llm_spend
+    from revenuechaser.core import llm_prices, llm_spend
     text = (_REPO / "docs" / "llm_spend.md").read_text(encoding="utf-8")
     assert f"**{llm_spend.DEFAULT_DAY_CAP_USD} USD a New York day**" in text
     assert f"`{llm_spend.CAP_ENV}`" in text and f"`{llm_spend.ENV}=0`" in text

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from RevenueChaser.core import gex_profile
+from revenuechaser.core import gex_profile
 
 from .charm_pin import (
     MODE_DIRECTIONALIZED_VOLUME,

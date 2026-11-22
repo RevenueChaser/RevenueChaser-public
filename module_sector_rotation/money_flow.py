@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 from datetime import date, timedelta
 
-from RevenueChaser.core import rotation_reference
+from revenuechaser.core import rotation_reference
 
 _NOT_RANKED = ("region", "bond", "yield", "commodity")
 
@@ -28,7 +28,7 @@ def bar_rows(tickers, session: date, days: int = 30) -> list[dict]:
     """``{ticker, date, close, volume}`` rows from one prices-store read (``rcdata.read.ticker_bars``, split basis),
     the last ``days`` sessions of each ticker up to ``session``; never fetches. A ticker the store holds no bar of
     has no row."""
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     frame = read.ticker_bars(list(tickers), start=session - timedelta(days=days * 2 + 14), end=session, basis="split")
     if frame is None or frame.empty:
         return []
@@ -100,7 +100,7 @@ def compute_money_flow(days: int = 30, window: int = 21, top_n: int = 4) -> dict
     also carries ``partial: True`` and ``missing`` (their tickers, in universe order); a whole result has neither key.
     """
     import pandas as pd
-    from RevenueChaser.core import calendar
+    from revenuechaser.core import calendar
 
     wanted = ranked_tickers()
     try:

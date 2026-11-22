@@ -6,9 +6,9 @@ from datetime import date, timedelta
 import duckdb
 import pytest
 
-from RevenueChaser.rcdata import serving
-from RevenueChaser.rcdata.build import base
-from RevenueChaser.rcdata.build.options import tables
+from revenuechaser.rcdata import serving
+from revenuechaser.rcdata.build import base
+from revenuechaser.rcdata.build.options import tables
 
 
 def test_the_options_kind_is_served_at_version_3():

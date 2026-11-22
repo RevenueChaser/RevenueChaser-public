@@ -1,8 +1,8 @@
 """Fundamentals score/gate persistence (pure transforms + rawstore write)."""
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_fundamentals import scores
+from revenuechaser.core import rawstore
+from revenuechaser.module_fundamentals import scores
 
 
 def _results():

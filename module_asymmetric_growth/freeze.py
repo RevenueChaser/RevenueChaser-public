@@ -13,8 +13,8 @@ the board. AG also has no fixture / no-data flag, so it brings its own guards: n
 """
 from __future__ import annotations
 
-from RevenueChaser.core import ledger
-from RevenueChaser.module_asymmetric_growth import engine
+from revenuechaser.core import ledger
+from revenuechaser.module_asymmetric_growth import engine
 
 SOURCE = "asymmetric_growth"
 LABEL = "AG"

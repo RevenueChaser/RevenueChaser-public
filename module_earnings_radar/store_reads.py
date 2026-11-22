@@ -31,10 +31,10 @@ from __future__ import annotations
 import logging
 from datetime import date, timedelta
 
-from RevenueChaser.core import calendar, ownership
-from RevenueChaser.core.rotation_reference import MACRO_SERIES
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.needs.catalog import FromCatalog
+from revenuechaser.core import calendar, ownership
+from revenuechaser.core.rotation_reference import MACRO_SERIES
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.needs.catalog import FromCatalog
 
 from .rules import transcript_split
 
@@ -52,7 +52,7 @@ _NEED_OF_LAG = {"dgs10": "macro.dgs10"}
 
 def max_lag() -> dict[str, int]:
     """``{input: sessions it may lag by}``, read from the need catalog on every call."""
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     return {key: needs.catalog.NEEDS[need].max_lag for key, need in _NEED_OF_LAG.items()}
 
 
@@ -79,7 +79,7 @@ _NEED_OF_AGE = {"estimates": "fundamentals.estimates", "short_interest": "owners
 
 def max_age_days() -> dict[str, int]:
     """``{input: calendar days it may be old}``, read from the need catalog on every call."""
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     out = {}
     for key, name in _NEED_OF_AGE.items():
         need = needs.catalog.NEEDS[name]
@@ -260,7 +260,7 @@ def _floats(names: list[str]) -> dict[str, tuple[float, str]]:
 
 def _fees(names: list[str]) -> dict[str, float]:
     """``{ticker: borrow fee}`` from IBKR's newest snapshot, when it is inside ``ownership.shortable``'s session lag."""
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     lag_max = needs.catalog.NEEDS[FEE_NEED].max_lag
     latest = calendar.latest_complete_session()
     out: dict[str, float] = {}
@@ -340,7 +340,7 @@ def earnings_options(tickers, latest: date | None = None) -> tuple[dict[str, dic
     Only each name's newest evening counts, and only when it lags ``latest`` (default the latest complete session)
     by no more than ``earnings.options`` allows. A name with no such row is absent: the pipeline then asks UW live.
     """
-    from RevenueChaser.rcdata import needs
+    from revenuechaser.rcdata import needs
     names = sorted({str(t).strip().upper() for t in (tickers or []) if str(t or "").strip()})
     status = _status(OPTIONS_DATASET)
     if not names:

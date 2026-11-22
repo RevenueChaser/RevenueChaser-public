@@ -1,6 +1,6 @@
 """The prints R5's institutional lean reads: a window of sessions and a slice of strikes and expiries (#256).
 
-``docs/module_earnings-radar/redesign.md`` R5 asks for two local filters the ``flow-recent`` endpoint cannot do itself
+``docs/module_earnings_radar/redesign.md`` R5 asks for two local filters the ``flow-recent`` endpoint cannot do itself
 ("Window: last 1-3 sessions", "Strike filter = R4 EM-band + earnings-expiry proximity. ``flow-recent`` does not
 slice strikes - slice locally"). Until this module the lean read whatever the endpoint returned: every strike, every
 expiry, and as many sessions back as the newest prints happened to span. A LEAP bought a week before the report, or
@@ -27,8 +27,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from RevenueChaser.core import calendar as rc_calendar
-from RevenueChaser.core.config import R5_LEAN_BAND_SLACK, R5_LEAN_EXPIRY_DAYS, R5_LEAN_SESSIONS
+from revenuechaser.core import calendar as rc_calendar
+from revenuechaser.core.config import R5_LEAN_BAND_SLACK, R5_LEAN_EXPIRY_DAYS, R5_LEAN_SESSIONS
 
 
 def _day(value) -> date | None:

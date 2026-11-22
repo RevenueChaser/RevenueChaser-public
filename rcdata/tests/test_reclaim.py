@@ -6,9 +6,9 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from RevenueChaser.core import config, procs
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import __main__ as cli
+from revenuechaser.core import config, procs
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import __main__ as cli
 
 
 def _dead_pid() -> int:
@@ -32,7 +32,7 @@ def _request(rid: int) -> dict:
 
 
 def test_a_running_request_whose_pid_is_gone_is_reclaimed_at_builder_start(monkeypatch):
-    from RevenueChaser.rcdata.build import due
+    from revenuechaser.rcdata.build import due
     monkeypatch.setattr(due, "enqueue_due", lambda datasets=None: [])   # this start is about the reclaim only
     dead = _dead_pid()
     rid = _taken_and_started("market_series", "dead-run", dead)
@@ -107,7 +107,7 @@ def test_a_request_whose_run_pid_is_alive_is_left_alone_even_without_a_builder_m
 
 def test_the_data_health_page_read_closes_a_request_whose_run_was_killed():
     """#602: the board's own queue rows (the Stop buttons) come from this read, not from /api/build/queue."""
-    from RevenueChaser.module_settings import report
+    from revenuechaser.module_settings import report
     rid = _taken_and_started("market_series", "killed-page-run", _dead_pid())
     nd = report._collect_newdata()
     assert all(r["id"] != rid for r in (nd.get("queue") or {}).get("active", []))
@@ -126,7 +126,7 @@ def test_a_reader_leaves_a_run_another_host_started_alone():
 # #815: the same reclaim, worded from the kernel's own log when that is what killed the builder.
 
 def test_a_request_the_kernel_oom_killed_says_so_instead_of_pid_gone(monkeypatch):
-    from RevenueChaser.core import oom
+    from revenuechaser.core import oom
     dead = _dead_pid()
     monkeypatch.setenv(oom.ENV, "1")
     monkeypatch.setattr(oom, "_journal",
@@ -141,7 +141,7 @@ def test_a_request_the_kernel_oom_killed_says_so_instead_of_pid_gone(monkeypatch
 
 
 def test_a_run_the_kernel_did_not_kill_keeps_the_note_it_had(monkeypatch):
-    from RevenueChaser.core import oom
+    from revenuechaser.core import oom
     dead = _dead_pid()
     monkeypatch.setenv(oom.ENV, "1")
     monkeypatch.setattr(oom, "_journal", lambda since: "Out of memory: Killed process 999999 (someone-else)")
@@ -177,7 +177,7 @@ def test_a_dashboard_job_whose_dashboard_went_away_is_interrupted_not_a_builder_
 
 def test_an_interrupted_dashboard_job_records_no_end_time():
     """The only end time the sweeper knows is its own clock, so the row keeps none and shows no duration."""
-    from RevenueChaser.app import runview
+    from revenuechaser.app import runview
     _dashboard_run("news-no-end", _dead_pid())
     assert ops.fail_orphans() == (0, 1)
     run = _run_row("news-no-end")
@@ -187,7 +187,7 @@ def test_an_interrupted_dashboard_job_records_no_end_time():
 
 def test_an_interrupted_run_is_not_counted_as_a_problem():
     """It is a run with no outcome, not a fault: the Runs tab's "Problems only" switch must not keep it."""
-    from RevenueChaser.app import activity, runview
+    from revenuechaser.app import activity, runview
     _dashboard_run("news-not-bad", _dead_pid())
     ops.fail_orphans()
     row = runview.view_row(_run_row("news-not-bad"))
@@ -233,7 +233,7 @@ def test_a_scheduled_task_is_failed_in_the_same_sweep_that_interrupts_a_dashboar
 
 def test_a_dashboard_job_the_kernel_oom_killed_stays_a_failure_that_says_so(monkeypatch):
     """#815's wording wins over the restart wording: an OOM kill is a fault, and only that pid's row gets it."""
-    from RevenueChaser.core import oom
+    from revenuechaser.core import oom
     killed, restarted = _dead_pid(), _dead_pid()
     monkeypatch.setenv(oom.ENV, "1")
     monkeypatch.setattr(oom, "_journal", lambda since: f"Out of memory: Killed process {killed} (python3)")

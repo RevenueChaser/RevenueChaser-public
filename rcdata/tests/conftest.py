@@ -11,7 +11,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def market_roots(tmp_path, monkeypatch):
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     ssd, hdd = tmp_path / "market", tmp_path / "market_raw"
     monkeypatch.setattr(config, "MARKET_DIR", ssd)
     monkeypatch.setattr(config, "MARKET_RAW_DIR", hdd)
@@ -19,7 +19,7 @@ def market_roots(tmp_path, monkeypatch):
     monkeypatch.setenv("RC_MARKET_RAW_DIR", str(hdd))
     # The process-wide read log is flushed at exit; a test's counts must not land in the scratch root after the
     # session removed it, so each test counts into its own log, which goes with it.
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     monkeypatch.setattr(ops, "read_log", ops.ReadLog(process="test"))
     return ssd, hdd
 
@@ -27,8 +27,8 @@ def market_roots(tmp_path, monkeypatch):
 @pytest.fixture(scope="session")
 def job_lists_file(tmp_path_factory):
     """A ``watchlists.duckdb`` holding the two job lists, both empty, made once per process through the store."""
-    from RevenueChaser.core import rawstore
-    from RevenueChaser.module_watchlists import store
+    from revenuechaser.core import rawstore
+    from revenuechaser.module_watchlists import store
     root, mp = tmp_path_factory.mktemp("job-lists"), pytest.MonkeyPatch()
     mp.setattr(rawstore, "STORE_DIR", root)
     try:
@@ -51,7 +51,7 @@ def job_lists(request, job_lists_file, isolate_rawstore):
         return
     import shutil
 
-    from RevenueChaser.core import rawstore
+    from revenuechaser.core import rawstore
     dest = isolate_rawstore / rawstore.BOARDS_DIRNAME / job_lists_file.name
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(job_lists_file, dest)
@@ -62,7 +62,7 @@ def no_backoff_wait(monkeypatch):
     """``run_request`` waits on the real clock between HTTP retries (2 s, then 4 s): a test of a failing source slept
     6 s per name (18 s in one spine test, #896). The default ``sleep`` becomes a no-op; a test that checks the waits
     passes its own ``sleep=`` and is not affected."""
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     monkeypatch.setattr(base.run_request, "__kwdefaults__",
                         {**base.run_request.__kwdefaults__, "sleep": lambda s: None})
 
@@ -71,7 +71,7 @@ def no_backoff_wait(monkeypatch):
 def kinds_full():
     """Every dataset's own automation at raw + Parquet + DuckDB: the hourly pass these tests were written for, from
     before a dataset with no ``dataset_automation`` row read as off (the file-level mode is gone, avo 10 Nov 2026)."""
-    from RevenueChaser.rcdata import build, ops
+    from revenuechaser.rcdata import build, ops
     for name in build.DATASETS:
         ops.dataset_mode_set(name, "full", by="test")
 

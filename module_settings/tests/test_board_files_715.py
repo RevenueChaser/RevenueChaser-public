@@ -5,10 +5,10 @@ Data flow. They were only a small box each in the wide diagram and one line unde
 """
 from __future__ import annotations
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_settings import control, control_render
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
-from RevenueChaser.rcdata import serving
+from revenuechaser.core import rawstore
+from revenuechaser.module_settings import control, control_render
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.rcdata import serving
 
 
 def _view() -> dict:

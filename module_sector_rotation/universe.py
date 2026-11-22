@@ -10,7 +10,7 @@ The ETFs are avo's ``map`` watch list since plan v5 step 7b: every reader calls
 it lives in ``core/rotation_reference.py`` (since #12) and is re-exported here (a test that rebinds
 ``store.MACRO_SERIES`` keeps working).
 """
-from RevenueChaser.core.rotation_reference import MACRO_SERIES  # noqa: F401
+from revenuechaser.core.rotation_reference import MACRO_SERIES  # noqa: F401
 
 GROUP_COLORS = {
     "sector": "#58a6ff",

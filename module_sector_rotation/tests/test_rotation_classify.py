@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.module_sector_rotation.engine import (
+from revenuechaser.module_sector_rotation.engine import (
     MIN_WEEKS,
     classify_quadrant,
     classify_rrg,
@@ -67,7 +67,7 @@ class TestJdkSeries:
 
     def test_the_axes_are_the_values_less_100(self):
         """The quadrant is the end of the ETF's own banded path (#597), not the signs of the last point alone."""
-        from RevenueChaser.module_sector_rotation.engine import jdk_series, quadrant_path
+        from revenuechaser.module_sector_rotation.engine import jdk_series, quadrant_path
         spy = self._series(120, 0.001, 5)
         etf = self._series(120, 0.002, 3)
         s = cross_section({"XLK": etf}, spy, date(2026, 8, 14))[0]

@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from RevenueChaser.module_spx_gamma.expected_move import expected_move, pick_iv
+from revenuechaser.module_spx_gamma.expected_move import expected_move, pick_iv
 
 
 def test_expected_move_formula():

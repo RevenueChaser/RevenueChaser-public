@@ -15,9 +15,9 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, base
-from RevenueChaser.rcdata.build import prices
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, base
+from revenuechaser.rcdata.build import prices
 
 from . import prices_fixture
 
@@ -244,7 +244,7 @@ def test_a_tier_and_a_name_list_in_one_request_are_both_asked(spine, monkeypatch
 
 def test_the_bars_ask_the_requests_names_and_nothing_else(spine, monkeypatch):
     """The fetch path, not the helper: ``alpaca/bars`` is the dataset #265 is about."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     asked = []
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
@@ -261,7 +261,7 @@ def test_a_scope_no_spine_row_answers_is_a_clear_refusal_before_any_call(monkeyp
     and the refusal says so instead of asking Alpaca for five symbols. With a scope it is the request's own doing,
     so it is ``NothingInScope`` (a skipped row) rather than a failure - see the two F1 cases below, which the
     review showed this one was too weak to catch on its own."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     monkeypatch.setattr(bars.calendar, "bars_complete", lambda day, now: True)
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
@@ -273,7 +273,7 @@ def test_a_scope_no_spine_row_answers_is_a_clear_refusal_before_any_call(monkeyp
 def test_the_floats_keep_their_tier_a_rule_but_follow_a_name_list(spine, monkeypatch):
     """A fund has no float (#265's open point), so a float run stays at Tier A even when the request says A+B; an
     explicit name list is a person asking for those names, and is taken as it is."""
-    from RevenueChaser.rcdata.build.prices import floats
+    from revenuechaser.rcdata.build.prices import floats
 
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
     assert _tickers(floats.asked(base.Scope(tiers=("A", "B")))) == ["AAPL", "BRK-B", "FLG", "GAPX"]
@@ -283,7 +283,7 @@ def test_the_floats_keep_their_tier_a_rule_but_follow_a_name_list(spine, monkeyp
 def test_the_other_tiers_coverage_is_reported_beside_tier_as(spine):
     """#265's second point: the acceptance ">= 99% of Tier A" stays Tier A's, so a Tier B fund with no Alpaca bar
     cannot fail the run - but it is reported, or nobody would know B is empty."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     ctx = base.RunContext(run_id="t", dataset=bars.NAME)
     asked = {"2026-10-28": {"AAPL": "A", "GAPX": "A", "SPY": "B", "OTCX": "C"}}
@@ -302,7 +302,7 @@ def test_f1_a_tier_the_spine_holds_nothing_of_is_refused_with_the_spine_in_place
     added beside the tier loop from the spine's own rows - so SPY alone satisfied it and a ``tiers=["D"]`` request
     spent 70 symbols' worth of calls twice. The earlier case passed only because it did not write a spine, which is
     the stub the review's probe went around."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     asked = []
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
@@ -321,7 +321,7 @@ def test_f1_a_tier_the_spine_holds_nothing_of_is_refused_with_the_spine_in_place
 def test_f1_no_spine_at_all_is_still_a_failure_not_a_skip(monkeypatch):
     """The two cases must not collapse into one: an empty scope with no spine file is a broken build (a failed
     check row), while a scope the spine answers nothing for is the request's own doing (skipped)."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
     monkeypatch.setattr(bars.calendar, "bars_complete", lambda day, now: True)
@@ -345,7 +345,7 @@ def test_f3_a_scoped_float_run_does_not_occupy_the_days_raw_file(spine, monkeypa
     """F3. ``uw/total_float`` writes one raw file a day and returned it before looking at the scope, so a
     ``names=["KO"]`` press wrote a one-row file and the day's later full run handed that same file back: the day
     ended with a float for one name and a check row that looked normal."""
-    from RevenueChaser.rcdata.build.prices import floats
+    from revenuechaser.rcdata.build.prices import floats
 
     sent = []
 
@@ -388,7 +388,7 @@ def test_f5_the_name_cap_is_the_one_readers_own(monkeypatch):
 def test_f6_a_narrow_fills_coverage_is_not_reported_as_the_universes(spine, monkeypatch):
     """F6. ``coverage`` is the number a person reads the ">= 99% of Tier A" acceptance off, and it was written per
     request - so a one-name fill left the dataset's newest check row at 1.0 or 0.0 until the next daily run."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     monkeypatch.setattr(bars.stage, "compare_live", lambda *a, **k: (0, 0))
     monkeypatch.setattr(bars.stage, "count", lambda *a, **k: 1)
@@ -405,7 +405,7 @@ def test_f6_a_narrow_fills_coverage_is_not_reported_as_the_universes(spine, monk
 def test_f4_the_float_refusal_names_the_scope_not_the_spine(spine, monkeypatch):
     """The other half of F4, which the first round's mutation check found untested: with a spine in place and a
     tier that holds no company, the float run must blame the scope (and be skipped), not the spine file."""
-    from RevenueChaser.rcdata.build.prices import floats
+    from revenuechaser.rcdata.build.prices import floats
 
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
     ctx = base.RunContext(run_id="t", dataset=floats.UW, scope=base.Scope(tiers=("B",)))
@@ -463,7 +463,7 @@ def test_karar_82_the_watch_list_is_not_read_when_it_was_not_asked_for(spine, mo
     def fake_watched(kind):
         calls.append(kind)
         return set()
-    from RevenueChaser.rcdata import read
+    from revenuechaser.rcdata import read
     monkeypatch.setattr(read, "watched", fake_watched)
     prices.scope(want=base.Scope(tiers=("A",)))
     assert calls == []
@@ -482,7 +482,7 @@ def test_karar_82_the_groups_a_request_may_name_are_checked():
 def test_karar_82_a_tier_fill_that_matches_nothing_is_refused_before_a_call(spine, monkeypatch):
     """With the extras gone from a narrowed fill, ``tiers=["D"]`` returns nothing at all - so the refusal is the
     plain "this scope matches no name", with no benchmark left to hide it."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     asked = []
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
@@ -498,7 +498,7 @@ def test_a_spine_with_no_name_of_the_asked_tiers_is_a_failure_even_if_a_benchmar
     """The daily run's guard must count the universe it asked for. A spine holding no stock of the universe still
     gives the benchmarks a row (SPY as Tier C here), so "does any name carry any tier" would pass and the run would
     ask Alpaca for five ETFs and call that a bars run."""
-    from RevenueChaser.rcdata.build.prices import bars
+    from revenuechaser.rcdata.build.prices import bars
 
     prices_fixture.write_spine([{"ticker": "SPY", "cik": "884394", "name": "SPDR S&P 500 ETF TRUST",
                                  "exchange": "NYSE", "tier": "C", "security_type": "etf", "gvkey": None,
@@ -514,7 +514,7 @@ def test_d1_the_scoped_raw_file_keys_the_groups_too(spine):
     """The delta review's D1: the raw file's key was built from the tiers and the names only, so two different
     asks of the same day - ``include=["watchlist"]`` and ``include=["cover_classes"]`` - shared one file, and
     whichever ran first was handed back to the other."""
-    from RevenueChaser.rcdata.build.prices import floats
+    from revenuechaser.rcdata.build.prices import floats
 
     ds, day = floats.UW_FLOAT, date(2026, 10, 28)
     paths = {ds.raw_path(day, s) for s in (base.Scope(include=("watchlist",)),

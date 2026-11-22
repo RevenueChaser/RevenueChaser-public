@@ -14,9 +14,9 @@ import shutil
 
 import pytest
 
-from RevenueChaser.module_comovement import report
-from RevenueChaser.core.html_safe import script_json
-from RevenueChaser.module_comovement.tests.test_comovement import (
+from revenuechaser.module_comovement import report
+from revenuechaser.core.html_safe import script_json
+from revenuechaser.module_comovement.tests.test_comovement import (
     _report_cluster, _report_payload, _run_board_js_probe)
 
 

@@ -9,10 +9,10 @@ from datetime import date
 
 import pytest
 
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata import build as build_pkg
-from RevenueChaser.rcdata.build import __main__ as cli
-from RevenueChaser.rcdata.build import base, due
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata import build as build_pkg
+from revenuechaser.rcdata.build import __main__ as cli
+from revenuechaser.rcdata.build import base, due
 
 AS_OF = date(2026, 11, 6)
 
@@ -48,7 +48,7 @@ class Fake:
 @pytest.fixture
 def fakes(monkeypatch):
     """Four market fakes and one spine fake, registered in a deliberately non-alphabetical order."""
-    from RevenueChaser.core import config
+    from revenuechaser.core import config
     (base.parquet_root()).mkdir(parents=True, exist_ok=True)
     log: list = []
     reg = {n: Fake(n, log=log) for n in ("m/zeta", "m/alpha", "m/mid", "m/beta")}

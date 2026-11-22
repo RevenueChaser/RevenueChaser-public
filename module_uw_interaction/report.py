@@ -15,8 +15,8 @@ import html as _html
 import json
 from datetime import datetime, timezone
 
-from RevenueChaser.core.html_safe import ESC_JS, script_json
-from RevenueChaser.core.reporting_common import help_html, provider_health_html
+from revenuechaser.core.html_safe import ESC_JS, script_json
+from revenuechaser.core.reporting_common import help_html, provider_health_html
 
 from .catalog import catalog_payload
 

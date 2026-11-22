@@ -135,7 +135,7 @@ scan carries on; a short SPY series leaves `rs_6m` empty instead of failing the 
 
 Value Chain dashboard Fetch is **cache-first** (`fetch_corpus` skips tickers
 that already have a `chain_filings` row). Newer 10-K detection is
-`python -m RevenueChaser.module_value_chain --sync-filings`, exposed on the
+`python -m revenuechaser.module_value_chain --sync-filings`, exposed on the
 Settings tab as `POST /run/edgar-sync` (`requires_uw=False`); it is deliberately
 **not** triggered by every Value Chain Fetch.
 
@@ -183,7 +183,7 @@ button silently degrades to a plain iframe reload.
 
 ### The market-store builder's routes (PR 2)
 
-The builder (`python -m RevenueChaser.rcdata.build`) is the only process that writes the market store. These
+The builder (`python -m revenuechaser.rcdata.build`) is the only process that writes the market store. These
 routes only enqueue and read `ops.sqlite`. Each call opens its own SQLite connection and no DuckDB file.
 
 - **`POST /api/build/request/<dataset>`**: queues one build (`requested_by` = the `X-RC-Panel` value). With
@@ -193,7 +193,7 @@ routes only enqueue and read `ops.sqlite`. Each call opens its own SQLite connec
   An attended dataset (`delisted/serving` alone since #1361; the WRDS ones follow their cadence now)
   is queued too, with the press's own mode like any other dataset — the daily `fetch` unless `backfill_from` is
   given — and the answer carries `attended: true` and `waits_for`: that runner needs a person at a terminal, so the
-  request waits in the queue until `python -m RevenueChaser.rcdata.build attended` on the server takes it, and
+  request waits in the queue until `python -m revenuechaser.rcdata.build attended` on the server takes it, and
   the hourly builder leaves it there. A press is never turned into a backfill: each WRDS dataset's `fetch` is not
   its backfill (for `wrds/prices` the monthly refresh of the last two years, where the backfill only fills
   missing partitions).
@@ -287,7 +287,7 @@ nothing, so neither needs the `X-RC-Panel` header.
   `limit` up to `report.API_LIMIT`. Newest first. 400 for a bad number, for `to` before `from`, for a wider
   window, or for a ticker that is not one.
 
-**`python -m RevenueChaser.scripts.news_mcp`** is a JSON-RPC 2.0 server over stdio (one message a line) that
+**`python -m revenuechaser.scripts.news_mcp`** is a JSON-RPC 2.0 server over stdio (one message a line) that
 reads those read-only routes and nothing else, so it holds no DuckDB handle of its own and needs the dashboard
 running. Four tools: `recent_headlines` (a window back from now, optionally one ticker), `coming_events` (the
 days and the types), `headlines_around_event` — the headlines inside a window around one `event_ts`, each

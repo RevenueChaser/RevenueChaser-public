@@ -12,11 +12,11 @@ from __future__ import annotations
 import html as _html
 from datetime import datetime, timezone
 
-from RevenueChaser.core.html_safe import fill, script_json
-from RevenueChaser.module_comovement import config as comov_config
+from revenuechaser.core.html_safe import fill, script_json
+from revenuechaser.module_comovement import config as comov_config
 
 from . import config
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     PAYLOAD_JS,

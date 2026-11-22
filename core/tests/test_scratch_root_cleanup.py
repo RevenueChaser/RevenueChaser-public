@@ -16,17 +16,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-import RevenueChaser
+import revenuechaser
 
-PKG_ROOT = Path(RevenueChaser.__file__).resolve().parent
-PARENT = PKG_ROOT.parent          # pytest puts this on sys.path, so `RevenueChaser.*` imports work
+PKG_ROOT = Path(revenuechaser.__file__).resolve().parent
+PARENT = PKG_ROOT.parent          # pytest puts this on sys.path, so `revenuechaser.*` imports work
 CONFTEST = PKG_ROOT / "conftest.py"
 
 
 def _live_conftest():
     """The already-imported root conftest module, whichever name it was registered under.
 
-    pytest loads it as ``conftest`` and the package loads it as ``RevenueChaser.conftest``; both
+    pytest loads it as ``conftest`` and the package loads it as ``revenuechaser.conftest``; both
     objects carry the same state, so the first match is enough. Matching on ``__file__`` is what
     keeps this off the other seven conftest.py files.
     """

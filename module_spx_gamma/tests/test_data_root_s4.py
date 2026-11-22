@@ -1,8 +1,8 @@
 """S4 (#38): the SPX Gamma tree moves out of the checkout by a verified copy, never a delete."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma.config import resolve_data_root
-from RevenueChaser.module_spx_gamma.data_root_move import migrate
+from revenuechaser.module_spx_gamma.config import resolve_data_root
+from revenuechaser.module_spx_gamma.data_root_move import migrate
 
 
 def _tree(root):

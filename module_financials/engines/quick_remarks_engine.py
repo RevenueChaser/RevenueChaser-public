@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 def _session(stamp) -> str | None:
     """The New York session ``stamp`` (an ISO instant) belongs to, the day the header names; None when unreadable."""
-    from RevenueChaser.core.calendar import to_session_date
+    from revenuechaser.core.calendar import to_session_date
     try:
         day = to_session_date(str(stamp).strip()) if stamp else None
     except Exception:  # noqa: BLE001 - a label is never worth an error
@@ -55,7 +55,7 @@ def run_quick_remarks(ticker: str, no_fetch: bool = False, financials: dict | No
     """
     ticker = ticker.upper()
     try:
-        from RevenueChaser.core import ticker_store
+        from revenuechaser.core import ticker_store
         card = ticker_store.get(ticker)
         if card:
             # A stored scan card: dated by that scan, which may be days older than this report (review S5).

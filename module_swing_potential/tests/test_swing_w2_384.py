@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import json
 
-from RevenueChaser.core import rawstore
-from RevenueChaser.module_swing_potential import config, freeze, scores
-from RevenueChaser.module_swing_potential.pipeline import build_payload
-from RevenueChaser.module_swing_potential.ranking import quality_403030
-from RevenueChaser.module_swing_potential.report import render_swing_dashboard
-from RevenueChaser.module_swing_potential.screeners import (
+from revenuechaser.core import rawstore
+from revenuechaser.module_swing_potential import config, freeze, scores
+from revenuechaser.module_swing_potential.pipeline import build_payload
+from revenuechaser.module_swing_potential.ranking import quality_403030
+from revenuechaser.module_swing_potential.report import render_swing_dashboard
+from revenuechaser.module_swing_potential.screeners import (
     evaluate_direction,
     evaluate_minervini,
 )
@@ -179,7 +179,7 @@ def test_an_old_payload_renders_without_the_toggles_and_says_so():
 # ── i) every new string is escaped ───────────────────────────────────────────
 
 def test_a_hostile_candidate_is_escaped(tmp_path):
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     evil = "\"'><img src=x onerror=alert(1)>"
     gate = {"passed": True, "score": "1/1", "rules": [{"id": "r", "passed": True, "actual": 1.2}]}
     p = build_payload([], run_stats={})
@@ -198,7 +198,7 @@ def test_a_hostile_candidate_is_escaped(tmp_path):
 # ══ SW-S3: the C16 funnel panel ══════════════════════════════════════════════
 
 def _payload_with_funnel() -> dict:
-    from RevenueChaser.core import funnel
+    from revenuechaser.core import funnel
     p = build_payload([_row("AAA", _ind())], top_n=10)
     p["funnel_steps"] = [
         funnel.step("universe", "Universe, all stored names", 3, "start"),
@@ -238,7 +238,7 @@ def _card_candidate(**over) -> dict:
 
 
 def _card_html(candidate: dict, tmp_path) -> str:
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     p = build_payload([], run_stats={})
     p["is_fixture"] = False
     p["candidates"] = [candidate]
@@ -272,7 +272,7 @@ def test_the_candidate_gates_carry_no_static_text():
 
 
 def test_gate_spec_holds_every_rule_once(tmp_path):
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     p = build_payload([_row("AAA", _ind())], top_n=10)
     out = run_board_js(render_swing_dashboard(p), """
 var n = 0, ids = [];
@@ -285,7 +285,7 @@ console.log(JSON.stringify({n: n, dir: GATE_SPEC.gates.direction, rs: GATE_SPEC.
 
 
 def test_an_old_full_label_payload_still_renders_its_labels(tmp_path):
-    from RevenueChaser.core.tests.board_js import run_board_js
+    from revenuechaser.core.tests.board_js import run_board_js
     out = run_board_js(render_swing_dashboard(_old_payload()), """
 openGate({getAttribute: function(k){ return k === "data-ticker" ? "AAA" : "minervini"; }});
 console.log(JSON.stringify(_els['m-rules'].innerHTML));
@@ -299,7 +299,7 @@ def test_a_method_passer_that_fails_direction_is_its_own_funnel_step():
     """A name that passes a method but not the direction rule is not "passed none of the three screens"."""
     from types import SimpleNamespace
 
-    from RevenueChaser.core import screen_common as sc
+    from revenuechaser.core import screen_common as sc
     stats: dict = {"regime": "RISK-ON"}       # a non-empty dict, as run_screen passes (an empty one is replaced)
     p = build_payload([_row("AAA", _ind()), _row("BBB", _ind(ret_3m=-0.05))], top_n=10, run_stats=stats)
     assert [c["ticker"] for c in p["candidates"]] == ["AAA"]

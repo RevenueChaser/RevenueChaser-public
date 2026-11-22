@@ -2,8 +2,8 @@
 names (names only: a value is never read here) and the yfinance day cap."""
 from __future__ import annotations
 
-from RevenueChaser.core import credentials
-from RevenueChaser.rcdata import caps, serving
+from revenuechaser.core import credentials
+from revenuechaser.rcdata import caps, serving
 
 
 def test_prices_is_a_serving_kind_of_version_1():

@@ -15,7 +15,7 @@ import time
 
 import pytest
 
-from RevenueChaser.core import job_lock, procs
+from revenuechaser.core import job_lock, procs
 
 
 @pytest.fixture

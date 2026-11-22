@@ -11,8 +11,8 @@ from html.parser import HTMLParser
 
 import pytest
 
-from RevenueChaser.core.tests.board_js import inline_scripts, run_board_js
-from RevenueChaser.module_sec_13f import report
+from revenuechaser.core.tests.board_js import inline_scripts, run_board_js
+from revenuechaser.module_sec_13f import report
 
 EVIL = "Fin\"'>);__x(1);//<img src=x onerror=__x(2)>"
 # sorts after "2025-03-31", so the period header keeps it
@@ -94,7 +94,7 @@ def test_inline_scripts_are_balanced_and_escape_safe(page):
 def test_payload_fields_are_json_escaped(monkeypatch, tmp_path):
     """Hostile ticker/name/sector in the payload do not break the JSON or the script."""
     import json
-    from RevenueChaser.core import universe
+    from revenuechaser.core import universe
 
     def fake_filter_fields(tickers):
         return {

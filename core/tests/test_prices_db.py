@@ -19,7 +19,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from RevenueChaser.core import rawstore
+from revenuechaser.core import rawstore
 
 MOVED = ("price_bars_daily", "price_actions")
 MARKER = "price_tables_to_prices_db"

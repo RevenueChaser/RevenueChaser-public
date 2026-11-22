@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from RevenueChaser.core import price_hygiene as ph
+from revenuechaser.core import price_hygiene as ph
 
 
 def _frame(closes, highs=None, lows=None, days=None):

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from RevenueChaser.core.config import OUTPUT_DIR
+from revenuechaser.core.config import OUTPUT_DIR
 
 SWING_LATEST = OUTPUT_DIR / "swing_potential_latest.html"
 SWING_JSON = OUTPUT_DIR / "swing_potential" / "swing_potential_latest.json"

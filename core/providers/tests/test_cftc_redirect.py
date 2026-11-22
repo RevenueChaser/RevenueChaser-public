@@ -6,7 +6,7 @@ a fake that records whether it was asked to follow.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.providers import cftc
+from revenuechaser.core.providers import cftc
 
 ROW = {
     "market_and_exchange_names": cftc.E_MINI_MARKET,

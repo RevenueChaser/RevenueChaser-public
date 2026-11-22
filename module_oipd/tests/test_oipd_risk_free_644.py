@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.module_oipd import config, engine, report
-from RevenueChaser.rcdata import ops, serving
-from RevenueChaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
+from revenuechaser.module_oipd import config, engine, report
+from revenuechaser.rcdata import ops, serving
+from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
 
 
 def _serve_dgs10(points):

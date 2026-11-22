@@ -2,9 +2,9 @@
 ``RC-Build`` row, its minute from the entry's ``OnCalendar``, all None when it cannot be read."""
 from __future__ import annotations
 
-from RevenueChaser.core import automations
-from RevenueChaser.module_settings import control
-from RevenueChaser.module_settings.tests.test_control_view import _build
+from revenuechaser.core import automations
+from revenuechaser.module_settings import control
+from revenuechaser.module_settings.tests.test_control_view import _build
 
 NONE = {"state": None, "last": None, "next": None, "minute": None}
 

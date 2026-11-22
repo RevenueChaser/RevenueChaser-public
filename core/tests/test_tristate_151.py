@@ -1,7 +1,7 @@
 """#151: the shared tri-state rule result."""
 import pytest
 
-from RevenueChaser.core import tristate as t
+from revenuechaser.core import tristate as t
 
 
 def test_rule_is_unknown_when_an_input_is_missing_and_never_calls_the_test():

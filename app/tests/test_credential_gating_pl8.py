@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard, jobs
-from RevenueChaser.core import credentials
-from RevenueChaser.core.tests.panel_client import panel_test_client
+from revenuechaser.app import dashboard, jobs
+from revenuechaser.core import credentials
+from revenuechaser.core.tests.panel_client import panel_test_client
 
 # Never a real key: a recognisable string, only ever asserted absent from a message (see core/tests/test_credentials).
 DUMMY_TOKEN = "pl8-dummy-provider-key-value"

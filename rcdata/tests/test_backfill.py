@@ -6,10 +6,10 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from RevenueChaser.core import calendar
-from RevenueChaser.core.providers import unusual_whales
-from RevenueChaser.rcdata import read, serving
-from RevenueChaser.rcdata.build import base, uw_spot_expiry_strike as uw
+from revenuechaser.core import calendar
+from revenuechaser.core.providers import unusual_whales
+from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build import base, uw_spot_expiry_strike as uw
 
 from . import uw_fixture
 
@@ -121,7 +121,7 @@ def test_n1_one_unusable_answer_is_quarantined_and_the_backfill_goes_on(http_moc
     assert row["result"] == "changed" and row["rows"] == 391 * 4
     raw = uw.raw_path(DAYS[2])
     assert not raw.exists() and len(list(raw.parent.glob(raw.name + ".*.rejected"))) == 1
-    from RevenueChaser.rcdata import ops
+    from revenuechaser.rcdata import ops
     kinds = [r["kind"] for r in ops.rows("build_issues") if r["key"] == "2026-10-21"]
     assert kinds == ["bad_row", "type_failed"], "one issue for the rows, one for the day"
 

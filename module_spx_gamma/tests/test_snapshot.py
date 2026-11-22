@@ -5,9 +5,9 @@ import json
 
 import pytest
 
-from RevenueChaser.module_spx_gamma import snapshot as snap
-from RevenueChaser.module_spx_gamma.snapshot import UWApiError
-from RevenueChaser.module_spx_gamma import store as spx_store
+from revenuechaser.module_spx_gamma import snapshot as snap
+from revenuechaser.module_spx_gamma.snapshot import UWApiError
+from revenuechaser.module_spx_gamma import store as spx_store
 
 from .conftest import as_uw
 

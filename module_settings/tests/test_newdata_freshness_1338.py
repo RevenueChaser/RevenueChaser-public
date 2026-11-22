@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from RevenueChaser.module_settings import newdata
-from RevenueChaser.rcdata import read
-from RevenueChaser.rcdata.needs import catalog, screen
+from revenuechaser.module_settings import newdata
+from revenuechaser.rcdata import read
+from revenuechaser.rcdata.needs import catalog, screen
 
 # 23:00 New York on Wednesday 28 Oct 2026: the latest complete session is that day.
 NOW = datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)

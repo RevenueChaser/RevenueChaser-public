@@ -11,9 +11,9 @@ from datetime import date, datetime, timedelta, timezone
 import pandas as pd
 import pytest
 
-from RevenueChaser.core import calendar as cal
-from RevenueChaser.core import ledger, rawstore, screen_common
-from RevenueChaser.core.tests.d01_seed import write_d01
+from revenuechaser.core import calendar as cal
+from revenuechaser.core import ledger, rawstore, screen_common
+from revenuechaser.core.tests.d01_seed import write_d01
 
 D = date(2026, 10, 14)                                         # the 14 Oct session (#402)
 NOW = datetime(2026, 10, 14, 21, 45, tzinfo=timezone.utc)      # 17:45 EDT, after RC-Daily-Bars
@@ -70,7 +70,7 @@ def test_the_baseline_is_empty_when_the_d01_bar_was_written_before_the_close_plu
 
 
 def test_a_failed_d01_read_is_an_empty_baseline(rawstore_tmp_db, clock, monkeypatch):
-    from RevenueChaser.core import prices
+    from revenuechaser.core import prices
     _seed_d01("SPY", _sessions(D, 300))
 
     def boom(*a, **k):

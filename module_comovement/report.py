@@ -31,8 +31,8 @@ import json
 import re
 from datetime import datetime
 
-from RevenueChaser.core.html_safe import fill, script_json
-from RevenueChaser.core.reporting_common import (
+from revenuechaser.core.html_safe import fill, script_json
+from revenuechaser.core.reporting_common import (
     FILTERS_CSS,
     FILTERS_JS,
     JOB_JS,
@@ -48,8 +48,8 @@ from RevenueChaser.core.reporting_common import (
     watchlist_html,
 )
 
-from RevenueChaser.core.gics_map import sector_path
-from RevenueChaser.core.universe import DEFAULT_MC_MIN
+from revenuechaser.core.gics_map import sector_path
+from revenuechaser.core.universe import DEFAULT_MC_MIN
 
 from . import config
 

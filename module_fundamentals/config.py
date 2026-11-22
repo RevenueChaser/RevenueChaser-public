@@ -6,7 +6,7 @@ client-side via the universal filters.
 """
 from __future__ import annotations
 
-from RevenueChaser.core.config import OUTPUT_DIR
+from revenuechaser.core.config import OUTPUT_DIR
 
 FUNDAMENTALS_DIR = OUTPUT_DIR
 FUNDAMENTALS_LATEST = FUNDAMENTALS_DIR / "fundamentals_latest.html"

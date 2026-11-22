@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.rcdata import ops
-from RevenueChaser.rcdata.build import DATASETS, base
+from revenuechaser.rcdata import ops
+from revenuechaser.rcdata.build import DATASETS, base
 
 
 class _Fetcher:

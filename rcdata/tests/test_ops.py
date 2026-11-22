@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from RevenueChaser.core import calendar, config
-from RevenueChaser.rcdata import ops
+from revenuechaser.core import calendar, config
+from revenuechaser.rcdata import ops
 
 _REPO = Path(__file__).resolve().parents[2]
 
@@ -227,7 +227,7 @@ LIVE_UW_HEADERS = {"x-uw-daily-req-count": "355", "x-uw-req-per-minute-remaining
 
 
 def test_sample_uw_headers_reads_the_daily_count_and_computes_what_is_left_under_our_cap(monkeypatch):
-    from RevenueChaser.rcdata import caps
+    from revenuechaser.rcdata import caps
     monkeypatch.setitem(caps.DAY_CAPS, "uw", 100_000)              # UW has no cap since 2026-11-10: a test cap
     ops.sample_uw_headers({**LIVE_UW_HEADERS, "set-cookie": "secret"}, run_id="r1")
     [row] = ops.rows("uw_remaining")

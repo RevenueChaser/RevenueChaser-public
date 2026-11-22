@@ -1,7 +1,7 @@
 """A5: hourly-close trigger / confirm / reset for the directional scenarios (30 Oct report, "Üç senaryo")."""
 from __future__ import annotations
 
-from RevenueChaser.module_spx_gamma.hourly import (CONFIRM_STEP, RESET_STEP, hourly_closes,
+from revenuechaser.module_spx_gamma.hourly import (CONFIRM_STEP, RESET_STEP, hourly_closes,
                                                    scenario_triggers, spx_ratio)
 
 BANDS = {"regime": "below_flip", "consolidation": (7600.0, 7700.0), "upside": (7700.0, 7775.0),
@@ -100,7 +100,7 @@ def test_hourly_closes_none_without_a_ratio():
 
 
 def test_build_scenarios_carries_the_trigger_line():
-    from RevenueChaser.module_spx_gamma.scenarios import build_scenarios
+    from revenuechaser.module_spx_gamma.scenarios import build_scenarios
     snap = {"current_level": 7650.0,
             "levels": {"regime_threshold": 7700.0, "upper_resistance_band": 7800.0, "lower_support_band": 7600.0},
             "charm_pin_report": {"strike": 7775.0},

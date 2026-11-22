@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from RevenueChaser.app import dashboard
+from revenuechaser.app import dashboard
 
 TAILNET = "http://homesrv.tail1234.ts.net:8000"
 FORBIDDEN = {"ok": False, "error": "forbidden host"}

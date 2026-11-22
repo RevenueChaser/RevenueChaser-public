@@ -7,8 +7,8 @@ import zipfile
 
 import pytest
 
-from RevenueChaser.core.providers import sec_edgar
-from RevenueChaser.rcdata.build.fundamentals import companyfacts, fsds
+from revenuechaser.core.providers import sec_edgar
+from revenuechaser.rcdata.build.fundamentals import companyfacts, fsds
 
 from . import fund_fixture as fx
 
@@ -70,7 +70,7 @@ def test_the_newest_published_quarter_checks_the_served_facts(sec):
 def test_only_the_tier_a_companies_own_values_are_kept(sec):
     fx.run(fsds.NAME, "2026-10-28")
     import duckdb
-    from RevenueChaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base
     files = list(base.parquet_root().rglob("sec/fsds/*/part-0.parquet"))
     rows = duckdb.connect().execute(f"SELECT cik, tag, value FROM read_parquet({base.sql_path(files[0])}) "
                                     "ORDER BY tag").fetchall()

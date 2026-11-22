@@ -6,8 +6,8 @@ builder), a process under the Claude Code session's unit has the 2 h cap a backg
 is "unknown". A running row whose process is gone reads "probably lost"; closing it stays the sweep's job."""
 from __future__ import annotations
 
-from RevenueChaser.module_settings import control
-from RevenueChaser.module_settings.tests.test_control_view import NOW, control_nd
+from revenuechaser.module_settings import control
+from revenuechaser.module_settings.tests.test_control_view import NOW, control_nd
 
 T = NOW.timestamp()
 CG = {101: "0::/system.slice/life-rc-builder.service",

@@ -4,9 +4,9 @@ import logging
 
 import pytest
 
-from RevenueChaser.module_asymmetric_growth import engine
-from RevenueChaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
-from RevenueChaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
+from revenuechaser.module_asymmetric_growth import engine
+from revenuechaser.module_asymmetric_growth.report import render_asymmetric_growth_hunter_html
+from revenuechaser.module_asymmetric_growth.tests.test_score_ticker import _fin, _tech
 
 
 def _quote():
