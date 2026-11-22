@@ -211,8 +211,10 @@ def test_crsps_delisting_table_serves_no_bar_and_a_delisted_name_is_in_no_table(
     _serve(monkeypatch, data)
     assert not _q("SELECT 1 FROM price_bar_daily WHERE security_id = '099999:01'")
     assert not _q("SELECT 1 FROM price_bar_daily WHERE source = ?", [wrds_history.CRSP])
-    assert "stkdelists" in wrds_history.CRSP_TABLES and wrds_history.TABLES["stkdelists"]["sql"] == \
-        "SELECT permno, delistingdt, deldtprc, delret FROM crsp_a_stock.stkdelists"
+    assert "stkdelists" in wrds_history.CRSP_TABLES and wrds_history.TABLES["stkdelists"]["sql"] == (
+        "SELECT permno, delistingdt, deldtprc, deldtprcflg, delactiontype, delstatustype, delreasontype, "
+        "delpaymenttype, delpermno, delpermco, delret, delretmisstype, delnextdt, delnextprc, delnextprcflg, "
+        "delamtdt, deldivamt, deldistype, deldlydt FROM crsp_a_stock.stkdelists")
 
 
 def test_the_difference_report_no_longer_checks_a_delisting_return():

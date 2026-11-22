@@ -124,10 +124,28 @@ DSF = [("permno", "TEXT"), ("dlycaldt", "DATE"), ("dlyprc", "DOUBLE"), ("dlyopen
 DIVID = [("gvkey", "TEXT"), ("iid", "TEXT"), ("datadate", "DATE"), ("div", "DOUBLE"), ("divd", "DOUBLE"),
          ("divsp", "DOUBLE"), ("curcddv", "TEXT"), ("paydate", "DATE"), ("recorddate", "DATE")]
 SPLIT = [("gvkey", "TEXT"), ("iid", "TEXT"), ("datadate", "DATE"), ("split", "DOUBLE")]
-# CRSP's delisting table (CIZ; the coordinator's WRDS access inventory, 3 Nov 2026: 29,833 rows, 1926-02-24 to
-# 2025-12-30): the delisting day, its price and its return. The legacy dsedelist ends 2024-12-31 and is not asked;
-# the *type code columns are not asked either (no comment defines their values).
-DELIST = [("permno", "TEXT"), ("delistingdt", "DATE"), ("deldtprc", "DOUBLE"), ("delret", "DOUBLE")]
+# CRSP's delisting table (CIZ; measured on homesrv 22 Nov 2026, #1293: 29,833 rows, one per PERMNO, 1926-02-24 to
+# 2025-12-30), asked whole: the delisting day, its price and return, the reason it stopped trading, and what the
+# name became. The legacy dsedelist ends 2024-12-31 and is not asked.
+#
+# The type codes *are* documented, which is why they are asked now (#1293 measured it): CRSP ships its own code book
+# in the same schema -- ``crsp_a_stock.metaflagtype`` (62 flag types) and ``crsp_a_stock.metaflaginfo`` (774 values,
+# ``flagtype``, ``flagvalue``, ``flagdesc``), and the columns carry CRSP's names as Postgres comments. The flag types
+# here: ``delactiontype`` = CD (MER merger, GDR dropped, GLI liquidation, GEX exchange, LOS lost source),
+# ``delreasontype`` = DR (the finer reason: BKPY bankruptcy, LP low price, INSC insufficient capital, MVOT moved to
+# OTC, ...), ``delstatustype`` = CS (FPAY/VCL final, the N* codes pending or none, so a return that is not final yet),
+# ``delpaymenttype`` = PT, ``delretmisstype`` = RM, ``deldistype`` = CI, ``deldtprcflg`` / ``delnextprcflg`` = PC.
+# Every one of the 79 values the table holds is in the code book. ``N/A`` is a real value there, not a NULL (and RM
+# spells it ``NA``), so the codes are kept as text exactly as they come; a plain-words label is derived in serving,
+# never here (coordinator, 21 Nov 2026: the raw code stays the single source).
+DELIST = [("permno", "TEXT"), ("delistingdt", "DATE"), ("deldtprc", "DOUBLE"), ("deldtprcflg", "TEXT"),
+          ("delactiontype", "TEXT"), ("delstatustype", "TEXT"), ("delreasontype", "TEXT"),
+          ("delpaymenttype", "TEXT"), ("delpermno", "TEXT"), ("delpermco", "TEXT"), ("delret", "DOUBLE"),
+          ("delretmisstype", "TEXT"), ("delnextdt", "DATE"), ("delnextprc", "DOUBLE"), ("delnextprcflg", "TEXT"),
+          ("delamtdt", "DATE"), ("deldivamt", "DOUBLE"), ("deldistype", "TEXT"), ("deldlydt", "DATE")]
+# The columns the 4-column snapshots on disk lack: read as NULL, with a warning, until the snapshot is asked again
+# (``SNAPSHOT_DAYS``). ``stkdelists`` is one query, so that is the next monthly run, not a backfill.
+DELIST_ADDED = tuple(c for c, _ in DELIST if c not in ("permno", "delistingdt", "deldtprc", "delret"))
 REVISION = [("source", "TEXT"), ("security_key", "TEXT"), ("session_date", "DATE"), ("symbol", "TEXT"),
             ("open", "DOUBLE"), ("high", "DOUBLE"), ("low", "DOUBLE"), ("close", "DOUBLE"), ("volume", "DOUBLE"),
             ("fetched_at", "DOUBLE"), ("run_id", "TEXT"), ("revised_at", "DOUBLE"), ("revised_by", "TEXT")]
@@ -580,7 +598,8 @@ class WrdsPrices:
                             "OVER (PARTITION BY gvkey, iid, efffrom ORDER BY fetched_at DESC) = 1")
         for table in SNAPSHOTS:
             snaps = _snapshots(table)
-            stage.create(con, STAGING[table], TABLES[table]["schema"] + PROVENANCE, [snaps[-1][1]] if snaps else [])
+            stage.create(con, STAGING[table], TABLES[table]["schema"] + PROVENANCE, [snaps[-1][1]] if snaps else [],
+                         added_later=DELIST_ADDED if table == "stkdelists" else ())
         revisions = sorted((base.parquet_root() / "wrds" / "prices" / "revisions").glob("*/year=*/part-*.parquet"))
         stage.create(con, "stg_wrds_revisions", REVISION, revisions)
         return {}
