@@ -186,6 +186,31 @@ def test_a_job_error_is_not_stored_and_is_asked_next_run():
     assert of.valid_cusip("594918104") and not of.valid_cusip("5949181") and not of.valid_cusip(None)
 
 
+def _erroring(*codes):
+    """The mapping endpoint, answering a job-level ``error`` for the jobs asking ``codes`` (a CUSIP or a ticker)."""
+    def handle(request):
+        status, body, headers = fx.figi_answer(request)
+        answers = [{"error": "Invalid idValue"} if j["idValue"] in codes else a
+                   for j, a in zip(json.loads(request.content), json.loads(body))]
+        return status, json.dumps(answers).encode(), headers
+    return handle
+
+
+def test_a_job_that_errors_three_runs_in_a_row_is_written_absent_and_waits_the_90_days(env):
+    """#1418: the error queue grew every run. After ``ERROR_RUNS`` runs of errors the CUSIP is 'absent'."""
+    env.routes.insert(0, ("figi.test/v3/mapping", _erroring("594918104"), 200, {}))
+    for day in ("2026-10-27", "2026-11-03"):
+        _run(day)
+        assert of._query(f"SELECT count(*) FROM read_parquet({base.sql_path(of.partition())}) "
+                         "WHERE cusip = '594918104'") == [(0,)]
+    row = _run("2026-11-10")
+    assert _map_row("594918104") == ("absent", None)
+    assert "1 OpenFIGI jobs written absent after 3 runs of errors" in row["note"]
+    env.requests.clear()
+    _run("2026-11-17")
+    assert _jobs(env) == []
+
+
 # ── Asking by ticker: the Tier A names with no CUSIP (plan 2026-11-04, item 1) ────────────────────────────────
 
 def _spine_env(http_mock, monkeypatch, *, unlink_nvr: bool) -> None:
@@ -395,6 +420,25 @@ def test_a_ticker_job_error_is_not_stored_and_is_asked_next_run():
     assert of.ticker_answer("NVR", {"error": "Invalid idValue"}) is None
     assert of.ticker_answer("NVR", {"warning": "No identifier found."}) == {"asked_ticker": "NVR",
                                                                            "status": "absent"}
+
+
+def test_a_ticker_job_that_errors_three_runs_in_a_row_is_written_absent(env, monkeypatch):
+    monkeypatch.setattr(of, "wanted_tickers", lambda: ["NVR"])
+    env.routes.insert(0, ("figi.test/v3/mapping", _erroring("NVR"), 200, {}))
+    for day in ("2026-10-27", "2026-11-03", "2026-11-10"):
+        _run(day)
+    assert _ticker_row("NVR") == ("absent", None)
+
+
+def test_a_tickers_present_answer_is_not_given_up_for_errors(env, monkeypatch):
+    """A 'present' ticker answer is asked again after 90 days; errors then keep the old answer, not an 'absent'."""
+    monkeypatch.setattr(of, "wanted_tickers", lambda: ["NVR"])
+    _run()
+    assert _ticker_row("NVR") == ("present", "BBG000BW5N90")
+    env.routes.insert(0, ("figi.test/v3/mapping", _erroring("NVR"), 200, {}))
+    for day in ("2027-02-01", "2027-02-08", "2027-02-15"):
+        _run(day)
+    assert _ticker_row("NVR") == ("present", "BBG000BW5N90")
 
 
 def test_the_two_lanes_share_the_one_request_budget(env, monkeypatch):

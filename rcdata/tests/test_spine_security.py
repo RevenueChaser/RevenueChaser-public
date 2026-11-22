@@ -165,6 +165,37 @@ def test_a_line_carrying_another_securitys_cusip_is_no_match(built):
     assert ("member_not_in_sec", "sp500:VYLR") in _issues()
 
 
+def test_a_cash_or_futures_line_with_no_cusip_is_no_member_not_in_sec(built):
+    """#1418: most of the 11 live ``member_not_in_sec`` were cash and futures lines (``RTYZ6``, ``CASH_USD``). An
+    unknown stock line without a CUSIP is still raised."""
+    _funds_answer(built, sp500=fx.SP500 + [("RTYZ6", None, "RUSSELL 2000 EMINI DEC 26"),
+                                           ("CASH USD", None, "US DOLLAR"), ("ZZZQ", None, "UNKNOWN CO")])
+    run_all("2026-10-28", names=(funds.NAME,))
+    issues = _issues()
+    assert ("member_not_in_sec", "sp500:RTYZ6") not in issues
+    assert ("member_not_in_sec", "sp500:CASH-USD") not in issues
+    assert ("member_not_in_sec", "sp500:ZZZQ") in issues
+
+
+def test_a_cash_line_with_a_made_up_identifier_is_no_member_not_in_sec(built):
+    """#1418: SSGA's dollar line, ticker ``CASH_USD`` and identifier ``999USDZ92``, passes the CUSIP shape. A cash
+    ticker is never a security, so it is skipped whatever its identifier; a future with one is still raised."""
+    _funds_answer(built, sp500=fx.SP500 + [("CASH_USD", "999USDZ92", "US DOLLAR"),
+                                           ("RTYZ6", "999RTYZ62", "RUSSELL 2000 EMINI DEC 26")])
+    run_all("2026-10-28", names=(funds.NAME,))
+    issues = _issues()
+    assert ("member_not_in_sec", "sp500:999USDZ92") not in issues
+    assert ("member_not_in_sec", "sp500:RTYZ6") in issues
+
+
+def test_the_cash_and_futures_shapes_take_no_real_ticker():
+    assert all(security.CASH.match(t) for t in ("CASH_USD", "CASH USD", "CASH-EUR"))
+    assert all(security.FUTURE.match(t) for t in ("RTYZ6", "ESZ6"))
+    for shape in (security.CASH, security.FUTURE):
+        assert not any(shape.match(t) for t in ("CASH", "MSFT", "BRK-B", "HEI-A", "GOOGL", "Z", "NVR", "ETNX",
+                                                "ZZZQ"))
+
+
 def test_a_line_with_its_own_old_cusip_or_an_unknown_one_still_matches(built):
     """Delta S2: MSFT written with its own earlier CUSIP (comp.sec_idhist), WFC with a CUSIP nobody knows: both stay
     members. Only a CUSIP known to belong to another security breaks the ticker match."""
