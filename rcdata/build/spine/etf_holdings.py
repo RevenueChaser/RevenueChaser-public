@@ -57,14 +57,13 @@ binding one (it alone removes 383 of the funds the others pass), narrowness next
 5. Read-only on the live spine and the ``sec/nport`` 2026q3 Parquet, 3.6 s; the counts are **under a GICS reading**
 of the sector rule, since the review names Morningstar sectors and we hold none. The review's own "150 to 300" was
 an estimate and is superseded.
-**D3 is set, and it is not a narrowed ring (avo, 22 Nov 2026, #354): take every ETF from UW, and download the
-older N-PORT quarters too.** So the 133 / 204 / 89 / 59 counts above select nothing -- they stay a measurement of
-what a narrow ring would have held, and the sweep's candidate list is not cut down to one. Turning
-``RC_ETF_HOLDINGS_SWEEP`` on is a live change of its own (it spends UW calls daily and grows this table) and is
-not done here; N-PORT remains the free source of whole lists, which is why its history is being fetched (#354 C7).
-A fund the daily file does not hold still falls back to its newest N-PORT report
-(``rcdata.read.etf_holdings`` -> ``etf_holdings_nport``, #354 C5), and that is what carries the 28 UW-served funds
-if the subscription ends on 9 Dec 2026 (#1283).
+**D3 is set, and it asks UW for nothing (avo, 22 Nov 2026, #354: do not use UW).** An ETF with no issuer file is
+read from the quarterly ``sec/nport`` Parquet, and the older quarters are downloaded so that the history is there
+too (#354 C7). No ring-1 set is asked from UW at any ADV floor, so the 133 / 204 / 89 / 59 counts above select
+nothing and stay a measurement of what a narrow ring would have held. ``RC_ETF_HOLDINGS_SWEEP`` therefore stays
+off for good and is no longer waiting on a decision; removing the sweep's code belongs to the UW migration
+(#1283), since the subscription renews on 9 Dec 2026. The 28 funds UW serves today fall back to their newest
+N-PORT report when UW goes (``rcdata.read.etf_holdings`` -> ``etf_holdings_nport``, #354 C5).
 
 **Retention:** the last 30 days whole; older, each month's last held day and each sweep day. It only names what it
 would remove unless ``RC_ETF_HOLDINGS_PRUNE=1`` **and** the request's ``allow_shrink`` (the swap's shrink guard would
@@ -163,8 +162,8 @@ SWEEP_STOPS = 3
 PRUNE_ENV = "RC_ETF_HOLDINGS_PRUNE"
 # The sweep runs only when this is "1" (owner, 2 Nov 2026, option B): UW answers at most 250 holdings a fund, so the
 # sweep waited for N-PORT's full lists (#354). A named request still asks UW; the 48 daily funds are untouched.
-# D3 is now set (avo, 22 Nov 2026): every ETF from UW, not a narrowed ring, so #354 C6's 133 ETFs select nothing.
-# Switching this on is a live change and its own thread; nothing here narrows. See the module doc.
+# D3 is now set and it asks UW for nothing (avo, 22 Nov 2026: do not use UW): a fund with no issuer file is read
+# from the quarterly N-PORT Parquet, so this stays off for good. #354 C6's 133 ETFs select nothing; see the doc.
 SWEEP_ENV = "RC_ETF_HOLDINGS_SWEEP"
 # Raws typed per pass: a sweep run types up to ``SWEEP_PER_RUN`` answers, merged into the day's partition in DuckDB.
 TYPE_CHUNK = 500
@@ -449,7 +448,7 @@ class EtfHoldings:
         elif keyed and ctx.scope:
             ctx.notes.append(f"no sweep: the request's scope ({ctx.scope.text()}) names no ETF")
         elif keyed and os.environ.get(SWEEP_ENV) != "1":
-            ctx.notes.append(f"no sweep: off until {SWEEP_ENV}=1 (D3 set, switching it on is its own run, #354)")
+            ctx.notes.append(f"no sweep: off for good, {SWEEP_ENV}!=1 (D3: N-PORT serves the rest, #354)")
         elif keyed:
             out += self._sweep(ctx, as_of)
         try:
