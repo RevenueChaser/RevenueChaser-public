@@ -83,7 +83,7 @@ def test_no_snapshot_yet_says_so():
     assert EXRT.note(con) == "WRDS exrt_dly: no snapshot yet"
 
 
-def test_the_dataset_is_registered_monthly_by_hand_and_feeds_what_the_rates_reach():
+def test_the_dataset_is_registered_attended_monthly_and_feeds_what_the_rates_reach():
     assert DATASETS[EXRT.name] is EXRT and EXRT.cadence == "monthly" and EXRT.starts_by_hand
     assert EXRT.feeds == fx_rates.DATASET.feeds and EXRT.tables == ()        # the same tables Yahoo's rates reach
     assert EXRT.full_rebuild_reason(None) is None
