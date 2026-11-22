@@ -1,15 +1,15 @@
-"""Tier rule v4: which SEC-file names the boards screen (Tier A) and why the others are not.
+"""Tier rule v5: which SEC-file names the boards screen (Tier A) and why the others are not.
 
 The rule is the one ``equity_universe`` and ``core/universe.py`` already apply, written once for the spine:
 
-- membership is the Nasdaq / NYSE / Cboe rows of the SEC file (#264, ``docs/data_health.md`` 4.1: over-the-counter
-  rows and rows with no exchange are out);
+- membership is the Nasdaq / NYSE / Cboe / Texas Stock Exchange (v5) rows of the SEC file (#264,
+  ``docs/data_health.md`` 4.1: over-the-counter rows and rows with no exchange are out);
 - the security type (Identity R4, #87): ``core.identity.types.EXCLUDED_TYPES`` (funds and ETFs, SPACs, preferreds,
   warrants, units) leave the universe; an untyped or unknown type stays (an untyped name is never hidden).
 
 So:
 
-- **A**: listed on Nasdaq, NYSE or Cboe, and a type that is not excluded (or no type yet);
+- **A**: listed on Nasdaq, NYSE, Cboe or TXSE (v5), and a type that is not excluded (or no type yet);
 - **B**: listed, but an excluded type (``EXCLUDED_TYPES``);
 - **C**: over the counter (``OTC``), or (v3) listed in the SEC file while Compustat's linked security is over
   the counter (``COMPUSTAT_OTC``);
@@ -50,8 +50,9 @@ import re
 
 from ....core.identity.types import _COMMON_LIKE, EXCLUDED_TYPES, classify_type, sic_int
 
-VERSION = 4
-LISTED = ("Nasdaq", "NYSE", "CBOE")
+VERSION = 5
+# TXSE (v5, avo 22 Nov 2026): the SEC file names it for Texas companies that list there beside their old exchange.
+LISTED = ("Nasdaq", "NYSE", "CBOE", "TXSE")
 OTC = "OTC"
 TIERS = ("A", "B", "C", "D")
 WORDS = {"A": "listed, operating company or untyped", "B": "listed, excluded security type",

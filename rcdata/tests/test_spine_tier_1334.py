@@ -42,4 +42,4 @@ def test_the_map_holds_only_the_codes_the_sec_name_of_which_is_listed():
     assert all(tier.listed(name) for name in tier.COMPUSTAT_LISTED.values())
     assert not set(tier.COMPUSTAT_LISTED) & set(tier.COMPUSTAT_OTC)
     # The rule changed what a row's ``tier`` column says, so its version is stamped anew on every row.
-    assert tier.VERSION == 4
+    assert tier.VERSION == 5

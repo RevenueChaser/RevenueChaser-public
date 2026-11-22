@@ -367,7 +367,7 @@ def parquet_files(dataset: str, table: str) -> list[Path]:
 
 
 def _sec_ciks() -> list[str]:
-    """The CIKs of the listed rows (Nasdaq, NYSE, Cboe) of the newest SEC-file snapshot in Parquet (no network):
+    """The CIKs of the listed rows (Nasdaq, NYSE, Cboe, TXSE) of the newest SEC-file snapshot in Parquet (no network):
     the names that need a Compustat link. An OTC name is never asked for."""
     from . import sec_tickers, tier
     parts = stage.partitions(sec_tickers.parquet_dir(), "date")
