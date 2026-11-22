@@ -412,12 +412,14 @@ def add_fund_routes(http_mock, sp500=SP500, sp400=SP400, ndx=("MSFT",), fail=())
     """Answer every fund file of ``funds.FILES``: S&P 500 and 400 from the lists above, the SmallCap 600 files 404;
     IWM holds the MidCap list (``russell2000``) and the other single-file indexes 404;
     the Nasdaq list and QQQ both hold ``ndx``; DIA (the one ``dow`` file) holds the fixture's own S&P 500 list,
-    whatever ``sp500`` a test passes, so a test that moves the S&P 500 lines does not move ``dow``."""
+    whatever ``sp500`` a test passes, so a test that moves the S&P 500 lines does not move ``dow``. The SSGA routes
+    end in ``.xlsx``, so ``spy`` does not also answer SPYG, SPYV or SPYD (nor ``mdy`` MDYG and MDYV): every other
+    fund file 404s."""
     def maybe(name, body):
         return (500, b"down", {}) if name in fail else (200, body, {})
-    http_mock.add("holdings-daily-us-en-spy", lambda r: maybe("SPY", ssga_xlsx(sp500)))
-    http_mock.add("holdings-daily-us-en-mdy", lambda r: maybe("MDY", ssga_xlsx(sp400)))
-    http_mock.add("holdings-daily-us-en-dia", lambda r: maybe("DIA", ssga_xlsx(SP500)))
+    http_mock.add("holdings-daily-us-en-spy.xlsx", lambda r: maybe("SPY", ssga_xlsx(sp500)))
+    http_mock.add("holdings-daily-us-en-mdy.xlsx", lambda r: maybe("MDY", ssga_xlsx(sp400)))
+    http_mock.add("holdings-daily-us-en-dia.xlsx", lambda r: maybe("DIA", ssga_xlsx(SP500)))
     http_mock.add(ISHARES_ROUTE["IVV"], lambda r: maybe("IVV", ishares_csv(sp500)))
     http_mock.add(ISHARES_ROUTE["IJH"], lambda r: maybe("IJH", ishares_csv(sp400, drop_dash=True)))
     # IWM (``russell2000``, one file, the untyped shape): the MidCap list and a name the SEC file does not hold

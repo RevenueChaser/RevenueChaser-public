@@ -148,6 +148,67 @@ def test_each_russell_and_nasdaq_top30_index_is_one_ishares_file(slug, fund, pid
         files[0].parse(fx.ishares_csv(fx.SP500, typed=not typed))
 
 
+#: Group A (avo, 22 Nov 2026 23:17, "hepsini istiyorum, evet"): S&P and Dow Jones indexes from their funds' SSGA
+#: xlsx and iShares CSV, read once from homesrv on 22 Nov 2026. (slug, files, floor = 80 % of the shorter file).
+WIDE = [
+    ("sp100", [("ishares", "OEF")], 80), ("sp500_growth", [("ishares", "IVW"), ("ssga", "SPYG")], 122),
+    ("sp500_value", [("ishares", "IVE"), ("ssga", "SPYV")], 347), ("sp500_ex_sp100", [("ishares", "XOEF")], 322),
+    ("sp400_growth", [("ishares", "IJK"), ("ssga", "MDYG")], 196),
+    ("sp400_value", [("ishares", "IJJ"), ("ssga", "MDYV")], 238),
+    ("sp600_growth", [("ishares", "IJT"), ("ssga", "SLYG")], 278),
+    ("sp600_value", [("ishares", "IJS"), ("ssga", "SLYV")], 371),
+    ("sp900_growth", [("ishares", "IUSG")], 319), ("sp900_value", [("ishares", "IUSV")], 586),
+    ("sp1500", [("ssga", "SPTM")], 1212), ("sp_total_market", [("ishares", "ITOT")], 1941),
+    ("sp_hy_dividend_aristocrats", [("ssga", "SDY")], 125), ("sp500_high_dividend", [("ssga", "SPYD")], 64),
+    ("dj_us", [("ishares", "IYY")], 752), ("dj_us_select_dividend", [("ishares", "DVY")], 78),
+    ("dj_us_select_reit", [("ssga", "RWR")], 78)]
+#: Each iShares fund's product id and CSV shape as its file answered on 22 Nov 2026.
+ISHARES_SHAPE = {"OEF": ("239723", False), "IVW": ("239725", True), "IVE": ("239728", True),
+                 "XOEF": ("344551", False), "IJK": ("239762", True), "IJJ": ("239764", True),
+                 "IJT": ("239773", True), "IJS": ("239775", True), "IUSG": ("239713", True),
+                 "IUSV": ("239715", True), "ITOT": ("239724", False), "IYY": ("239513", False),
+                 "DVY": ("239500", False)}
+
+
+@pytest.mark.parametrize("slug, want, floor", WIDE)
+def test_each_group_a_index_is_its_funds_files(slug, want, floor):
+    """Where SSGA and iShares both track the index, both files vote (a name must be in both, as for sp500); a
+    one-file index is exactly that one file, so, like dow, a member is "the file holds it"."""
+    files = [f for f in funds.FILES if f.index_slug == slug]
+    assert sorted((f.provider, f.fund) for f in files) == want
+    assert slug in funds.INDEXES and funds.FLOOR[slug] == floor and slug not in funds.CHECKED
+    assert f"'{slug}'" in security.VOTE_SQL
+    for f in files:
+        if f.provider == "ssga":
+            assert f.url().endswith(f"holdings-daily-us-en-{f.fund.lower()}.xlsx")
+            assert [r["ticker_raw"] for r in f.parse(fx.ssga_xlsx(fx.SP500))] == ["MSFT", "ETN", "FDX", "NVR", "WFC"]
+            continue
+        pid, typed = ISHARES_SHAPE[f.fund]
+        assert f"/us/products/{pid}/" in f.url() and f.url().endswith("/latest-holdings.csv")
+        assert funds.ISHARES_PRODUCTS[f.fund][2] is typed           # the typed flag, as etf_holdings carries it
+        assert [r["ticker_raw"] for r in f.parse(fx.ishares_csv(fx.SP500, typed=typed))] == [
+            t for t, _, _ in fx.SP500]
+        with pytest.raises(base.SourceError):
+            f.parse(fx.ishares_csv(fx.SP500, typed=not typed))
+
+
+def test_every_ishares_entry_carries_its_typed_flag_and_the_fund_file_reads_that_shape():
+    """``funds.ISHARES_PRODUCTS`` is (product id, page slug, typed), like ``etf_holdings.ISHARES_PRODUCTS``: several
+    index funds (OEF, ITOT, IYY, DVY, XOEF and the untyped Russell files) serve the CSV shape with no ``Type``."""
+    assert all(len(v) == 3 and isinstance(v[2], bool) for v in funds.ISHARES_PRODUCTS.values())
+    assert funds.ISHARES_PRODUCTS["IVV"][2] and not funds.ISHARES_PRODUCTS["OEF"][2]
+    for f in funds.FILES:
+        if f.provider == "ishares":
+            typed = funds.ISHARES_PRODUCTS[f.fund][2]
+            assert f.parse(fx.ishares_csv(fx.SP500, typed=typed))
+            with pytest.raises(base.SourceError):
+                f.parse(fx.ishares_csv(fx.SP500, typed=not typed))
+
+
+def test_no_fund_file_is_fetched_twice():
+    assert len({f.raw_name() for f in funds.FILES}) == len(funds.FILES)
+
+
 def test_the_per_name_issues_stay_on_the_sp_ndx_and_dow_indexes():
     assert funds.CHECKED == ("sp500", "sp400", "sp600", "ndx", "dow")
 
@@ -159,12 +220,13 @@ def test_tickers_are_written_the_sec_way():
 
 def test_one_request_per_file_a_failed_file_is_an_issue_and_the_others_count(env):
     row = base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
-    assert row["result"] == "changed" and row["calls"] == 24            # the 404s are not retried
+    assert row["result"] == "changed" and row["calls"] == 47            # the 404s are not retried
     n, issues = ops.open_issues(funds.NAME, limit=100)
-    # the two SmallCap files and the 14 single-file indexes the fixture does not answer (it answers IWM only)
-    assert n == 16 and {"ssga-SPSM.xlsx", "ishares-IJR.csv"} <= {i["key"] for i in issues}
+    # the two SmallCap files, the 14 single-file indexes the fixture does not answer (it answers IWM only) and the
+    # 23 files of group A
+    assert n == 39 and {"ssga-SPSM.xlsx", "ishares-IJR.csv", "ssga-SPYG.xlsx"} <= {i["key"] for i in issues}
     assert "ishares-IWM.csv" not in {i["key"] for i in issues}
-    assert row["coverage"] == round(8 / 24, 4) and "failed files" in row["note"]
+    assert row["coverage"] == round(8 / 47, 4) and "failed files" in row["note"]
     assert row["calls"] == len(env.calls())
 
 
@@ -179,4 +241,4 @@ def test_a_day_already_fetched_is_not_fetched_again(env):
     env.requests.clear()
     base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
     assert {str(r.url).split("/")[2] for r in env.requests} <= {"www.ssga.com", "www.ishares.com"}
-    assert len(env.requests) == 16                         # only the ones that failed are asked again
+    assert len(env.requests) == 39                         # only the ones that failed are asked again

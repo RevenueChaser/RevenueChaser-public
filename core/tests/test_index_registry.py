@@ -27,6 +27,28 @@ def test_the_labels_put_the_sp_indexes_first_and_name_every_russell_index():
             "Nasdaq-100 Top 30"} <= set(labels)
 
 
+#: Group A (avo, 22 Nov 2026 23:17): the S&P and Dow Jones indexes read from their funds' files.
+GROUP_A = {"sp100": "S&P 100", "sp500_growth": "S&P 500 Growth", "sp500_value": "S&P 500 Value",
+           "sp500_ex_sp100": "S&P 500 ex S&P 100", "sp400_growth": "S&P MidCap 400 Growth",
+           "sp400_value": "S&P MidCap 400 Value", "sp600_growth": "S&P SmallCap 600 Growth",
+           "sp600_value": "S&P SmallCap 600 Value", "sp900_growth": "S&P 900 Growth", "sp900_value": "S&P 900 Value",
+           "sp1500": "S&P Composite 1500", "sp_total_market": "S&P Total Market",
+           "sp_hy_dividend_aristocrats": "S&P High Yield Dividend Aristocrats",
+           "sp500_high_dividend": "S&P 500 High Dividend", "dj_us": "Dow Jones U.S.",
+           "dj_us_select_dividend": "Dow Jones U.S. Select Dividend", "dj_us_select_reit": "Dow Jones U.S. Select REIT"}
+
+
+def test_the_group_a_indexes_have_labels_after_the_headline_ones_and_before_russell():
+    """Display order: the badge shows the first match, so the headline S&P labels stay first; the S&P family next,
+    then Dow Jones, then Russell, and Nasdaq Composite last."""
+    order = list(ir.LABELS)
+    assert {s: ir.LABELS.get(s) for s in GROUP_A} == GROUP_A
+    assert all(3 <= order.index(s) < order.index("russell_top200") for s in GROUP_A)
+    assert max(order.index(s) for s in GROUP_A if s.startswith("sp")) < min(
+        order.index(s) for s in GROUP_A if s.startswith("dj_"))
+    assert len(set(ir.LABELS.values())) == len(ir.LABELS)             # no two slugs share a label
+
+
 def test_index_for_with_registry():
     reg = {"AAPL": {"index": ["S&P 500"]}}
     assert ir.index_for("aapl", reg) == ["S&P 500"]
