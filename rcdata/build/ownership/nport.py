@@ -378,10 +378,20 @@ class Nport:
     @staticmethod
     def _history(con: duckdb.DuckDBPyConnection, held: list[Path]) -> int:
         """``etf_holdings_nport_history`` from every typed quarter: each spine ETF's newest report in each quarter
-        (``_np_etf``), its long equity summed per holding, the spine ticker of its CUSIP (``_np_cusip``) or none."""
-        funds = "[" + ", ".join(base.sql_path(q / "fund.parquet") for q in held) + "]"
-        holds = "[" + ", ".join(base.sql_path(q / "holdings.parquet") for q in held) + "]"
-        return common.create_table(con, HISTORY, HISTORY_SERVED, f"""
+        (``_np_etf``), its long equity summed per holding, the spine ticker of its CUSIP (``_np_cusip``) or none.
+
+        One quarter at a time: the whole history in one query (13.1M rows, 28 quarters) peaked at 3.83 GB against the
+        4 GB scope on homesrv (measured 22 Nov 2026, PR #1445); a quarter alone is about 600K rows."""
+        common.create_table(con, HISTORY, HISTORY_SERVED)
+        names = ", ".join(f'"{c}"' for c, _ in HISTORY_SERVED)
+        for q in held:
+            con.execute(f"INSERT INTO {HISTORY} SELECT {names} FROM ({Nport._history_quarter(q)})")
+        return common.count(con, HISTORY)
+
+    @staticmethod
+    def _history_quarter(q: Path) -> str:
+        funds, holds = base.sql_path(q / "fund.parquet"), base.sql_path(q / "holdings.parquet")
+        return f"""
             WITH f AS (SELECT * FROM read_parquet({funds}, union_by_name = true)
                        QUALIFY row_number() OVER (PARTITION BY quarter, series_id
                                                   ORDER BY report_date DESC NULLS LAST, filed DESC, accession DESC) = 1),
@@ -399,7 +409,7 @@ class Nport:
                    sum(r.pct_of_net_assets) AS pct_of_net_assets, CAST(count(*) AS INTEGER) AS lines
             FROM r LEFT JOIN _np_cusip c ON c.cusip = r.cusip
             GROUP BY r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession, r.holding, c.ticker
-            ORDER BY r.etf_ticker, r.quarter, currency_value DESC NULLS LAST, issuer_name""")
+            ORDER BY r.etf_ticker, r.quarter, currency_value DESC NULLS LAST, issuer_name"""
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         # both served tables: a build that changes only the history must not read as unchanged
