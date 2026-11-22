@@ -25,7 +25,7 @@ Surveyed on 20-21 November 2026; the write-ups are in `docs/v2/fincept/` (`data-
 
 ## 3. The UW Discord bot feed (plan B, and a substitute for the hard items)
 
-avo's server carries nine UW bot channels; the survey is in `/mnt/project-files/uw_dependency/discord-bot/notlar.md`.
+avo's server carries nine UW bot channels; the survey is in `/mnt/project-files/UWdependency/discord-bot/notlar.md`.
 avo's direction, 21 November 2026: **if it is used, it is wired to RevenueChaser directly, not through
 idea-creator**, and it is plan B for option flow — but it is a candidate substitute for the items we cannot build.
 
@@ -94,7 +94,7 @@ Two things that change the Discord route's feasibility:
 
 A read-only pass over the eight UW bot channels in Traders' Pub, 17:49-17:56 Amsterdam; nothing was written, no
 command was sent. The record is `ui/discord-bot/` here and
-`/mnt/project-files/uw_dependency/discord-bot/discord-pass_2026-11-21.md` beside the thread. What it settles:
+`/mnt/project-files/UWdependency/discord-bot/discord-pass_2026-11-21.md` beside the thread. What it settles:
 
 - **Nothing in those channels is avo's own data.** They are UW push-notification topics delivered into the server.
   If the bot goes, no data of ours goes with it — only the feed stops. That removes the Discord route from the
