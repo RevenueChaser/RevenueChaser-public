@@ -12,7 +12,7 @@ the bridge views from the staging tables:
   field either, so ``is_etf`` carries the rule that decided it. The ETF universe was ``fund`` plus the ``etp``
   rows of ``security`` (SPY is a unit investment trust and GLD a commodity trust: neither is in the fund file);
   it is served as ``etf`` now (#346);
-- ``wrds/sec_idhist``, ``wrds/co_hgic``, ``wrds/idxcst_his`` (monthly since #1361, not attended: that login asks
+- ``wrds/sec_idhist``, ``wrds/co_hgic``, ``wrds/idxcst_his`` (weekly since 22 Nov 2026; unattended since #1361: that login asks
   for no Duo push; one connection per builder process): Compustat's company and security rows with their identifier history (the
   CIK-CUSIP link), the GICS history, and the S&P index constituents history (the membership check);
 - ``openfigi/map`` (weekly): the CUSIPs not mapped yet, under 25 requests a minute;
@@ -20,7 +20,7 @@ the bridge views from the staging tables:
   index membership;
 - ``funds/etf_holdings`` (daily): the rotation board's ETFs read whole, from the SPDR and iShares files and UW's
   holdings answer for the themes whose issuer has no keyless file; it serves ``etf_holdings`` itself (no vote);
-- ``alphavantage/listing_status`` (weekly, keyed) and ``sec/ncen`` (monthly): Alpha Vantage's list of every US
+- ``alphavantage/listing_status`` (weekly, keyed) and ``sec/ncen`` (weekly): Alpha Vantage's list of every US
   listing and the SEC's Form N-CEN data sets, the two halves of the ETF list (#346);
 - ``spine/security``: no fetch; tier rule v1 (``tier.py``), the served tables ``security``, ``security_history``,
   ``gics_history``, ``index_membership``, ``etf`` (the ETF universe, ``etf.py``) and ``my_universe`` with

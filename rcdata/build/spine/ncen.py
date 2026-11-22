@@ -103,7 +103,7 @@ class Ncen:
     tables: tuple[str, ...] = ()
     # One half of the ETF list (#346), so of ``my_universe``'s funds and their classes.
     feeds = ("etf", "my_universe", "my_universe_changes", "etf_class", "etf_class_changes", "etf_theme")
-    cadence = "monthly"
+    cadence = "weekly"                # with the other spine sources (avo, 22 Nov 2026); an unchanged set writes nothing
     backfill_needs_from = False
     starts_by_hand = True             # as every spine dataset: not due until a CLI run or a Fetch built it
 

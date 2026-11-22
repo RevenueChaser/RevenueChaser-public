@@ -409,12 +409,15 @@ def _in_list(values) -> str:
 # ── The datasets ──────────────────────────────────────────────────────────────────────────────────────────────
 
 class WrdsDataset:
-    """One WRDS dataset: its tables' full snapshot once a month, and (``wrds/sec_idhist``) the new names between."""
+    """One WRDS dataset: its tables' full snapshot once a month, and (``wrds/sec_idhist``) the new names between.
+
+    Weekly (avo, 22 Nov 2026), on the SEC files' rhythm: a run before ``SNAPSHOT_DAYS`` asks only the new names, so a
+    new SEC ticker waits a week for its Compustat link, not a month."""
 
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
-    cadence = "monthly"
+    cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
 
