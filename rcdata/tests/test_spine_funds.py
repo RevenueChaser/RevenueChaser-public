@@ -284,7 +284,9 @@ def test_the_nasdaq_composite_is_exactly_the_screeners_one_file_asked_with_the_a
                               "&download=true")
     assert files[0].headers() == NASDAQ_BROWSER
     assert "nasdaq" in funds.INDEXES and funds.FLOOR["nasdaq"] == 2875 and "nasdaq" not in funds.CHECKED
-    others = [f for f in funds.FILES if f.fund != "COMP"]
+    ndx = [f for f in funds.FILES if f.provider == "nasdaq" and f.fund != "COMP"]
+    assert [f.headers() for f in ndx] == [NASDAQ_BROWSER]               # the nasdaq100 list too: without them no answer
+    others = [f for f in funds.FILES if f.provider != "nasdaq"]
     assert all(f.headers() == {"Accept": "*/*"} for f in others)         # every other file asks as before
 
 
@@ -316,7 +318,7 @@ def test_one_request_per_file_a_failed_file_is_an_issue_and_the_others_count(env
     assert row["coverage"] == round(8 / 51, 4) and "failed files" in row["note"]
     screener = env.calls("api/screener/stocks")
     assert len(screener) == 1 and all(screener[0].headers.get(k) == v for k, v in NASDAQ_BROWSER.items())
-    assert "Mozilla" not in env.calls("list-type/nasdaq100")[0].headers.get("User-Agent", "")
+    assert all(env.calls("list-type/nasdaq100")[0].headers.get(k) == v for k, v in NASDAQ_BROWSER.items())
     assert not env.calls("holdings-daily-us-en-xlk") and not env.calls("products/239501/")   # B: never fetched here
     assert row["calls"] == len(env.calls())
 
