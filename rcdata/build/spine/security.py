@@ -88,9 +88,9 @@ LOOKAHEAD = timedelta(days=21)
 #: and empty company CIKs, which only a whole snapshot refreshes (a new-names delta asks only the new CIKs), and
 #: the snapshots before this day predate the rules' review. So both run only when the newest ``snapshot=``
 #: partition of ``wrds/sec_idhist`` -- the one staging reads -- is whole and as of this day or later; otherwise
-#: they do nothing and the build writes one ``wrds_snapshot_not_armed`` issue. 23 Nov 2026: the fresh sequential
-#: fetch avo ordered for that night (``{"full": true}``).
-FRESH_SNAPSHOT_FROM = date(2026, 11, 23)
+#: they do nothing and the build writes one ``wrds_snapshot_not_armed`` issue. 22 Nov 2026 (New York date): the
+#: fresh sequential fetch avo ordered for that night (``{"full": true}``).
+FRESH_SNAPSHOT_FROM = date(2026, 11, 22)
 WHOLE_SNAPSHOT = ("company", "security")
 # Fund-file lines that are no stock, read on a line with no SEC match only (#1418, ``member_not_in_sec``). Cash
 # (``CASH_USD``, any separator) is never a security, so its identifier does not matter: SSGA's dollar line carries a

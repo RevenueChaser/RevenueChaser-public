@@ -36,8 +36,8 @@ from revenuechaser.rcdata.build.spine import security, wrds  # noqa: E402
 
 from . import spine_fixture as fx  # noqa: E402
 
-ARMED_DAY = "2026-11-23"          # the first day FRESH_SNAPSHOT_FROM accepts: tonight's fresh full fetch
-OLD_DAY = "2026-11-22"
+ARMED_DAY = "2026-11-22"          # the first day FRESH_SNAPSHOT_FROM accepts: tonight's fresh full fetch
+OLD_DAY = "2026-11-18"
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ def test_compustat_inactive_is_tier_c_whatever_the_sec_file_says():
 
 
 def test_the_guard_wants_a_whole_snapshot_from_the_fresh_day_on():
-    assert security.FRESH_SNAPSHOT_FROM == date(2026, 11, 23)
+    assert security.FRESH_SNAPSHOT_FROM == date(2026, 11, 22)
     folder = wrds.parquet_dir(wrds.SEC_IDHIST.name)
     assert not security.wrds_armed()                                  # no snapshot at all
     (folder / f"snapshot={ARMED_DAY}").mkdir(parents=True)
