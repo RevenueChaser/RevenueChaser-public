@@ -185,3 +185,11 @@ def test_a_value_the_schema_cannot_type_is_a_build_issue_not_a_silent_null():
     got = sorted((r["kind"], r["key"], r["detail"]) for r in rows)
     assert got == [("value_untyped", "security.dldtei", "1 row(s) of 3 nulled (as DATE)"),
                    ("value_untyped", "security.exchg", "1 row(s) of 3 nulled (as INTEGER)")]
+
+
+def test_the_spine_sources_run_weekly_with_a_monthly_full_snapshot():
+    """avo, 22 Nov 2026: every spine source on one weekly rhythm with the SEC files. A weekly run of
+    ``wrds/sec_idhist`` asks only the SEC file's new CIKs until ``SNAPSHOT_DAYS`` have passed, then a full snapshot."""
+    from revenuechaser.rcdata.build.spine import wrds
+    assert {ds.cadence for ds in (wrds.SEC_IDHIST, wrds.CO_HGIC, wrds.IDXCST_HIS)} == {"weekly"}
+    assert wrds.SNAPSHOT_DAYS == 30
