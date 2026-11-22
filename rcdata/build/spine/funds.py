@@ -369,7 +369,7 @@ class FundFile:
     def headers(self) -> dict[str, str]:
         """The request headers: avo's approved browser ones for both Nasdaq files, else ``Accept: */*`` (the builder's
         own UA). Without them Nasdaq's edge closes the connection unanswered (homesrv, 22 Nov 2026: HTTP/2 reset after
-        TLS, HTTP/1.1 no answer in 15 s; with them 200 and the 101 nasdaq100 rows), which failed ``ndx`` since 28 Oct."""
+        TLS, HTTP/1.1 no answer in 15 s; with them 200 and the 101 nasdaq100 rows); ``ndx`` failed so since 28 Oct."""
         return dict(NASDAQ_BROWSER) if self.provider == "nasdaq" else {"Accept": "*/*"}
 
     def raw_name(self) -> str:
