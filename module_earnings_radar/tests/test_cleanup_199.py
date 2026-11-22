@@ -10,7 +10,7 @@ class TestTestWithAstraGone:
     def test_directory_is_deleted(self):
         assert not (ROOT / "module_earnings_radar" / "testWithAstra").exists()
 
-    @pytest.mark.parametrize("doc", ["docs/earnings-radar/redesign.md"])
+    @pytest.mark.parametrize("doc", ["docs/module_earnings-radar/redesign.md"])
     def test_docs_do_not_point_into_it(self, doc):
         assert "testWithAstra" not in (ROOT / doc).read_text(encoding="utf-8")
 

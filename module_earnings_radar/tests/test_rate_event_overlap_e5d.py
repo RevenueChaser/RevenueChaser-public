@@ -287,7 +287,7 @@ def test_the_raw_packet_carries_the_overlap():
     assert json.loads(p2._score("AAPL").raw_packet_json)["rate_event_overlap"] is None
 
 
-# ── the noise gate: |t| < 2 is no veto (docs/earnings-radar/redesign.md, "Noisy gate") ───────────────────────────────────
+# ── the noise gate: |t| < 2 is no veto (docs/module_earnings-radar/redesign.md, "Noisy gate") ───────────────────────────────────
 
 def _noisy_ohlc_and_yields(true_beta=-(EXTREME_DURATION), n=60, seed=4, noise=0.02 * EXTREME_DURATION / 8.0):
     """A volatile name: a real yield dependence buried in daily noise, so |beta| > R6_RATE_VETO and |t| < 2.

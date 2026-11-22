@@ -189,8 +189,8 @@ _MARKDOWN_READ_BY_TESTS = (
     "docs/data_architecture.md",        # test_doc_constants.py, test_store_schema_refuse.py:36, test_rawstore_history.py:595
     "docs/data_health.md",             # test_doc_constants.py:179, test_automation_chain.py:125
     "docs/data_retrieval.md",          # test_doc_constants.py:56
-    "docs/earnings-radar/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
-    "docs/earnings-radar/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
+    "docs/module_earnings-radar/00_overview.md",       # module_earnings_radar/tests/test_confidence_wording_df06.py:62
+    "docs/module_earnings-radar/redesign.md",          # module_earnings_radar/tests/test_cleanup_199.py:13-15
     "docs/v2/door.md",                          # test_door_deployment.py (port, probe budget), test_door_proxy.py (the route table)
     "module_spx_gamma/tests/golden/position_map.base.md",   # module_spx_gamma/tests/test_autoescape_175.py:106
 )
@@ -474,14 +474,14 @@ def test_the_metrics_table_in_data_health_matches_the_code():
 
 
 def test_r6_doc_states_the_calibrated_rate_thresholds_and_the_measurement():
-    """``docs/earnings-radar/r6_macro.md``'s |β| table states values ``core/config`` owns (#635).
+    """``docs/module_earnings-radar/r6_macro.md``'s |β| table states values ``core/config`` owns (#635).
 
     The doc said "> 4 veto / > 2 reason" while the constants were recalibrated to the beta's measured scale,
     which is the drift #134 is about: a reader takes the table for the contract. The percentiles the cuts were
     set from have to be in the doc too — a threshold whose measurement is not written down cannot be judged or
     re-taken (#1250).
     """
-    text = (_REPO / "docs" / "earnings-radar" / "r6_macro.md").read_text(encoding="utf-8")
+    text = (_REPO / "docs" / "module_earnings-radar" / "r6_macro.md").read_text(encoding="utf-8")
     veto = re.search(r"\| > ([\d.]+) \| \*\*veto\*\*", text)
     high = re.search(r"\| > ([\d.]+) \| reason only", text)
     assert veto and high, "r6_macro.md no longer states the |beta| thresholds in its table"

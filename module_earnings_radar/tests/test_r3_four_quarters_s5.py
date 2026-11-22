@@ -1,12 +1,12 @@
 """Fable review S5 (Earnings Radar, R3). Offline.
 
 R3's four-quarter gate guarded only the universal operating-margin layer, so a cluster scorer still voted on one
-quarter's levels at full coverage: a C3 name with one quarterly row scored -75 at coverage 1.0. docs/earnings-radar/redesign.md
+quarter's levels at full coverage: a C3 name with one quarterly row scored -75 at coverage 1.0. docs/module_earnings-radar/redesign.md
 R3 locks "usable quarters >= 4, take last 8; coverage buckets (3-4 / 5-7 / 8+)". Fewer than four usable quarters (a
 row with revenue) is now unavailable, and the coverage is the quarter bucket, 0.40 / 0.60 / 0.80 as R2 has it; the
 share of the cluster's signals stays as the raw metric ``signal_coverage``.
 
-Default chosen, change if avo prefers: the alternative is docs/earnings-radar/r3_financial.md's older "two features" rule,
+Default chosen, change if avo prefers: the alternative is docs/module_earnings-radar/r3_financial.md's older "two features" rule,
 which would then be written into redesign.md instead.
 """
 import pytest

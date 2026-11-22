@@ -653,7 +653,7 @@ class UWClient:
 
     def aggregate_flow(self, ticker: str, flow: list = None) -> dict:
         """The tape's premium in buckets. ``inst_call``/``inst_put``/``retail_*`` split by size only (size >= 10 is
-        institutional; R8 and Swing read these). The R5 lean (docs/earnings-radar/redesign.md R5, review S4) reads only
+        institutional; R8 and Swing read these). The R5 lean (docs/module_earnings-radar/redesign.md R5, review S4) reads only
         institutional prints, size >= 10 AND premium >= ``INST_PRINT_MIN_PREMIUM``, by the print's side
         (``core/option_prints``): ``inst_bull_side`` = ask-side calls + bid-side puts, ``inst_bear_side`` = bid-side
         calls + ask-side puts, ``inst_mid`` dropped, ``inst_no_side`` neither. A package print (multi-leg or

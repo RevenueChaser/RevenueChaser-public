@@ -1,4 +1,4 @@
-"""#256, docs/earnings-radar/redesign.md R5: the lean reads a window of sessions and a slice of strikes. Offline.
+"""#256, docs/module_earnings-radar/redesign.md R5: the lean reads a window of sessions and a slice of strikes. Offline.
 
 Before this, R5's lean read whatever ``flow-recent`` returned: every strike, every expiry, and as many sessions
 back as the newest prints happened to span. redesign.md R5 locks two local filters ("Window: last 1-3 sessions",

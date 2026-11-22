@@ -3,7 +3,7 @@
 Pin: the institutional lean (bullish minus bearish print-side premium, review S4) scales with the sided premium
 and is Thin under $25k; retail-call euphoria is NOT scored here (it lives in R8); unavailable is None when no
 signal exists; the squeeze is a ``none`` / ``fuel`` **tag** that scores nothing, there is no peer Z ladder and a
-low short interest is never bearish (#256, docs/earnings-radar/redesign.md R5).
+low short interest is never bearish (#256, docs/module_earnings-radar/redesign.md R5).
 """
 import pytest
 
