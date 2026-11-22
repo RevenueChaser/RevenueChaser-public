@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import io
 from datetime import date
+from types import SimpleNamespace
 import zipfile
 
 import duckdb
 import pytest
 
 from RevenueChaser.core.providers import sec_edgar
+from RevenueChaser.rcdata import ops
 from RevenueChaser.rcdata.build import base
 from RevenueChaser.rcdata.build.ownership import common, nport, sec
 
@@ -65,6 +67,10 @@ def _run() -> tuple[base.RunContext, list]:
     ctx = base.RunContext(run_id="r1", dataset=nport.NAME, sleep=lambda s: None)
     out = nport.DATASET.to_parquet_all(ctx, nport.DATASET.fetch(ctx, nport.DATASET.default_as_of()))
     return ctx, out
+
+
+def _issues() -> list[tuple]:
+    return [(r["kind"], r["detail"]) for r in ops.rows("build_issues")]
 
 
 def _read(name: str, sql: str) -> list[tuple]:
@@ -136,3 +142,69 @@ def test_no_spine_gives_an_empty_table_not_a_failed_build(sets, monkeypatch):
     monkeypatch.setattr(nport, "_spine_etfs", lambda: [])
     con = duckdb.connect()
     assert nport.DATASET.build(base.RunContext(run_id="b2", dataset=nport.NAME), con) == {nport.TABLE: 0}
+
+
+# ── C7: the older quarters (avo, 22 Nov 2026) ──────────────────────────────────────────────────────────────────
+
+def _backfill(start, end=date(2026, 11, 22)) -> base.RunContext:
+    ctx = base.RunContext(run_id="h1", dataset=nport.NAME, sleep=lambda s: None)
+    nport.DATASET.backfill(ctx, start, end)
+    return ctx
+
+
+def _asked(sets) -> list[str]:
+    return [str(r.url).rsplit("/", 1)[1] for r in sets.calls(FOLDER)]
+
+
+def test_a_backfill_with_a_first_day_takes_every_quarter_that_reaches_it_oldest_first(sets):
+    """C7: before this a backfill was the daily rule and the older quarters could not be asked at all."""
+    ctx = _backfill(date(2026, 4, 1))
+    assert _asked(sets) == [OLD, NEW]                       # oldest first, so a stopped run leaves a run of history
+    assert nport.typed(OLD) and nport.typed(NEW)
+    assert (nport.parquet_dir() / "quarter=2026q2" / "holdings.parquet").exists()
+    assert any("2 listed quarter(s)" in n and "2 to go" in n for n in ctx.notes)
+
+
+def test_a_quarter_whose_window_ends_before_the_first_day_is_not_asked(sets):
+    ctx = _backfill(date(2026, 7, 1))
+    assert _asked(sets) == [NEW] and not nport.typed(OLD)
+    assert any("1 listed quarter(s)" in n for n in ctx.notes)
+
+
+def test_a_backfill_without_a_first_day_is_still_the_newest_quarter_only(sets):
+    """Decision G (avo, 16 Nov 2026) is unchanged: only ``--from`` asks for history."""
+    nport.DATASET.backfill(base.RunContext(run_id="h0", dataset=nport.NAME, sleep=lambda s: None),
+                           None, date(2026, 11, 22))
+    assert _asked(sets) == [NEW]
+
+
+def test_a_quarter_already_typed_is_not_asked_again_so_a_stopped_run_resumes(sets):
+    _run()                                                   # 2026q3 held and typed
+    sets.requests.clear()
+    ctx = _backfill(date(2026, 4, 1))
+    assert _asked(sets) == [OLD]
+    assert any("1 already typed" in n for n in ctx.notes)
+
+
+def test_at_most_a_runs_worth_of_quarters_and_the_note_says_how_many_are_left(sets, monkeypatch):
+    monkeypatch.setattr(nport, "MAX_SETS_PER_RUN", 1)
+    ctx = _backfill(date(2026, 4, 1))
+    assert _asked(sets) == [OLD]
+    assert any("1 quarter(s) left" in n for n in ctx.notes)
+
+
+def test_a_full_disk_stops_the_run_before_the_download_and_keeps_what_is_held(sets, monkeypatch):
+    """12 GB of raw zip must not fill the disk: a quarter is asked only while the raw disk keeps room for it."""
+    monkeypatch.setattr(nport.shutil, "disk_usage",
+                        lambda p: SimpleNamespace(total=0, used=0, free=nport.MIN_FREE_SETS - 1))
+    ctx = _backfill(date(2026, 4, 1))
+    assert _asked(sets) == [] and not nport.typed(OLD)
+    assert any("stopped before" in n for n in ctx.notes)
+    assert [k for k, _ in _issues()] == ["no_space"]
+
+
+def test_room_for_a_quarter_lets_the_run_go_on(sets, monkeypatch):
+    monkeypatch.setattr(nport.shutil, "disk_usage",
+                        lambda p: SimpleNamespace(total=0, used=0, free=nport.MIN_FREE_SETS))
+    _backfill(date(2026, 4, 1))
+    assert _asked(sets) == [OLD, NEW] and not _issues()
