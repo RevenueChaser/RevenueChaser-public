@@ -121,6 +121,17 @@ UNCLASSIFIED = "unclassified"
 CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|"
                          r"digital assets?)\b", re.IGNORECASE)
 _FUND_NAME = r"\bETF\b|ISHARES TRUST|SELECT SECTOR SPDR"
+#: A holding line's bucket by its N-PORT asset category (``h`` is the holdings row), before a held fund is told
+#: apart. A company's share the report files under OTHER (a Thai NVDR, a Brazilian unit) is a corporate issuer with
+#: an ISIN: measured 18 Nov 2026 on 2,053 reports, THD 99 % and ILF 42 % of net assets sat on such lines, 24 funds
+#: had 5 % or more. ``etf.nport_mix`` reads the same buckets.
+BUCKET = """CASE WHEN h.asset_cat IN ('EC', 'EP') OR (h.asset_cat = 'OTHER' AND h.issuer_type = 'CORP'
+                                                  AND h.isin IS NOT NULL) THEN 'equity'
+             WHEN h.asset_cat IN ('DBT', 'LON', 'SN') OR h.asset_cat LIKE 'ABS%' THEN 'debt'
+             WHEN h.asset_cat IN ('STIV', 'RA') THEN 'cash'
+             WHEN h.asset_cat IN ('DCO', 'DCR', 'DE', 'DFE', 'DIR', 'DO') THEN 'derivative'
+             WHEN h.asset_cat = 'COMM' THEN 'commodity'
+             WHEN h.asset_cat = 'RE' THEN 'real_estate' ELSE 'other' END"""
 
 
 @dataclass(frozen=True)
@@ -383,16 +394,7 @@ def profiles(con: duckdb.DuckDBPyConnection, funds: list[dict], folder: Path | N
                           h.cusip, h.isin, replace(h.ticker, '.', '-') AS tic,
                           -- a ticker is a US ticker only on a US line: a local ticker abroad can spell the same
                           (h.country = 'US' OR h.isin LIKE 'US%' OR (h.country IS NULL AND h.isin IS NULL)) AS us_line,
-                          -- a company's share the report files under OTHER (a Thai NVDR, a Brazilian unit):
-                          -- a corporate issuer with an ISIN. Measured 18 Nov 2026 on 2,053 reports: THD 99 %
-                          -- and ILF 42 % of net assets sat on such lines, 24 funds had 5 % or more
-                          CASE WHEN h.asset_cat IN ('EC', 'EP') OR (h.asset_cat = 'OTHER' AND h.issuer_type = 'CORP'
-                                                                    AND h.isin IS NOT NULL) THEN 'equity'
-                               WHEN h.asset_cat IN ('DBT', 'LON', 'SN') OR h.asset_cat LIKE 'ABS%' THEN 'debt'
-                               WHEN h.asset_cat IN ('STIV', 'RA') THEN 'cash'
-                               WHEN h.asset_cat IN ('DCO', 'DCR', 'DE', 'DFE', 'DIR', 'DO') THEN 'derivative'
-                               WHEN h.asset_cat = 'COMM' THEN 'commodity'
-                               WHEN h.asset_cat = 'RE' THEN 'real_estate' ELSE 'other' END AS bucket,
+                          {BUCKET} AS bucket,
                           h.issuer_type = 'RF' AS is_rf,
                           regexp_matches(upper(coalesce(h.issuer_name, '')), '{_FUND_NAME}') AS fund_name
                    FROM _ec_fund f JOIN read_parquet({hold}) h ON h.accession = f.accession)

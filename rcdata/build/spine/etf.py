@@ -14,7 +14,7 @@ and no ``active`` column** here; a board's thresholds (AUM, dollar volume) are i
 ``MONTHLY_AVG_NET_ASSETS``, with the filing's report end as ``aum_as_of``) from the series' newest N-CEN, NULL for
 a row N-CEN does not hold (unknown, not false); ``inception`` from AV's ``ipoDate``; ``is_option_income`` by a name
 rule; ``asset_class`` ``commodity`` by the trust rule below, else (spine 11) TickerInside's category through
-:data:`CATEGORY_ASSET_CLASS`; ``expense_ratio`` and the identity columns (``gvkey``, ``iid``, ``cusip``, ``figi``,
+:data:`CATEGORY_ASSET_CLASS`, else the fund's newest N-PORT holdings mix (:func:`nport_class`); ``expense_ratio`` and the identity columns (``gvkey``, ``iid``, ``cusip``, ``figi``,
 ``composite_figi``, ``identity_source``) as :func:`rows` says. NULL until later PRs: ``focus`` and ``country``. ``adv_usd_20d`` is the
 20-session average daily dollar volume, read from the **raw** Compustat ``comp.secd`` Parquet
 (:func:`adv_usd_20d`); it is what decides a fund N-CEN gives no AUM for in ``my_universe`` (avo, 4 Nov 2026), and
@@ -37,7 +37,7 @@ import duckdb
 
 from .. import base, secd
 from .av_listing import STAGING as AV
-from . import ncen
+from . import ncen, stage
 from .ncen import FILERS, STAGING as NCEN
 from .tier import NOTE_NAME
 
@@ -146,6 +146,65 @@ _CATEGORIES = {
 }
 CATEGORY_ASSET_CLASS = {cat: cls for cls, cats in _CATEGORIES.items() for cat in cats.split()}
 COMPUSTAT_SECD, TICKERINSIDE = "compustat_secd", "tickerinside"
+
+#: ``asset_class``'s third source, below the commodity rule and TickerInside's category and never over either: the
+#: fund's newest N-PORT report (``sec/nport``, newest of the last :data:`NPORT_QUARTERS` quarters held, linked by
+#: ``series_id``), read as ``etf_class`` buckets its lines (:data:`etf_class.BUCKET`; a held fund is ``fund``).
+#: :data:`NPORT_SHARE` and :data:`NPORT_DERIVATIVE` are ``etf_class``'s own cuts (``Cuts.share``, ``Cuts.derivative``).
+NPORT_SHARE, NPORT_DERIVATIVE, NPORT_QUARTERS = 60.0, 10.0, 4
+
+
+def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt: bool = False) -> str | None:
+    """The asset class of one N-PORT mix (``etf_class`` bucket to percent of net assets), or None where the report
+    does not say it. Leveraged, inverse or 10 % in derivatives: the exposure is in the contracts, not the lines. One
+    of equity, bond (``debt``), commodity at 60 % is the class; cash at 60 % only for an N-CEN money market fund
+    (elsewhere it is the collateral of futures or swaps); else equity, bond and commodity together at 60 % are
+    ``multi_asset``, and a mix mostly of held funds or unbucketed lines stays None. An option-income fund
+    (:data:`OPTION_INCOME_NAME`) is read only as ``equity``, where it holds the shares it writes on: a buffer or
+    put-write fund's Treasuries are collateral (Innovator's Premium Income funds, 100 % bills, 23 Nov 2026)."""
+    if lev or mix.get("derivative", 0.0) >= NPORT_DERIVATIVE:
+        return None
+    held = {"equity": mix.get("equity", 0.0), "bond": mix.get("debt", 0.0), "commodity": mix.get("commodity", 0.0)}
+    k, v = max(sorted({**held, "cash": mix.get("cash", 0.0)}.items()), key=lambda kv: kv[1])
+    cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
+        "multi_asset" if sum(held.values()) >= NPORT_SHARE else None)
+    return None if opt and cls != "equity" else cls
+
+
+def nport_mix(series_ids: list[str]) -> dict[str, dict[str, float]]:
+    """``{series_id: {bucket: percent of net assets}}`` of each series' newest N-PORT report among the newest
+    :data:`NPORT_QUARTERS` quarters of ``sec/nport`` Parquet (derivatives as absolute values); empty without it."""
+    from .etf_class import _FUND_NAME, BUCKET, NPORT          # ``etf_class`` imports this module
+    wanted = sorted({s for s in series_ids if s})
+    root = base.parquet_root().joinpath(*NPORT.split("/"))
+    held = [f.parent for _, f in stage.partitions(root, "quarter", "fund.parquet")
+            if (f.parent / "holdings.parquet").is_file()][-NPORT_QUARTERS:]
+    if not wanted or not held:
+        return {}
+
+    def src(name: str) -> str:
+        return f"read_parquet([{', '.join(base.sql_path(d / name) for d in held)}], union_by_name = true)"
+    con = base.scratch_con()
+    try:
+        found = con.execute(f"""
+            WITH r AS (SELECT series_id, accession FROM {src('fund.parquet')}
+                       WHERE series_id IN ({', '.join('?' * len(wanted))})
+                       QUALIFY row_number() OVER (PARTITION BY series_id ORDER BY report_date DESC NULLS LAST,
+                                                  filed DESC NULLS LAST, accession DESC) = 1),
+                 l AS (SELECT r.series_id, h.pct_of_net_assets AS pct, {BUCKET} AS bucket,
+                              coalesce(h.issuer_type = 'RF', false) AS is_rf,
+                              regexp_matches(upper(coalesce(h.issuer_name, '')), '{_FUND_NAME}') AS fund_name
+                       FROM r JOIN {src('holdings.parquet')} h ON h.accession = r.accession)
+            -- a held fund is ``fund`` as ``etf_class`` says it: a registered fund always, a fund's name on equity
+            SELECT series_id, CASE WHEN is_rf OR (bucket = 'equity' AND fund_name) THEN 'fund' ELSE bucket END AS b,
+                   sum(CASE WHEN bucket = 'derivative' THEN abs(pct) ELSE pct END)
+            FROM l GROUP BY 1, 2""", wanted).fetchall()
+    finally:
+        con.close()
+    out: dict[str, dict[str, float]] = {}
+    for s, b, v in found:
+        out.setdefault(str(s), {})[str(b)] = float(v or 0.0)
+    return out
 
 
 def _cik(value) -> str | None:
@@ -365,6 +424,16 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
             "source_as_of": r["source_as_of"],
             # The newest of its sources' fetch times; run_id is the build that wrote the row (it is derived).
             "fetched_at": r["fetched_at"], "run_id": ctx.run_id})
+    # The third source of asset_class: what the earlier two left NULL, from the newest N-PORT mix (never over them).
+    mixes = nport_mix([r["series_id"] for r in out if r["asset_class"] is None])
+    from_nport = 0
+    for r in out:
+        if r["asset_class"] is None and r["series_id"] in mixes:
+            r["asset_class"] = nport_class(mixes[r["series_id"]], lev=bool(r["is_lev_inverse"]),
+                                           mm=bool(r["is_money_market"]), opt=r["is_option_income"])
+            from_nport += r["asset_class"] is not None
+    ctx.notes.append(f"etf asset_class: {from_nport} from N-PORT ({len(mixes)} reports read), "
+                     f"{sum(1 for r in out if r['asset_class'] is None)} still NULL")
     issues += [("etf_category_unmapped", cat, f"TickerInside category {cat} has no asset class here: "
                 + ", ".join(sorted(ts))[:300]) for cat, ts in sorted(unmapped.items())]
     ctx.notes.append(f"etf identity: {sum(1 for r in out if r['gvkey'])} with a Compustat series, "
