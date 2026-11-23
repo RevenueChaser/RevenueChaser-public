@@ -115,6 +115,20 @@ interest published before it and that session's IBKR borrow fee, rebate and shar
 ``sec/13f`` or of this dataset (a spine change reaches them through this dataset's own daily run) and carried over
 from the live file otherwise, so a FINRA or IBKR run does not read millions of holdings again.
 
+**Per quarter** (avo, 23 Nov 2026: the whole derive spilled 57 GB and filled the SSD): a ``sec/13f`` run on the
+live copy derives again only the quarters its changed filing days reach (``_quarters``) and keeps every other
+quarter's rows as the live file has them. A changed quarter Q reaches Q-1 and Q+1 (their consensus prices are
+checked against Q's, ``_consensus_guard``) and Q+2 (its flows start from Q+1's positions), a quarter whose close on
+the SEC's data set flipped is changed too, and the style window (``STYLE_QUARTERS``) comes whole when any of it is
+touched or it moved. What those quarters read goes two quarters further back and one further on. Measured on the
+live file over 20 Oct-20 Nov 2026: a filing day reaches 2-40 report periods (amendments and late filers), so a
+usual day derives 9 of 54 quarters and reads 11. It derives everything instead when the live file has no 13F
+tables of this shape or no family map, the spine Parquet it reads changed, this dataset's build code changed, UW
+has a new snapshot, no SEC data-set listing is read yet, the first served quarter moved, or a filer family changed
+in a quarter it keeps (``FAMILY_TABLE``). Issues are written by a whole derive only. shortcut: a kept quarter keeps
+the spine's names, the prices store's split factors and the 13(f) list of its last derive until this dataset's own
+run derives everything; upgrade when a spine change must reach the 13F board within the hour.
+
 **Build issues** (``ISSUE_KINDS``), written once the file is live: ``spine_missing``, ``cusip_owner_differs``,
 ``cusip_unmapped_large`` (the ``UNMAPPED_TOP`` largest CUSIPs no source names, of the newest complete quarter, as
 the plan's counts are, else the newest),
@@ -221,6 +235,10 @@ SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker
            "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW, "sec13f_filer_style": STYLE,
            "sec13f_filer_holdings": FILER_HOLDINGS, **sec13f_extras.SCHEMAS}
 TABLES = tuple(SCHEMAS)
+# Each filer's family root as the last derive built it (``_family``): what a per-quarter derive checks its kept
+# quarters against. Not a served table, so not in ``SCHEMAS``.
+FAMILY_TABLE = "sec13f_family_map"
+FAMILY = [("cik", "TEXT"), ("family_cik", "TEXT")]
 # The old sec13f_totals entry's keys, in its order (module_sec_13f/engine.py compute_period_metrics).
 METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders", "exited_holders", "buy_flow",
            "sell_flow", "breadth", "breadth_chg")
@@ -450,8 +468,7 @@ def _families(con: duckdb.DuckDBPyConnection) -> int:
     books = {c: v for c, v in con.execute(
         "SELECT ltrim(cik, '0'), max(value) FROM sec13f_filer_period GROUP BY 1").fetchall()}
     roots = family_roots(edges, books, names)
-    common.temp_rows(con, "_family", [("cik", "TEXT"), ("family_cik", "TEXT")],
-                     [{"cik": c, "family_cik": r} for c, r in roots.items()])
+    common.temp_rows(con, "_family", FAMILY, [{"cik": c, "family_cik": r} for c, r in roots.items()])
     return len(roots)
 
 
@@ -541,6 +558,36 @@ def _by_period(con: duckdb.DuckDBPyConnection, periods: list, table: str, select
         _empty(con, table, schema)
     for p in periods:
         con.execute(f"INSERT INTO {table} {select}", [p] * select.count("?"))
+
+
+def shift(quarter: date, n: int) -> date:
+    """The calendar quarter end ``n`` quarters after ``quarter`` (before it for a negative ``n``)."""
+    m = quarter.year * 12 + quarter.month + 3 * n                    # the month after the quarter, counted from 0
+    return date(m // 12, m % 12 + 1, 1) - timedelta(days=1)
+
+
+def _files_for(con: duckdb.DuckDBPyConnection, files, read) -> list:
+    """The holdings partitions (``day=<index day>``) that hold a filing of a quarter in ``read``; all of them for
+    ``read`` None."""
+    if read is None:
+        return list(files)
+    days = {r[0] for r in con.execute(f"SELECT DISTINCT index_day FROM {sec13f.TABLE} WHERE {QE} IN "
+                                      f"(SELECT unnest(?::DATE[]))", [sorted(read)]).fetchall()}
+    return [f for f in files if f.parent.name.startswith("day=") and date.fromisoformat(f.parent.name[4:]) in days]
+
+
+def _merge(con: duckdb.DuckDBPyConnection, table: str, keep: list) -> None:
+    """``table`` with its rows of the quarters in ``keep`` as just derived and every other quarter's as the live file
+    has them (``_was_<table>``, dropped after)."""
+    con.execute(f"DELETE FROM {table} WHERE period NOT IN (SELECT unnest(?::DATE[]))", [keep])
+    con.execute(f"INSERT INTO {table} SELECT * FROM _was_{table} WHERE period NOT IN (SELECT unnest(?::DATE[]))",
+                [keep])
+    con.execute(f"DROP TABLE _was_{table}")
+
+
+def _store_families(con: duckdb.DuckDBPyConnection) -> None:
+    con.execute(f"DROP TABLE IF EXISTS {FAMILY_TABLE}")
+    common.create_table(con, FAMILY_TABLE, FAMILY, "SELECT * FROM _family")
 
 
 def _spine(con: duckdb.DuckDBPyConnection, found: list) -> bool:
@@ -654,7 +701,7 @@ class OwnershipServe:
     providers: tuple[str, ...] = ()
     # The spine Parquet it reads (_owners, _figi): dirty.read_dirs packs and tracks it (rc-github-rebuild, 18 Nov 2026).
     parquet_reads = ("wrds/sec_idhist", "openfigi/map")
-    tables = TABLES
+    tables = (*TABLES, FAMILY_TABLE)
     feeds: tuple[str, ...] = ()       # it builds every 13F table itself
     cadence = "daily"
     backfill_needs_from = False
@@ -678,10 +725,9 @@ class OwnershipServe:
     # ── Build ──────────────────────────────────────────────────────────────────────────────────────────────────
 
     def dirty(self, ctx: base.RunContext):
-        """Everything: the 13F tables are derived whole whenever they are derived (on a run of ``sec/13f`` or of
-        this dataset), on the live copy too; on any other run they are the live file's own, kept as they are.
-        shortcut: a 13F run derives every quarter again although a day's filings reach only their own quarter and
-        the next (its flow); upgrade to a per-quarter reload when that derive is what a build waits on."""
+        """Everything, as far as the kind's plan goes: what of the 13F tables a run derives again is this dataset's
+        own answer (``_quarters``, per quarter on a ``sec/13f`` run on the live copy); on any other run they are the
+        live file's own, kept as they are."""
         return dirty.ALL
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
@@ -690,6 +736,16 @@ class OwnershipServe:
         counts = None
         if not derive:
             counts = self._kept(con) if on_live else self._carry_over(con)
+        elif on_live and ctx.dataset == sec13f.NAME:
+            keep, why = self._quarters(ctx, con)
+            if keep == []:
+                counts = self._kept(con)
+                ctx.notes.append("13F: no quarter changed, every one kept from the live file")
+            elif keep:
+                counts = self._derive_quarters(ctx, con, keep)
+                why = "a filer family changed in a quarter it would keep"
+            if counts is None:
+                ctx.notes.append(f"13F derived whole: {why}")
         if counts is None:
             if on_live:
                 for view in VIEWS:
@@ -727,18 +783,100 @@ class OwnershipServe:
                 cols.setdefault(t, []).append(c)
             if any(cols.get(t) != [c for c, _ in s] for t, s in SCHEMAS.items()):
                 return None
+            if cols.get(FAMILY_TABLE) == [c for c, _ in FAMILY]:
+                common.create_table(con, FAMILY_TABLE, FAMILY, f"SELECT * FROM own_live.{FAMILY_TABLE}")
             return {t: common.create_table(con, t, s, f'SELECT * FROM own_live."{t}"') for t, s in SCHEMAS.items()}
         finally:
             con.execute("DETACH own_live")
 
-    def _derive(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+    def _quarters(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> tuple[list | None, str]:
+        """The quarters a ``sec/13f`` run on the live copy derives again (module doc, *Per quarter*), ``[]`` when
+        none changed; or None and why every quarter is derived again."""
+        plan = ctx.incremental
+        if plan.changed is None:
+            return None, "nothing is known of what changed"
+        if NAME in plan.recoded:
+            return None, "its build code changed"
+        if self._kept(con) is None or not common.has_table(con, FAMILY_TABLE):
+            return None, "the live file holds no 13F tables of this shape, or no family map"
+        root, own = base.parquet_root(), tuple(sec13f.NAME.split("/"))
+        days = set()
+        for p in plan.changed:
+            parts = p.relative_to(root).parts
+            if "/".join(parts[:2]) in self.parquet_reads:
+                return None, f"{'/'.join(parts[:2])} changed"
+            if parts[:2] == own and len(parts) > 3 and parts[3].startswith("day="):
+                days.add(date.fromisoformat(parts[3][4:]))
+        con.execute(f"ATTACH {base.sql_path(serving.live_path(KIND))} AS own_live (READ_ONLY)")
+        try:
+            for table in (uw_institutions.TABLE, uw_institutions.SUCCESSION_TABLE):
+                snaps = []
+                for db in (con.execute("SELECT current_database()").fetchone()[0], "own_live"):
+                    held = common.count(con, "duckdb_tables()", f"database_name = '{db}' AND table_name = '{table}'")
+                    snaps.append(con.execute(f"SELECT max(snapshot_date) FROM {db}.{table}").fetchone()[0]
+                                 if held else None)
+                if snaps[0] != snaps[1]:
+                    return None, f"a new {table} snapshot"
+            live = con.execute("SELECT period, closed, data_set, data_set_seen FROM own_live.sec13f_periods").fetchall()
+            if not live or any(r[1] is None for r in live):
+                return None, "no SEC data-set listing read yet"
+            _rows, start, _first, _left = self._served(con, sec13f.DATASET.holding_files())
+            if start != min(r[0] for r in live):
+                return None, "the first served quarter moved"
+            changed = {r[0] for r in con.execute(f"""
+                SELECT DISTINCT {QE} FROM (SELECT period, index_day FROM {sec13f.TABLE}
+                                           UNION ALL SELECT period, index_day FROM own_live.{sec13f.TABLE})
+                WHERE period IS NOT NULL AND index_day IN (SELECT unnest(?::DATE[]))""", [sorted(days)]).fetchall()}
+            periods = sorted({r[0] for r in live} | {q for q in changed if q >= start})
+            common.temp_rows(con, "_deadline", [("period", "DATE"), ("deadline", "DATE")],
+                             [{"period": p, "deadline": filing_deadline(p)} for p in periods])
+            _closed(con)
+            changed |= {r[0] for r in con.execute("""
+                SELECT c.period FROM _closed c JOIN own_live.sec13f_periods p USING (period)
+                WHERE c.closed IS DISTINCT FROM p.closed OR c.data_set IS DISTINCT FROM p.data_set
+                   OR c.data_set_seen IS DISTINCT FROM p.data_set_seen""").fetchall()}
+            keep = {shift(q, n) for q in changed if q >= start for n in (-1, 0, 1, 2)}
+            as_of = ctx.as_of or self.default_as_of()
+            window = [r[0] for r in con.execute("""
+                SELECT d.period FROM _deadline d LEFT JOIN _closed c USING (period)
+                WHERE coalesce(c.closed, d.deadline < ?) ORDER BY d.period DESC""", [as_of]).fetchall()]
+            window = window[:STYLE_QUARTERS]
+            styled = con.execute("SELECT max(period) FROM own_live.sec13f_filer_style").fetchone()[0]
+            if window and (keep & set(window) or styled != window[0]):
+                keep |= set(window)
+            return sorted(q for q in keep if start <= q <= periods[-1]), ""
+        finally:
+            con.execute("DETACH own_live")
+            for t in ("_deadline", "_closed", "_sets"):
+                con.execute(f"DROP TABLE IF EXISTS {t}")
+
+    def _derive_quarters(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection, keep: list) -> dict | None:
+        """The 13F tables with the quarters ``keep`` derived again and the rest as the live copy holds them; None,
+        with every table merged, when a filer family changed in a kept quarter (then derive everything)."""
+        for view in VIEWS:
+            con.execute(f"DROP VIEW IF EXISTS {view}")
+        for t in SCHEMAS:
+            con.execute(f"ALTER TABLE {t} RENAME TO _was_{t}")
+        read = sorted({shift(q, n) for q in keep for n in (-2, -1, 0, 1)})
+        counts = self._derive(ctx, con, keep, read)
+        if counts is not None:
+            served = common.count(con, "sec13f_periods")
+            ctx.notes.append(f"13F derived for {len(keep)} quarter(s) ({keep[0]}..{keep[-1]}), read {len(read)}, "
+                             f"the rest of {served} kept from the live file")
+        return counts
+
+    def _derive(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection, keep: list | None = None,
+                read: list | None = None) -> dict[str, int] | None:
+        """Every 13F table; with ``keep``, only those quarters' rows from what the quarters ``read`` hold (the rest
+        merged from ``_was_<table>``), and None when a filer family changed in a quarter not kept."""
         found: list[tuple[str, str, str]] = []
         summary: dict = {}
         ctx.pending[NAME] = {"found": found, "summary": summary}
         try:
             spine_on = _spine(con, found)
             files = sec13f.DATASET.holding_files()
-            left_out = self._held(con, files)
+            left_out = self._held(con, files, read, keep)
+            files = _files_for(con, files, read)
             if files:
                 _owners(con)
                 _figi(con)
@@ -756,7 +894,17 @@ class OwnershipServe:
             counts["sec13f_type_flow"] = self._type_flow(con, snap)
             counts["sec13f_filer_style"] = self._style(con, ctx.as_of or self.default_as_of())
             counts["sec13f_filer_holdings"] = self._filer_holdings(con)
-            counts.update(sec13f_extras.build(con, _pad_cusips))
+            counts.update(sec13f_extras.build(con, _pad_cusips, files))
+            if keep is not None:
+                for t in SCHEMAS:
+                    if t != "sec13f_filer_period":                   # merged by ``_held``
+                        _merge(con, t, keep)
+                if self._families_moved(con, keep):
+                    return None
+                _store_families(con)
+                ctx.pending.pop(NAME)                                # the issues stand until a whole derive
+                return {t: common.count(con, t) for t in SCHEMAS}
+            _store_families(con)
             found += self._issues(con, ctx.as_of or self.default_as_of())
             summary["rescaled"] = common.count(con, "sec13f_filer_period", "value_factor <> 1")
             summary["px_fixed"] = common.count(con, "_pxfix")
@@ -772,10 +920,24 @@ class OwnershipServe:
                 con.execute(f"DROP TABLE IF EXISTS {t}")
 
     @staticmethod
-    def _held(con: duckdb.DuckDBPyConnection, files) -> tuple[int, int, date] | None:
-        """``_long`` (the active filings' long-equity rows), ``sec13f_filer_period`` with its VALUE factor, and
-        ``_held`` (filer, period and CUSIP: shares and value in dollars); ``(filings, quarters, first 13F day)`` left
-        out as quarters whose deadline passed before that day, None when none is."""
+    def _families_moved(con: duckdb.DuckDBPyConnection, keep: list) -> list:
+        """The quarters outside ``keep`` whose filers ``_family`` groups otherwise than ``FAMILY_TABLE`` (the live
+        file's) did. Only the grouping counts: the top 10, the HHI and the type views' holder counts read which filers
+        are one holder, never which of them is the root."""
+        return [r[0] for r in con.execute(f"""
+            WITH f AS (SELECT DISTINCT period, ltrim(cik, '0') AS cik FROM sec13f_filer_period
+                       WHERE period NOT IN (SELECT unnest(?::DATE[]))),
+                 g AS (SELECT f.period, coalesce(o.family_cik, f.cik) AS was, coalesce(n.family_cik, f.cik) AS now
+                       FROM f LEFT JOIN {FAMILY_TABLE} o ON o.cik = f.cik LEFT JOIN _family n ON n.cik = f.cik)
+            SELECT period FROM g GROUP BY period
+            HAVING count(DISTINCT was) <> count(DISTINCT was || '|' || now)
+                OR count(DISTINCT now) <> count(DISTINCT was || '|' || now)
+            ORDER BY period""", [keep]).fetchall()]
+
+    @staticmethod
+    def _served(con: duckdb.DuckDBPyConnection, files) -> tuple[list, date, date | None, list]:
+        """The ok filings in amendment order, the first quarter served, the store's first 13F day, and the filings
+        of the quarters left out before it."""
         rows = con.execute(f"SELECT accession, cik, {QE} AS period, filed, coalesce(amendment_no, 0), is_amendment, "
                            f"amendment_type FROM {sec13f.TABLE} WHERE status = 'ok' AND cik IS NOT NULL "
                            f"AND period IS NOT NULL ORDER BY cik, 3, filed, 5, is_amendment, accession").fetchall()
@@ -788,8 +950,19 @@ class OwnershipServe:
             first = held_from
         served = [p for p in sorted({r[2] for r in rows}) if first is None or filing_deadline(p) >= first]
         start = served[0] if served else date.max
-        left = [r for r in rows if r[2] < start]
-        rows = [r for r in rows if r[2] >= start]
+        return [r for r in rows if r[2] >= start], start, first, [r for r in rows if r[2] < start]
+
+    def _held(self, con: duckdb.DuckDBPyConnection, files, read: list | None = None,
+              keep: list | None = None) -> tuple[int, int, date] | None:
+        """``_long`` (the active filings' long-equity rows), ``sec13f_filer_period`` with its VALUE factor, and
+        ``_held`` (filer, period and CUSIP: shares and value in dollars); ``(filings, quarters, first 13F day)`` left
+        out as quarters whose deadline passed before that day, None when none is. With ``read``, of those quarters
+        only (the amendment rule is per filer and quarter, so the active filings are the same), and with ``keep``
+        ``sec13f_filer_period`` holds every other quarter as the live file has it, before ``_held`` reads it."""
+        rows, _start, first, left = self._served(con, files)
+        if read is not None:
+            rows = [r for r in rows if r[2] in set(read)]
+            files = _files_for(con, files, read)
         common.temp_rows(con, "_active", [("accession", "TEXT")], [{"accession": a} for a in active_accessions(rows)])
         # A filer's holdings report for the period, and whether it left holdings out under confidential treatment.
         con.execute(f"""CREATE OR REPLACE TEMP TABLE _conf AS
@@ -849,6 +1022,8 @@ class OwnershipServe:
             LEFT JOIN _fac x ON x.cik = l.cik AND x.period = l.period
             LEFT JOIN _conf c ON c.cik = l.cik AND c.period = l.period
             GROUP BY l.cik, l.period, x.factor, x.names, x.ratio, c.omitted ORDER BY l.period, l.cik""")
+        if keep is not None:
+            _merge(con, "sec13f_filer_period", keep)
         _by_period(con, periods, "_held", """
             SELECT l.cik, l.period, l.cusip, sum(l.shares), sum(l.value_usd * p.value_factor), min(l.name_of_issuer)
             FROM _long l JOIN sec13f_filer_period p ON p.cik = l.cik AND p.period = l.period
