@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -43,7 +44,10 @@ def client():
 
 
 @pytest.fixture
-def seeded():
+def seeded(monkeypatch):
+    # The route reads the clock itself: pin it to the module's NOW, or a run that crosses Amsterdam midnight
+    # asks for tomorrow's week while the rows were seeded for today's.
+    monkeypatch.setattr(report, "time", SimpleNamespace(time=lambda: NOW))
     rawstore.write_rows("news_events", [
         _event(_day(0, 12), "Initial Jobless Claims", importance=2, forecast="232K", prev="227K"),
         _event(_day(0, 9), "Cancelled release", retired=NOW),
