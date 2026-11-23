@@ -1,4 +1,4 @@
-"""Tier rule v7: which SEC-file names the boards screen (Tier A) and why the others are not.
+"""Tier rule v8: which SEC-file names the boards screen (Tier A) and why the others are not.
 
 The rule is the one ``equity_universe`` and ``core/universe.py`` already apply, written once for the spine:
 
@@ -51,7 +51,7 @@ import re
 
 from ....core.identity.types import _COMMON_LIKE, EXCLUDED_TYPES, classify_type, sic_int
 
-VERSION = 7
+VERSION = 8
 # v6 (#1334, plan v4 step 6): K-B notes are etp (Tier B), K-G a name Compustat delisted is Tier C, and K-C links
 # more names to Compustat (so tpci, SIC and the exchange code reach them): three rules that change ``tier``.
 # TXSE (v5, avo 22 Nov 2026): the SEC file names it for Texas companies that list there beside their old exchange.
@@ -114,7 +114,8 @@ def tier(exchange: str | None, security_type: str | None, compustat_exchg: int |
 # against WRDS from here, so an unexpected code types nothing.
 # ``R`` (v7, avo 23 Nov 2026): exchange-traded debt -- notes, baby bonds, ETNs, trust certificates; every active US
 # ``R`` security of the 22 Nov 2026 snapshot (321) is one.
-TPCI_TYPES = {"0": "common", "F": "adr", "%": "etp", "R": "etp"}
+# ``1`` (v8, avo 23 Nov 2026): a preferred share; 335 of the spine's 586 tpci ``1`` rows were already typed preferred.
+TPCI_TYPES = {"0": "common", "F": "adr", "%": "etp", "R": "etp", "1": "preferred"}
 UNTYPED = ("unknown", "other", None)
 
 # 2a. Compustat's company SIC (``comp.company.sic``). 6770 is "blank checks": the identity master already types a
