@@ -2417,6 +2417,7 @@ def _nd_my_universe(u: dict | None) -> str:
                        f'apply:</div>{rules}{by_hand}</div>')
     kinds, by_rule_counts = u.get("kinds") or {}, u.get("rules") or {}
     counts = (_nd_row("Stocks", _nd(kinds.get("stock") or 0)) + _nd_row("ETFs", _nd(kinds.get("etf") or 0))
+              + _nd_row("Trusts", _nd(kinds.get("trust") or 0))
               + _nd_row("On the list", _nd(u.get("total") or 0)))
     by_rule = "".join(_nd_row(ND_MY_UNIVERSE_RULES.get(k, k), _nd(n)) for k, n in by_rule_counts.items())
     # The newest day that moved anything, which a quiet build leaves where it was: the row says which day, so the

@@ -753,7 +753,8 @@ class SpineSecurity:
         counts[my_universe.TABLE] = _create(con, my_universe.TABLE, mine)
         counts[my_universe.CHANGES] = _create(con, my_universe.CHANGES, changes)
         ctx.notes.append(f"{sum(1 for r in mine if r['kind'] == my_universe.STOCK)} stocks and "
-                         f"{sum(1 for r in mine if r['kind'] == my_universe.ETF)} ETFs in {my_universe.TABLE}")
+                         f"{sum(1 for r in mine if r['kind'] == my_universe.ETF)} ETFs and "
+                         f"{sum(1 for r in mine if r['kind'] == my_universe.TRUST)} trusts in {my_universe.TABLE}")
         classes, class_changes, class_issues = etf_class.rows(ctx, con)       # reads all three: after them
         found += class_issues
         counts[etf_class.TABLE] = _create(con, etf_class.TABLE, classes)

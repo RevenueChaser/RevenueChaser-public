@@ -655,3 +655,28 @@ def test_either_number_at_its_exit_floor_keeps_the_fund(live_my_universe):
     con = _con(etfs=[_etf("ATAUM", aum=80_000_000.0, adv=1.0), _etf("ATADV", aum=1.0, adv=8_000_000.0)])
     rows, _, _ = _rows(con)
     assert sorted(rows) == ["ATADV", "ATAUM"]
+
+
+# ── Trusts (avo, 23 Nov 2026: "Bence trust lazım", option a) ───────────────────────────────────────────────────
+
+def test_a_commodity_or_crypto_trust_is_kind_trust_on_the_etf_floors():
+    con = _con(etfs=[_etf("GLD", aum=1e11, asset_class="commodity"), _etf("IBIT", adv=2e9, asset_class="crypto"),
+                     _etf("SPY", aum=5e11),                                   # a unit trust: no class, an ETF
+                     _etf("DBC", aum=1.5e9, series_id="S1", asset_class="commodity"),   # a 40-Act fund
+                     _etf("TINY", aum=1e6, adv=1e5, asset_class="commodity")])          # under both floors
+    rows, _, _ = _rows(con)
+    assert {t: r["kind"] for t, r in rows.items()} == {"GLD": "trust", "IBIT": "trust", "SPY": "etf", "DBC": "etf"}
+    assert (rows["GLD"]["rule"], rows["IBIT"]["rule"]) == ("etf_aum", "etf_adv")
+    assert my_universe.TRUST in my_universe.FUNDS and my_universe.ETF in my_universe.FUNDS
+
+
+def test_a_live_etf_that_is_now_a_trust_moves_kind_without_a_left_or_entered_row(live_my_universe):
+    live_my_universe(rows=[{"ticker": "GLD", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)},
+                           {"ticker": "IBIT", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 2e9,
+                            "entered_on": date(2026, 10, 1)}])
+    con = _con(etfs=[_etf("GLD", aum=1e11, adv=5e9, asset_class="commodity"),   # the volume source answers
+                     _etf("IBIT", asset_class="crypto")])          # no volume today: held on its live row
+    rows, changes, _ = _rows(con)
+    assert (rows["GLD"]["kind"], rows["IBIT"]["kind"]) == ("trust", "trust")
+    assert rows["GLD"]["entered_on"] == date(2026, 10, 1)
+    assert [c for c in changes if c["ticker"] in ("GLD", "IBIT")] == []

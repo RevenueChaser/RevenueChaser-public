@@ -219,6 +219,13 @@ def _con() -> duckdb.DuckDBPyConnection:
     return con
 
 
+def test_a_trust_of_my_universe_is_classed_like_an_etf():
+    """A ``trust`` of ``my_universe`` (avo, 23 Nov 2026) is a fund to ``etf_class``, as an ``etf`` is."""
+    con = _con()
+    con.execute(f"UPDATE {my_universe.TABLE} SET kind = '{my_universe.TRUST}' WHERE ticker = 'SPY'")
+    assert "SPY" in {f["ticker"] for f in etf_class._universe(con)}
+
+
 def _line(accession, pct, asset_cat="EC", issuer_type="CORP", country="US", **ids) -> dict:
     return {"accession": accession, "issuer_name": ids.pop("issuer_name", "A Company"), "cusip": None, "isin": None,
             "ticker": None, "pct_of_net_assets": pct, "asset_cat": asset_cat, "issuer_type": issuer_type,

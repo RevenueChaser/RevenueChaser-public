@@ -196,6 +196,35 @@ def test_an_etp_trust_that_files_no_ncen_is_a_commodity_and_a_uit_that_files_one
     assert {r["asset_class"] for t, r in rows.items() if t not in ("GLD",)} == {None}
 
 
+def test_a_crypto_trust_is_crypto_and_a_metal_trust_stays_commodity(monkeypatch, http_mock):
+    """avo, 23 Nov 2026: the trust rule called every 1933-Act trust ``commodity``, so the bitcoin and ether trusts
+    (IBIT, ETHA) came out commodity. Their name says crypto (``etf.CRYPTO_NAME``); a gold trust is still commodity."""
+    monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
+    http_mock.add("company_tickers_exchange.json", {**SEC_FILE, "data": SEC_FILE["data"] + [
+        [1980994, "ISHARES BITCOIN TRUST", "IBIT", "Nasdaq"], [2000045, "ISHARES ETHEREUM TRUST", "ETHA", "Nasdaq"]]})
+    fx.add_ncen_routes(http_mock)
+    base.run_request({"dataset": ncen.NAME, "params": {"mode": "backfill", "to": "2026-11-02"}})
+    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-02"}})
+    rows = _etf()
+    assert {t: rows[t]["asset_class"] for t in ("IBIT", "ETHA", "GLD")} == {
+        "IBIT": "crypto", "ETHA": "crypto", "GLD": "commodity"}
+
+
+def test_a_trust_is_an_etf_row_with_no_series_no_note_no_cef_and_a_commodity_or_crypto_class():
+    """``etf.TRUST_SQL`` is the one definition ``my_universe`` reads (avo, 23 Nov 2026, option a)."""
+    import duckdb
+    con = duckdb.connect()
+    con.execute("CREATE TABLE etf (ticker TEXT, series_id TEXT, is_etn BOOLEAN, is_cef BOOLEAN, asset_class TEXT)")
+    con.executemany("INSERT INTO etf VALUES (?, ?, ?, ?, ?)", [
+        ("GLD", None, False, False, "commodity"), ("IBIT", None, None, None, "crypto"),
+        ("DBC", "S1", False, False, "commodity"),           # a 40-Act commodity fund: a series, so a fund
+        ("SPY", None, False, False, None),                  # a unit investment trust: no class here
+        ("OILX", None, True, False, "commodity"), ("CEFX", None, False, True, "commodity"),
+        ("SOXX", None, False, False, "equity")])
+    got = {r[0] for r in con.execute(f"SELECT ticker FROM etf WHERE {etf.TRUST_SQL}").fetchall()}
+    assert got == {"GLD", "IBIT"}
+
+
 def test_the_columns_later_prs_fill_stay_null(built):
     for r in _etf().values():
         assert (r["focus"], r["country"], r["adv_usd_20d"], r["expense_ratio"]) == (None, None, None, None)

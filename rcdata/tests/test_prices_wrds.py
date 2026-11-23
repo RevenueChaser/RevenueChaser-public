@@ -686,6 +686,24 @@ def test_a_fund_only_my_universe_holds_is_stored_and_checked(fake):
     wrds.reset()
 
 
+def test_a_trust_only_my_universe_holds_is_a_fund_too(fake):
+    """A ``trust`` of ``my_universe`` (GLD, IBIT: avo, 23 Nov 2026) is a fund to the prices universe, as an ``etf``
+    is: its Compustat series is found by ticker and a missing bar is reported."""
+    data = fake[0].data
+    days = JUNE + ["2026-10-26", "2026-10-27"]
+    data["comp.secd"] += [_secd("099991", "01", d, "HNDT", 20.0, exchg=17, cusip="99991A100") for d in days]
+    con = duckdb.connect(str(serving.live_path("spine")))
+    try:
+        con.execute("CREATE TABLE my_universe (ticker TEXT, kind TEXT)")
+        con.execute("INSERT INTO my_universe VALUES ('AAPL', 'stock'), ('HNDT', 'trust'), ('HNDU', 'trust')")
+    finally:
+        con.close()
+    assert _backfill()["result"] == "changed"
+    assert _q("SELECT count(*) AS n FROM price_bar_daily WHERE security_id = '099991:01'")[0]["n"] == len(days)
+    assert set(_issue_details("universe_etf_no_bar")) == {"HNDU"}
+    wrds.reset()
+
+
 def test_the_tier_a_checks_look_at_the_stored_universe_not_the_whole_tier(fake):
     """Review S1 of #382: ``tier_a_no_bar`` and ``tier_a_no_shares`` read every Tier A row, so an untyped or excluded
     Tier A name -- left out of the store on purpose -- was reported as a missing bar (27 became 253 on homesrv's
