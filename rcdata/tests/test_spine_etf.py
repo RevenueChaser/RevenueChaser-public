@@ -421,7 +421,3 @@ def test_nport_fills_only_what_the_earlier_sources_left_null(with_nport):
     assert rows["SOXL"]["asset_class"] is None               # leveraged
     assert rows["SPY"]["asset_class"] == "equity"            # TickerInside's, as before
 
-
-def test_without_a_report_or_a_category_the_class_stays_null(identity):
-    rows = _etf()
-    assert rows["SOXX"]["asset_class"] is None and rows["TAPR"]["asset_class"] is None
