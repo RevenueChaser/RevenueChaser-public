@@ -206,8 +206,7 @@ def economic_events(fetched_after: float | None = None) -> list[dict]:
 #: Market 6 (#1433): a snapshot day that holds a keyless source's rows (TradingView, the Fed) is read from them, and
 #: UW's rows of that day are left out, so a board never sees one release twice under two names. A day only UW
 #: fetched reads as before. A file built before market 6 has every row from UW, so this reads it unchanged.
-_ECON_PREFERRED = ("(source <> 'uw' OR snapshot_date NOT IN "
-                   "(SELECT snapshot_date FROM economic_event WHERE source <> 'uw'))")
+_ECON_PREFERRED = "TRUE"  # MUTATION CHECK, reverted in the next commit
 #: The same rule for the FDA calendar: the SEC's and the Federal Register's rows of a day, else UW's.
 _FDA_PREFERRED = "(source <> 'uw' OR snapshot_date NOT IN (SELECT snapshot_date FROM fda_event WHERE source <> 'uw'))"
 
