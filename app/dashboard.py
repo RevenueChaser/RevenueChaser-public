@@ -2252,6 +2252,37 @@ def api_sec13f(ticker: str):
     return jsonify({"ok": True, "ticker": t, "fig": build_chart_fig(t, periods, enrich)})
 
 
+@app.route("/api/sec_13f/<ticker>/extras")
+def api_sec13f_extras(ticker: str):
+    """A ticker's 13F lines beside the long book, for the row's detail (#1447, #1450): its option holders and its
+    issuer's convertible notes, each in its newest quarter. 400 for a ticker ``_valid_ticker`` refuses."""
+    from revenuechaser.core import ownership
+    from revenuechaser.module_sec_13f.report import options_view, prn_view
+    t = ticker.strip().upper()
+    if not _valid_ticker(t):
+        return jsonify({"ok": False, "error": "bad ticker"}), 400
+    data = ownership.sec13f_ticker_extras(t)
+    return jsonify({"ok": True, "ticker": t, "options": options_view(data["options"]), "prn": prn_view(data["prn"])})
+
+
+@app.route("/api/sec_13f/reported_by")
+def api_sec13f_reported_by():
+    """The 13F Investors view's "reported by another manager" card (#1449): the newest quarter's combination reports
+    and cover-page manager lists, filers or managers whose name holds ``q``."""
+    from revenuechaser.core import ownership
+    from revenuechaser.module_sec_13f.report import reported_by_view
+    q = (request.args.get("q") or "").strip()[:80]
+    return jsonify({"ok": True, **reported_by_view(ownership.sec13f_reported_by(q))})
+
+
+@app.route("/api/sec_13f/reveals")
+def api_sec13f_reveals():
+    """The 13F Investors view's late reveals (#1450): new-holdings amendments filed after the deadline by a filer
+    that had left holdings out in confidence, newest first, at most 20."""
+    from revenuechaser.core import ownership
+    return jsonify({"ok": True, "reveals": ownership.sec13f_late_reveals(20)})
+
+
 @app.route("/api/sec_13f/types/<tag>")
 def api_sec13f_types(tag: str):
     """Plotly figure and note for one investor type's top 13F holdings per quarter (#760). 404 for a type the board

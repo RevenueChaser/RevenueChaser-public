@@ -50,6 +50,9 @@ def test_option_lines_are_exposure_by_stock_and_filer_with_market_makers_apart(m
                    "contracts_read FROM sec13f_option_holders WHERE ticker = 'MSFT' ORDER BY cik") == [
         ("2000001", "MANAGER 2000001", False, None, None, 100.0, 40_000.0, 0),
         ("2000004", "CTC LLC", True, 1000.0, 400_000.0, None, None, 1)]
+    from revenuechaser.rcdata import read as rcread
+    assert [(r["cik"], r["put_value"]) for r in rcread.option_holders_13f("msft")] == [("2000001", 40_000.0),
+                                                                                       ("2000004", None)]
 
 
 def test_the_market_maker_names_match_as_whole_words_only():
@@ -78,6 +81,8 @@ def test_convertible_par_sums_by_the_one_issuer_its_cusip6_names(monkeypatch, ht
     assert _served("SELECT ticker, cik, cusip, name_of_issuer, par, value FROM sec13f_prn_holders ORDER BY cik") == [
         ("MSFT", "2000001", "594918AX2", "MICROSOFT CORP NOTE 0.5% 2030", 1_000_000.0, 1_100_000.0),
         ("MSFT", "2000002", "594918AX2", "MICROSOFT CORP NOTE 0.5% 2030", 500_000.0, 550_000.0)]
+    from revenuechaser.rcdata import read as rcread
+    assert [r["par"] for r in rcread.prn_holders_13f("MSFT")] == [1_000_000.0, 500_000.0]
     assert _served("SELECT shares FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(300.0,)]
 
 
@@ -101,3 +106,6 @@ def test_a_combination_report_is_partial_and_a_late_new_holdings_after_a_confide
         ("2000001", "0002000001-26-000009", date(2026, 11, 20), 4, 1, 2_000_000.0, "MICROSOFT CORP")]
     assert _served("SELECT cik, report_type, partial, manager_name FROM sec13f_reported_by") == [
         ("2000003", "13F COMBINATION REPORT", True, None)]
+    from revenuechaser.rcdata import read as rcread
+    assert [r["accession"] for r in rcread.late_reveals_13f()] == ["0002000001-26-000009"]
+    assert [r["cik"] for r in rcread.reported_by_13f("manager 2000003")] == ["2000003"]
