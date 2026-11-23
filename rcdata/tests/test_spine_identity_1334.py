@@ -217,3 +217,33 @@ def test_a_ticker_hit_whose_compustat_cik_differs_is_refused(built, monkeypatch)
 def test_the_rule_is_version_6_and_every_row_says_so(built):
     """K-B, K-C and K-G change what a row's ``tier`` says, so its version is stamped anew on every row."""
     assert tier.VERSION == 8 and _sec("MSFT")["tier_rule"] == 8
+
+
+# ── K-C name check: a ticker link whose two names share no word is named, not refused ───────────────────────
+
+@pytest.mark.parametrize("sec_name, conm, shared", [
+    ("CREDIT SUISSE AG", "UBS AG GD SH COV CALL FEB 33", False),     # GLDI, 23 Nov 2026
+    ("DTE ENERGY CO", "2021 S E 4.375 J S D DU 2081", False),       # DTG, 23 Nov 2026
+    ("NOCIK THERAPEUTICS INC", "NOCIK THERAPEUTICS", True),
+    ("The Acme Group, Inc.", "ACME HOLDINGS CORP", True),            # case and punctuation do not matter
+    ("A B Holdings Inc", "A B CORP", False),                         # 1-char tokens and legal forms are no word
+    ("FOO CORP", None, False)])
+def test_two_names_share_a_word_only_beyond_legal_forms_and_single_letters(sec_name, conm, shared):
+    assert security.names_share_word(sec_name, conm) is shared
+    assert "linked_by_ticker_name_differs" in security.ISSUE_KINDS
+
+
+def test_a_ticker_link_whose_names_share_no_word_is_named_and_kept(built, monkeypatch):
+    """DTG's case: the link stands (a warning only), one issue per name, its detail carries both names; a link
+    whose names share a word (NOCK) opens none."""
+    sec, co, s = NOCK
+    _with(monkeypatch, [sec, [4000021, "NAMX ENERGY CO", "NAMX", "Nasdaq"]],
+          [co, _co("050021", "2021 S E 4.375 J S D DU 2081", None)], [s, _security("050021", "NAMX", "65500X121")])
+    _wrds_snapshot(ARMED_DAY)
+    row = _sec("NAMX")
+    assert (row["gvkey"], row["link_source"], row["tier"]) == ("050021", "tic_nocik", "A")
+    assert {"linked_by_ticker", "linked_by_ticker_name_differs"} <= {k for k, t in _issues() if t == "NAMX"}
+    detail = [i["detail"] for i in ops.open_issues(security.NAME, limit=500)[1]
+              if (i["kind"], i["key"]) == ("linked_by_ticker_name_differs", "NAMX")]
+    assert len(detail) == 1 and "NAMX ENERGY CO" in detail[0] and "2021 S E 4.375 J S D DU 2081" in detail[0]
+    assert _sec("NOCK")["link_source"] == "tic_nocik" and ("linked_by_ticker_name_differs", "NOCK") not in _issues()
