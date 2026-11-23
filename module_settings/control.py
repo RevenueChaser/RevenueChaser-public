@@ -121,6 +121,8 @@ ICONS: dict[str, str] = {
               "14m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z M12 4l0 10 M12 19l0 1 M16 "
               "5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z M18 4l0 1 M18 11l0 9",
     "yfinance": "M4 19l16 0 M4 15l4 -6l4 2l4 -5l4 4",
+    # TradingView's public stock scanner, a chart site like Yahoo (the same Tabler ``chart-line``).
+    "tradingview": "M4 19l16 0 M4 15l4 -6l4 2l4 -5l4 4",
     "uw": "M16.69 7.44a6.973 6.973 0 0 0 -1.69 4.56c0 1.747 .64 3.345 1.699 4.571 M2 9.504c7.715 8.647 14.75 10.265 "
           "20 2.498c-5.25 -7.761 -12.285 -6.142 -20 2.504 M18 11v.01 M11.5 10.5c-.667 1 -.667 2 0 3",
     "alphavantage": "M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z M16 3l0 4 M8 3l0 4 "
@@ -557,7 +559,7 @@ def _dataset_row(card: dict, ds, kind: str, universe_view: dict, now: datetime, 
         "since_words": since_words(card.get("schedule")),
         "backfill": card.get("backfill"), "calendar": name in CALENDARS,
         "recent": card.get("recent") or [], "samples": card.get("samples") or [],
-        "cross_check": name in ("alpaca/bars", "uw/total_float", "yfinance/float"),
+        "cross_check": name in ("alpaca/bars", "yfinance/float"),
         # #527: this source's own automation (None: as the file) and its file's, for the source's select
         "automation_own": own, "automation_file": file_mode if file_mode is not None else mode,
     }

@@ -127,7 +127,6 @@ DATASETS: dict[str, DatasetCard] = {
     'uw/institutions': DatasetCard('Every 13F institution, its tags and its successions (Unusual Whales)',
                                   cadence='quarterly', step=10, role='only source'),
     'uw/greek_expiry_strike': DatasetCard('SPX greek exposure by expiry and strike, whole chain (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
-    'uw/total_float': DatasetCard('Float check (Unusual Whales)', step=8, role='cross-check'),
     'wrds/audit': DatasetCard('Restatements, late filings and officer changes (WRDS: Audit Analytics)', step=9,
                                role='only source'),
     'wrds/co_hgic': DatasetCard('Compustat GICS history (WRDS)', step=5, role='fills',
@@ -146,7 +145,8 @@ DATASETS: dict[str, DatasetCard] = {
     'wrds/segments': DatasetCard('Compustat segments and customers (WRDS)', step=9, role='fills'),
     'yfinance/estimates': DatasetCard('Analyst estimates (yfinance)', step=9, role='first'),
     'yfinance/fx': DatasetCard('Daily exchange rates for non-USD filers (Yahoo)', step=9, role='fills'),
-    'yfinance/float': DatasetCard('Float (Yahoo)', step=8, role='fills'),
+    'tradingview/float': DatasetCard('Float (TradingView)', step=8, role='first'),
+    'yfinance/float': DatasetCard('Float check (Yahoo)', step=8, role='cross-check'),
 }
 
 #: The column whose newest value dates a serving table's last write. Never ``Need.day_column``; see the note above.
@@ -402,12 +402,14 @@ PROVIDERS: dict[str, ProviderWords] = {
     "sec": ProviderWords("SEC", "the ticker file, company facts, filings, 13F, Form 4, 13D/G, fails to deliver, N-CEN",
                          f"one shared bucket, {sec_throttle.RATE} a second, for every SEC caller · 10 split between the SEC processes when it falls back",
                          "10 a second per User-Agent (fair access)"),
-    "uw": ProviderWords("Unusual Whales", "options, SPX, float, financials", "a budget a run · each endpoint's own page size",
+    "uw": ProviderWords("Unusual Whales", "options, SPX, financials", "a budget a run · each endpoint's own page size",
                         "no day cap (owner-removed avo 2026-11-10)", paid=True),
     "alpaca": ProviderWords("Alpaca", "bars, corporate actions", "200 a minute",
                             "200 historical calls a minute (Basic plan) · no SIP data of the last 15 minutes"),
     "yfinance": ProviderWords("yfinance", "float, estimates, MOVE", "2,000 an hour · float lookups 1.5 s apart · a 429 stops the run",
                               "2,000 an hour per IP (owner-marked avo 2026-11-02; Yahoo publishes none)"),
+    "tradingview": ProviderWords("TradingView", "the float of every US listing", "one request a run",
+                                 "no key, no quota published (public stock scanner)"),
     "alphavantage": ProviderWords("Alpha Vantage", "the earnings calendar, the listing status (ETF list)",
                                   "one request a run (calendar) · two (listing status)", "25 a day (free tier)"),
     "openfigi": ProviderWords("OpenFIGI", "the FIGI of each CUSIP", "250 a minute per key, shared with the dashboard · up to 100 CUSIPs a request",

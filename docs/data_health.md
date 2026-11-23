@@ -281,7 +281,7 @@ cards run on their cadence since #1361, so they carry Fetch, Backfill and Pause 
 
 **The prices store (PR 7).** Seven more cards, one per prices dataset (`docs/data_architecture.md`, "The prices
 store"): Alpaca's daily bars (coverage = Tier A names with a bar on the session, target 99%; backfill = its day
-partitions), Alpaca's corporate actions, the SEC cover shares, the Yahoo and UW float, the WRDS history and
+partitions), Alpaca's corporate actions, the SEC cover shares, the TradingView and Yahoo float, the WRDS history and
 `prices/serving`. The WRDS history card follows its daily cadence since #1361 and shows the by-hand whole-build
 line (`python -m revenuechaser.rcdata.build backfill wrds/prices`);
 its backfill progress counts the table-year partitions (`secd 1993` ...) out of those expected, and its WRDS

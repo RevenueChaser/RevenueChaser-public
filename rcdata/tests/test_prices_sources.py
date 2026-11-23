@@ -1,5 +1,5 @@
 """The prices store's other sources: Alpaca's corporate actions, the SEC cover shares per class, Yahoo's float and
-Unusual Whales' ``total_float``, each mocked at its boundary (HTTP; Yahoo at its one lookup function)."""
+TradingView's float, each mocked at its boundary (HTTP; Yahoo at its one lookup function)."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,6 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from revenuechaser.core import calendar
-from revenuechaser.core.providers import unusual_whales
 from revenuechaser.rcdata import ops
 from revenuechaser.rcdata.build import base
 from revenuechaser.rcdata.build.prices import actions, cover_shares, floats, stage
@@ -26,8 +25,6 @@ def env(monkeypatch):
     monkeypatch.setenv("ALPACA_API_KEY_ID", "test-key-id")
     monkeypatch.setenv("ALPACA_API_SECRET_KEY", "test-secret")
     monkeypatch.setenv("RC_ALPACA_BASE", "https://alpaca.test")
-    monkeypatch.setenv("UNUSUAL_WHALES_API_KEY", "test-key")
-    monkeypatch.setattr(unusual_whales, "BASE", "https://uw.test/api")
     from revenuechaser.core.providers import sec_edgar
     monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
     monkeypatch.setattr(sec_edgar, "SEC_DATA_BASE", "https://data.sec.test")
@@ -356,43 +353,58 @@ def test_a_401_yahoo_only_logs_stops_the_run_and_an_empty_answer_is_an_error_row
     assert ctx.calls["yfinance"][:2] == [3, 2]                            # three asked, two failed
 
 
-# ── Unusual Whales total_float ───────────────────────────────────────────────────────────────────────────────
+# ── TradingView float (#1473) ────────────────────────────────────────────────────────────────────────────────
 
-def test_uw_total_float_one_request_per_hundred(http_mock):
-    http_mock.add("/short_screener", {"data": [{"symbol": "AAPL", "total_float": "14700000000"},
-                                               {"symbol": "BRK.B", "total_float": 1300000000},
-                                               {"symbol": "NOTASKED", "total_float": 5}]})
-    ctx = _ctx(floats.UW)
-    out = floats.UW_FLOAT.to_parquet_all(ctx, floats.UW_FLOAT.fetch(ctx, TUE))
-    q = _query(http_mock.calls("/short_screener")[0])
-    # sent the way UW writes a share class (#519 finding 5), stored under the spine's BRK-B
-    assert sorted(q["tickers"].split(",")) == ["AAPL", "BRK.B", "FLG", "GAPX", "GOOG", "GOOGL"]
+def _tv_row(symbol, name, fl, total, exchange="NASDAQ"):
+    return {"s": symbol, "d": [name, fl, total, exchange, "stock"]}
+
+
+def test_tradingview_float_one_request_keeps_the_asked_names(http_mock):
+    http_mock.add("/america/scan", {"totalCount": 4, "data": [
+        _tv_row("OTC:AAPL", "AAPL", 1.0, 2.0, "OTC"),                   # an OTC twin first: the listing wins
+        _tv_row("NASDAQ:AAPL", "AAPL", 14_700_000_000.4, 14_800_000_000),
+        _tv_row("NYSE:BRK.B", "BRK.B", 1_300_000_000, 1_400_000_000, "NYSE"),
+        _tv_row("OTC:AAPL", "AAPL", 3.0, 4.0, "OTC"),                   # and an OTC twin after it
+        _tv_row("NASDAQ:NOTASKED", "NOTASKED", 5, 5)]})
+    ctx = _ctx(floats.TV)
+    out = floats.TV_FLOAT.to_parquet_all(ctx, floats.TV_FLOAT.fetch(ctx, TUE))
+    sent = json.loads(http_mock.calls("/america/scan")[0].content)
+    assert sent["columns"][:2] == ["name", "float_shares_outstanding"] and sent["range"] == [0, floats.TV_RANGE]
     rows = {r["ticker"]: r for p in out for r in stage.read_rows(p)}
-    assert rows["AAPL"]["total_float"] == 14_700_000_000.0 and rows["BRK-B"]["total_float"] == 1_300_000_000.0
-    assert set(rows) == {"AAPL", "BRK-B"} and ctx.calls["uw"][0] == 1
+    # stored under the spine's BRK-B; a name the spine does not ask is dropped
+    assert set(rows) == {"AAPL", "BRK-B"}, rows
+    assert rows["AAPL"]["float_shares"] == 14_700_000_000.4 and rows["AAPL"]["tv_symbol"] == "NASDAQ:AAPL"
+    assert rows["BRK-B"]["float_shares"] == 1_300_000_000.0 and rows["BRK-B"]["total_shares"] == 1_400_000_000.0
+    assert ctx.calls["tradingview"][0] == 1
 
 
-def test_uw_total_float_failed_answer_stores_nothing(http_mock, monkeypatch):
-    monkeypatch.setattr(unusual_whales, "_sleep", lambda s: None)
-    http_mock.add("/short_screener", b"down", status=500)
-    ctx = _ctx(floats.UW)
+def test_tradingview_float_failed_or_empty_answer_stores_nothing(http_mock):
+    http_mock.add("/america/scan", b"down", status=500)
+    ctx = _ctx(floats.TV)
     with pytest.raises(base.SourceError):
-        floats.UW_FLOAT.fetch(ctx, TUE)
-    assert not floats.UW_FLOAT.raw_path(TUE).exists()
+        floats.TV_FLOAT.fetch(ctx, TUE)
+    assert not floats.TV_FLOAT.raw_path(TUE).exists()
+
+
+def test_tradingview_float_answer_with_none_of_the_names_is_a_failure(http_mock):
+    http_mock.add("/america/scan", {"totalCount": 1, "data": [_tv_row("NASDAQ:NOTASKED", "NOTASKED", 5, 5)]})
+    with pytest.raises(base.SourceError, match="none of the"):
+        floats.TV_FLOAT.fetch(_ctx(floats.TV), TUE)
+    assert not floats.TV_FLOAT.raw_path(TUE).exists()
 
 
 # ── Each share and float source through the builder ──────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("name", [floats.YAHOO, floats.UW, cover_shares.NAME])
+@pytest.mark.parametrize("name", [floats.YAHOO, floats.TV, cover_shares.NAME])
 def test_each_share_and_float_source_runs_through_the_builder_to_its_check(http_mock, monkeypatch, name):
     # The server's sample (29 Oct 2026) lost both float runs in their check, which no test ran: it iterated the
     # DuckDB connection, not the query's result. This drives the queue's whole path, fetch to check.
     monkeypatch.setattr(floats, "_lookup", lambda t: {"floatShares": 5.0} if t != "GAPX" else {})
     monkeypatch.setattr(cover_shares, "FILL_PER_RUN", 2)
-    http_mock.add("/short_screener", {"data": [{"symbol": "AAPL", "total_float": 7}, {"symbol": "BRK.B",
-                                                                                     "total_float": 8}]})
+    http_mock.add("/america/scan", {"data": [_tv_row("NASDAQ:AAPL", "AAPL", 7, 9),
+                                             _tv_row("NYSE:BRK.B", "BRK.B", 8, 9)]})
     _sec_routes(http_mock)
     row = base.run_request({"dataset": name, "params": {"as_of": TUE.isoformat()}})
     assert row["result"] != "failed", row
     # Tier A: six names (GAPX unanswered by Yahoo), five issuers (covers of Apple and Alphabet this run)
-    assert row["coverage"] == {floats.YAHOO: 0.8333, floats.UW: 0.3333, cover_shares.NAME: 0.4}[name], row
+    assert row["coverage"] == {floats.YAHOO: 0.8333, floats.TV: 0.3333, cover_shares.NAME: 0.4}[name], row

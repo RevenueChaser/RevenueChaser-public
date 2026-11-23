@@ -108,10 +108,10 @@ def _shares_and_floats(raw=None, skip=(), extra=None):
     base.upsert_partition([{"ticker": t, "security_id": sid, "float_shares": v, "source_as_of": date(2026, 10, 27),
                             "fetched_at": 1.0, "run_id": "yf"} for t, (sid, v) in yahoo.items()], floats.YAHOO_SCHEMA,
                           ["ticker"], base.parquet_root() / "yfinance" / "float" / "date=2026-10-27" / "part-0.parquet")
-    uw = {"AAPL": (AAPL, 14_690_000_000), "BRK-B": ("072726:02", 2_000_000_000)}
-    base.upsert_partition([{"ticker": t, "security_id": sid, "total_float": v, "source_as_of": date(2026, 10, 27),
-                            "fetched_at": 1.0, "run_id": "uw"} for t, (sid, v) in uw.items()], floats.UW_SCHEMA,
-                          ["ticker"], base.parquet_root() / "uw" / "total_float" / "date=2026-10-27" / "part-0.parquet")
+    tv = {"AAPL": (AAPL, 14_690_000_000), "BRK-B": ("072726:02", 2_000_000_000)}
+    base.upsert_partition([{"ticker": t, "security_id": sid, "float_shares": v, "source_as_of": date(2026, 10, 27),
+                            "fetched_at": 1.0, "run_id": "tv"} for t, (sid, v) in tv.items()], floats.TV_SCHEMA,
+                          ["ticker"], base.parquet_root() / "tradingview" / "float" / "date=2026-10-27" / "part-0.parquet")
 
 
 @pytest.fixture
@@ -377,7 +377,7 @@ def test_shares_and_float_per_class_with_their_checks(built):
     b = [r for r in rows if r["class_member"] == "us-gaap:CommonClassBMember"]
     assert len(b) == 1 and b[0]["security_id"].startswith("class:1652044:") and b[0]["value"] == 860_000_000
     floats_ = {(r["security_id"], r["source"]): r["value"] for r in rows if r["measure"] == "float"}
-    assert floats_[(AAPL, floats.YAHOO)] == 14_700_000_000 and floats_[(AAPL, floats.UW)] == 14_690_000_000
+    assert floats_[(AAPL, floats.YAHOO)] == 14_700_000_000 and floats_[(AAPL, floats.TV)] == 14_690_000_000
     issues = _issues()
     assert issues["float_sources_disagree"] == {"072726:02"}
     assert issues["float_above_outstanding"] == {FLG}
@@ -407,7 +407,7 @@ def test_the_bridge_views_keep_the_old_columns(built):
 def test_a_source_that_never_ran_is_one_issue(http_mock):
     base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
     never = _issues()["source_never_run"]
-    assert {actions.NAME, cover_shares.NAME, floats.YAHOO, floats.UW} <= never and bars.NAME not in never
+    assert {actions.NAME, cover_shares.NAME, floats.YAHOO, floats.TV} <= never and bars.NAME not in never
     assert math.isclose(_q("SELECT count(*) AS n FROM corporate_action")[0]["n"], 0)
 
 

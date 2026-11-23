@@ -14,7 +14,7 @@ from revenuechaser.rcdata import ops, serving
 from revenuechaser.rcdata.build.prices import serving as prices_serving, wrds_history
 
 NOW = datetime(2026, 10, 29, 3, 0, tzinfo=timezone.utc)
-PRICES = ("alpaca/bars", "alpaca/corporate_actions", "sec/cover_shares", "yfinance/float", "uw/total_float",
+PRICES = ("alpaca/bars", "alpaca/corporate_actions", "sec/cover_shares", "yfinance/float", "tradingview/float",
           "wrds/prices", "prices/serving")
 
 
