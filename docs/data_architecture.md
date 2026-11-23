@@ -1599,7 +1599,8 @@ and a period's CIK is that of the snapshot its last day's lines matched. Compust
 (`ops.sync_issues`: found again stays open, gone is resolved). Kinds: `source_never_run`, `tier_a_no_wrds_link`,
 `etf_cik_conflict` and `etf_category_unmapped` (spine 11, below), `linked_by_ticker` and `ticker_link_cik_differs` (K-C: a name linked by its ticker alone, link source `tic_nocik`, to
 the one active US Compustat security of that ticker whose company has no CIK; one whose company CIK is another is
-refused), `tier_a_compustat_inactive` (K-G), `wrds_snapshot_not_armed` (K-C and K-G run only when the newest
+refused), `linked_by_ticker_name_differs` (such a link whose SEC name and Compustat `conm` share no word once legal
+forms and 1-character tokens are dropped: the link stays, the issue is a warning; 18 of 208 on 23 Nov 2026), `tier_a_compustat_inactive` (K-G), `wrds_snapshot_not_armed` (K-C and K-G run only when the newest
 `snapshot=` partition of `wrds/sec_idhist` is whole and as of `FRESH_SNAPSHOT_FROM`, 23 Nov 2026, or later; otherwise
 they do nothing and this one issue says so),
 `tier_a_no_cusip`, `tier_a_no_figi`, `tier_a_no_figi_by_ticker` (a Tier A name with no FIGI from either

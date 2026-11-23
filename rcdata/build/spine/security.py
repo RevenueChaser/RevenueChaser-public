@@ -22,7 +22,8 @@ is NULL while it holds. Compustat's inclusive end dates (``effthru``, ``indthru`
 whose ticker (``tic``, ``BRK.B`` -> ``BRK-B``) is the SEC ticker is the link (``link_source`` ``tic``). With no ticker
 match, a CIK with one SEC ticker and one active US security takes that one (``only_security``). A name still unlinked
 is linked to the one active US security of its ticker whose Compustat company has no CIK at all (``tic_nocik``,
-#1334 K-C, :func:`link_by_ticker`); one under another company CIK is refused. That scan, and the delisted rule
+#1334 K-C, :func:`link_by_ticker`); one under another company CIK is refused. A ticker link whose SEC name and
+Compustat ``conm`` share no word (:func:`names_share_word`) stays, and is named. That scan, and the delisted rule
 (K-G), run only on a fresh whole Compustat snapshot (:data:`FRESH_SNAPSHOT_FROM`). Otherwise there is no link, and
 no CUSIP.
 
@@ -137,6 +138,8 @@ ISSUE_KINDS = {
     "tier_a_no_wrds_link": "a Tier A name whose CIK finds no Compustat security",
     "linked_by_ticker": ("a name linked by its ticker alone, to the one active US Compustat security of that "
                          "ticker whose company has no CIK (K-C, link_source tic_nocik)"),
+    "linked_by_ticker_name_differs": ("a name linked by its ticker alone (K-C) whose SEC name and Compustat company "
+                                      "name share no word beyond legal forms: kept, a warning only"),
     "ticker_link_cik_differs": ("an unlinked name whose ticker an active US Compustat security carries under "
                                 "another company CIK: refused, not linked (K-C)"),
     "tier_a_compustat_inactive": ("a name the SEC file lists that would be Tier A, whose linked Compustat security "
@@ -378,6 +381,18 @@ def link(ticker: str, cik: str, gvkeys_of_cik: dict[str, list[str]], securities:
     return None, None, ("cik_many_gvkeys" if len(gvkeys) > 1 else None)
 
 
+# Legal-form words that make two names look alike without naming the same business (the K-C name check).
+LEGAL_WORDS = frozenset({"INC", "INCORPORATED", "CORP", "CORPORATION", "CO", "COMPANY", "LTD", "LIMITED", "PLC",
+                         "THE", "HOLDINGS", "GROUP", "LLC", "LP", "TRUST", "AG"})
+
+
+def names_share_word(a, b) -> bool:
+    """Whether two names share a word of two or more upper-case letters or digits that is no :data:`LEGAL_WORDS`."""
+    def words(n):
+        return {w for w in re.findall(r"[A-Z0-9]+", str(n or "").upper()) if len(w) > 1 and w not in LEGAL_WORDS}
+    return bool(words(a) & words(b))
+
+
 def link_by_ticker(ticker: str, cik: str, by_tic: dict[str, list[tuple[dict, str | None]]]
                    ) -> tuple[dict | None, list[tuple[str, str, str]]]:
     """K-C (#1334, plan v4 S6c): ``(security row, issues)`` for an SEC ticker :func:`link` left unlinked.
@@ -608,6 +623,7 @@ class SpineSecurity:
 
         # K-C's index: the active US securities by ticker, with their company's CIK (None when it is empty).
         by_tic: dict[str, list[tuple[dict, str | None]]] = defaultdict(list)
+        conm = {c["gvkey"]: c["conm"] for c in company}
         if armed:
             co_cik = {c["gvkey"]: norm_cik(c["cik"]) for c in company}
             for g, ss in securities.items():
@@ -627,6 +643,9 @@ class SpineSecurity:
                 sec_row, by_tic_issues = link_by_ticker(r["ticker"], r["cik"], by_tic)
                 how = "tic_nocik" if sec_row else None
                 found += by_tic_issues
+                if sec_row and not names_share_word(r["name"], conm.get(sec_row["gvkey"])):
+                    found.append(("linked_by_ticker_name_differs", r["ticker"],
+                                  f"SEC name {r['name']!r}, Compustat conm {conm.get(sec_row['gvkey'])!r}"))
             cusip = (sec_row or {}).get("cusip")
             cusip = str(cusip).strip().upper() if cusip else None
             f = figi.get(cusip) if cusip else None
