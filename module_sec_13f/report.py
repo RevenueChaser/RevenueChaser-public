@@ -412,6 +412,7 @@ function toggleDetail(row){
   td.appendChild(wrap);
   d.appendChild(td);
   row.parentNode.insertBefore(d, row.nextSibling);
+  if(window.rcDetailExtras){ window.rcDetailExtras(td, t); }
   fetch('/api/sec_13f/' + encodeURIComponent(t))
     .then(function(r){ return r.json(); })
     .then(function(res){
@@ -1074,6 +1075,51 @@ def _name_key(r: dict) -> str:
     return " ".join(str(r.get("name") or "").upper().split())
 
 
+def options_view(rows: list[dict], top: int = 15) -> dict:
+    """A ticker's option lines in its newest 13F quarter, for the row's detail (#1447): ``period``, ``filers``,
+    ``call_value`` and ``put_value`` (the underlying's dollars), ``mm_share`` (% of those dollars market makers and
+    banks hold, None without any), and the ``funds`` and ``market_makers`` lists, largest call plus put first, at
+    most ``top`` each. Exposure only: never a ratio, a volume or a leverage, and never part of the long book."""
+    def side(r, k):
+        return r.get(k) or 0
+    total = sum(side(r, "call_value") + side(r, "put_value") for r in rows)
+    mm = sum(side(r, "call_value") + side(r, "put_value") for r in rows if r.get("market_maker"))
+    order = sorted(rows, key=lambda r: -(side(r, "call_value") + side(r, "put_value")))
+    keep = ("cik", "filer_name", "call_shares", "call_value", "put_shares", "put_value", "contracts_read")
+    return {"period": rows[0].get("period") if rows else None, "filers": len({r.get("cik") for r in rows}),
+            "call_value": sum(side(r, "call_value") for r in rows), "put_value": sum(side(r, "put_value") for r in rows),
+            "mm_share": round(100 * mm / total, 1) if total else None,
+            "funds": [{k: r.get(k) for k in keep} for r in order if not r.get("market_maker")][:top],
+            "market_makers": [{k: r.get(k) for k in keep} for r in order if r.get("market_maker")][:top]}
+
+
+def prn_view(rows: list[dict], top: int = 12) -> dict:
+    """An issuer's convertible notes in 13F books in its newest quarter, for the row's detail (#1450): ``period``,
+    ``par`` (principal, never shares), ``value``, ``filers``, ``notes`` (distinct CUSIPs) and ``rows``, largest par
+    first, at most ``top``."""
+    order = sorted(rows, key=lambda r: -(r.get("par") or 0))
+    return {"period": rows[0].get("period") if rows else None, "par": sum(r.get("par") or 0 for r in rows),
+            "value": sum(r.get("value") or 0 for r in rows), "filers": len({r.get("cik") for r in rows}),
+            "notes": len({r.get("cusip") for r in rows}),
+            "rows": [{k: r.get(k) for k in ("filer_name", "cusip", "name_of_issuer", "title_of_class", "par", "value")}
+                     for r in order[:top]]}
+
+
+def reported_by_view(rows: list[dict], top: int = 25) -> dict:
+    """The Investors view's "reported by another manager" card (#1449): one entry per filer, ``partial`` for a
+    combination report, ``managers`` the cover page's list in its order; combination reports first, then the
+    longest lists. ``total`` counts the filers before the cut to ``top``."""
+    by: dict[str, dict] = {}
+    for r in rows:
+        e = by.setdefault(r.get("cik"), {"cik": r.get("cik"), "filer_name": r.get("filer_name"),
+                                         "period": r.get("period"), "partial": bool(r.get("partial")),
+                                         "managers": []})
+        if r.get("manager_name"):
+            e["managers"].append(r["manager_name"])
+    out = sorted(by.values(), key=lambda e: (not e["partial"], -len(e["managers"]), e["filer_name"] or ""))
+    return {"filers": out[:top], "total": len(out)}
+
+
 SECTOR_COLS = 3          # small multiples per row; 11 GICS sectors and Unclassified fill four rows
 
 
@@ -1509,7 +1555,7 @@ def investors_html(types_html: str) -> str:
             '<th class="num">Value</th><th class="num">Shares vs prior</th></tr></thead><tbody></tbody></table>'
             '<button type="button" id="inv-more" hidden></button></section>'
             '</div></div>'
-            f'<div id="inv-group" hidden>{types_html}</div></div>')
+            f'<div id="inv-group" hidden>{types_html}</div>{EXTRAS_INV_HTML}</div>')
 
 
 INVESTORS_JS = r"""<script>
@@ -1526,6 +1572,7 @@ INVESTORS_JS = r"""<script>
     $('pane-tickers').hidden = name !== 'tickers'; $('pane-investors').hidden = name !== 'investors';
     $('pane-etfs').hidden = name !== 'etfs';
     if(name === 'etfs' && typeof window.rcEtfsOpen === 'function'){ window.rcEtfsOpen(); }
+    if(name === 'investors' && typeof window.rcInvExtrasOpen === 'function'){ window.rcInvExtrasOpen(); }
     if(name === 'investors' && !LOADED){ LOADED = true; var c = DEFAULT_FILER; try { c = localStorage.getItem(KEY) || c; } catch(e) {} load(c); }
   }
   function mode(m){
@@ -1773,6 +1820,154 @@ ETFS_JS = r"""<script>
 DEFAULT_TYPE = "value_investor"     # the owner's example (12 Nov 2026: UW's "Value / Energy Investors" chart)
 
 
+# The 13F lines beside the long book (#1447, #1449, #1450; mock approved by avo 22 Nov 2026 23:09): a ticker's option
+# holders and its issuer's convertible notes in the row's detail, and on the Investors tab the filers another
+# manager reports for and the late confidential reveals. Each is fetched when its place opens.
+EXTRAS_CSS = """<style>
+.dx{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--sp-3);padding:0 var(--sp-4) var(--sp-4)}
+.dx section{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-3);min-width:0}
+.dx h3,.inv-x h2{margin:0 0 4px;font-size:var(--fs-sm);font-weight:600;color:var(--fg)}
+.dx-cap{color:var(--muted);font-size:var(--fs-xs);margin:0 0 var(--sp-2)}
+.dx-kpis{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);font-size:var(--fs-sm);margin-bottom:var(--sp-2)}
+.dx-kpis b{font-variant-numeric:tabular-nums}
+.dx-call{color:var(--pos)}.dx-put{color:var(--neg)}
+.dx-bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--border);margin:2px 0}
+.dx-bar i{display:block;height:100%}
+.dx-seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-pill);overflow:hidden;margin:var(--sp-2) 0}
+.dx-seg button{min-height:var(--touch);padding:0 14px;border:0;background:none;color:var(--muted);font:600 var(--fs-xs) var(--font-sans);cursor:pointer}
+.dx-seg button[aria-pressed=true]{background:var(--accent-soft);color:var(--bright)}
+.dx-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);gap:var(--sp-2);padding:6px 0;
+  border-top:1px solid var(--border);font-size:var(--fs-sm);align-items:baseline}
+.dx-row.prn{grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) minmax(0,.8fr)}
+.dx-row.head{color:var(--muted);font-size:var(--fs-xs);border-top:0}
+.dx-row span{min-width:0;overflow-wrap:anywhere}
+.dx-row .n{text-align:right;font-variant-numeric:tabular-nums}
+.dx-sub{display:block;color:var(--muted);font-size:var(--fs-xs)}
+.dx-tag{display:inline-block;padding:1px 6px;border-radius:var(--r-pill);background:var(--amber-soft);color:var(--amber);
+  font-size:10px;font-weight:600;margin-left:4px;white-space:nowrap}
+.dx-note{color:var(--muted);font-size:var(--fs-xs);margin:var(--sp-2) 0 0}
+.inv-x{margin-top:var(--sp-4);display:grid;gap:var(--sp-4)}
+.inv-x input[type=search]{width:100%;min-height:var(--touch);margin-bottom:var(--sp-2)}
+@media (max-width:720px){.dx{grid-template-columns:minmax(0,1fr)}.dx-row,.dx-row.prn{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .dx-row>span:first-child{grid-column:1/-1}.dx-row .n{text-align:left}.dx-row.head{display:none}}
+</style>"""
+
+EXTRAS_INV_HTML = ('<div class="inv-x">'
+                   '<section class="inv-card"><h2>Reported by another manager</h2><p class="inv-cap" id="rb-cap"></p>'
+                   '<input type="search" id="rb-q" placeholder="Search a filer or manager" autocomplete="off" '
+                   'spellcheck="false" aria-label="Search a filer or manager"><div id="rb-list"></div>'
+                   '<p class="dx-note">A <b>combination report</b> holds only part of the filer\'s book: other managers '
+                   'report the rest. The other names come from its cover page. On a plain holdings report, that list '
+                   'only names who else files, not how much. Filers that send a 13F notice instead of a report are not '
+                   'here yet; they follow with the 13F-NT fetch.</p></section>'
+                   '<section class="inv-card"><h2>Late reveals (confidential treatment ended)</h2>'
+                   '<p class="inv-cap">A filer that left holdings out in confidence later filed a new-holdings '
+                   'amendment after the deadline. The amendment\'s own lines are what it revealed.</p>'
+                   '<div id="rv-list"></div></section></div>')
+
+EXTRAS_JS = r"""<script>
+(function(){
+  function node(tag, cls, text){ var x = document.createElement(tag); if(cls){ x.className = cls; } if(text !== undefined && text !== null){ x.textContent = text; } return x; }
+  function money(v){ if(v === null || v === undefined){ return '—'; } var a = Math.abs(v);
+    return a >= 1e12 ? '$' + (v / 1e12).toFixed(2) + 'T' : a >= 1e9 ? '$' + (v / 1e9).toFixed(1) + 'B' : a >= 1e6 ? '$' + (v / 1e6).toFixed(0) + 'M' : '$' + (v / 1e3).toFixed(0) + 'K'; }
+  function sh(v){ if(!v){ return ''; } var a = Math.abs(v); return (a >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : a >= 1e3 ? (v / 1e3).toFixed(0) + 'K' : String(Math.round(v))) + ' sh'; }
+  function q(iso){ if(!iso){ return ''; } var m = +iso.slice(5, 7); return iso.slice(0, 4) + ' Q' + Math.ceil(m / 3); }
+  function row(cls, cells){ var r = node('div', 'dx-row' + (cls ? ' ' + cls : '')); cells.forEach(function(c){ r.appendChild(c); }); return r; }
+  function cell(main, sub, cls){ var s = node('span', cls || ''); s.appendChild(document.createTextNode(main)); if(sub){ s.appendChild(node('small', 'dx-sub', sub)); } return s; }
+  function side(v, shares, cls, label){ var s = node('span', 'n'); if(!v){ s.appendChild(node('span', 'dx-sub', '—')); return s; }
+    s.appendChild(node('b', cls, money(v))); s.appendChild(node('small', 'dx-sub', label + ' · ' + sh(shares))); return s; }
+  function options(host, o){
+    var sec = node('section'); sec.appendChild(node('h3', '', 'Options held (put and call exposure)'));
+    sec.appendChild(node('p', 'dx-cap', 'Long puts and calls filers reported for ' + q(o.period) + ', in underlying shares and the stock’s dollars. Never added to holders, value or % Out.'));
+    var k = node('div', 'dx-kpis');
+    [['Filers', String(o.filers), ''], ['Calls', money(o.call_value), 'dx-call'], ['Puts', money(o.put_value), 'dx-put']].forEach(function(x){
+      var s = node('span', '', x[0] + ' '); s.appendChild(node('b', x[2], x[1])); k.appendChild(s); });
+    sec.appendChild(k);
+    if(o.mm_share !== null && o.mm_share !== undefined){
+      var bar = node('div', 'dx-bar'), a = node('i'), b = node('i');
+      a.style.width = o.mm_share + '%'; a.style.background = 'var(--muted)'; b.style.width = (100 - o.mm_share) + '%'; b.style.background = 'var(--accent)';
+      bar.appendChild(a); bar.appendChild(b); sec.appendChild(bar);
+      sec.appendChild(node('p', 'dx-cap', Math.round(o.mm_share) + '% of these dollars are market makers and banks (grey), ' + Math.round(100 - o.mm_share) + '% funds (blue).'));
+    }
+    var seg = node('div', 'dx-seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Who');
+    var list = node('div');
+    function show(which){
+      seg.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed', String(x.dataset.w === which)); });
+      list.innerHTML = '';
+      var rows = which === 'mm' ? o.market_makers : o.funds;
+      if(!rows.length){ list.appendChild(node('p', 'dx-cap', 'None in this quarter.')); return; }
+      list.appendChild(row('head', [node('span', '', 'Filer'), node('span', 'n', 'Calls'), node('span', 'n', 'Puts')]));
+      rows.forEach(function(r){
+        var name = cell(r.filer_name || r.cik);
+        if(r.contracts_read){ name.appendChild(node('span', 'dx-tag', 'read in contracts')); }
+        list.appendChild(row('', [name, side(r.call_value, r.call_shares, 'dx-call', 'Calls'), side(r.put_value, r.put_shares, 'dx-put', 'Puts')]));
+      });
+    }
+    [['fund', 'Funds'], ['mm', 'Market makers and banks']].forEach(function(x){
+      var bt = node('button', '', x[1]); bt.type = 'button'; bt.dataset.w = x[0]; bt.addEventListener('click', function(){ show(x[0]); }); seg.appendChild(bt); });
+    sec.appendChild(seg); sec.appendChild(list); show(o.funds.length ? 'fund' : 'mm');
+    sec.appendChild(node('p', 'dx-note', '13F shows long options only: no written options, no premium, no strike or expiry, no trades. So this is exposure, not a put/call ratio, not volume and not leverage. A line written in contracts, not shares, is read times 100.'));
+    host.appendChild(sec);
+  }
+  function prn(host, p){
+    var sec = node('section'); sec.appendChild(node('h3', '', 'Convertible notes held'));
+    sec.appendChild(node('p', 'dx-cap', money(p.par) + ' principal across ' + p.notes + (p.notes === 1 ? ' note, ' : ' notes, ') + p.filers + (p.filers === 1 ? ' filer, ' : ' filers, ') + q(p.period) + '.'));
+    sec.appendChild(row('prn head', [node('span', '', 'Filer'), node('span', '', 'Note'), node('span', 'n', 'Principal')]));
+    p.rows.forEach(function(r){
+      sec.appendChild(row('prn', [cell(r.filer_name || ''), cell(r.title_of_class || r.name_of_issuer || '', r.cusip), cell(money(r.par), money(r.value) + ' value', 'n')]));
+    });
+    sec.appendChild(node('p', 'dx-note', 'Principal (PRN), not shares. Convert holders often short the stock to hedge, so part of the short interest (Short% above) is not a bet on a fall. Shown beside it, never subtracted from it. The issuer is matched by the first six CUSIP characters when exactly one ticker has them.'));
+    host.appendChild(sec);
+  }
+  window.rcDetailExtras = function(td, ticker){
+    fetch('/api/sec_13f/' + encodeURIComponent(ticker) + '/extras').then(function(r){ return r.json(); }).then(function(d){
+      if(!d || !d.ok || !td.isConnected){ return; }
+      var has = d.options.filers > 0, hasP = d.prn.rows.length > 0;
+      if(!has && !hasP){ return; }
+      var box = node('div', 'dx');
+      if(has){ options(box, d.options); }
+      if(hasP){ prn(box, d.prn); }
+      td.appendChild(box);
+    }).catch(function(){});
+  };
+  var OPENED = false, SEQ = 0;
+  function rb(text){
+    var me = ++SEQ;
+    fetch('/api/sec_13f/reported_by?q=' + encodeURIComponent(text || '')).then(function(r){ return r.json(); }).then(function(d){
+      if(me !== SEQ){ return; }
+      var host = document.getElementById('rb-list'); host.innerHTML = '';
+      var f = d.filers || [];
+      document.getElementById('rb-cap').textContent = f.length ? (d.total + (d.total === 1 ? ' filer' : ' filers') + ' in ' + q(f[0].period) + (text ? ' match.' : ' file a combination report or name other managers.')) : (text ? 'No filer or manager matches.' : 'Nothing stored yet.');
+      if(f.length){ host.appendChild(row('prn head', [node('span', '', 'Filer'), node('span', '', 'Also reported by'), node('span', 'n', '')])); }
+      f.forEach(function(e){
+        var name = cell(e.filer_name || e.cik); if(e.partial){ name.appendChild(node('span', 'dx-tag', 'partial')); }
+        var m = e.managers, txt = m.length ? m.slice(0, 3).join(', ') + (m.length > 3 ? ' +' + (m.length - 3) + ' more' : '') : 'not named';
+        host.appendChild(row('prn', [name, cell(txt, null, m.length ? '' : 'dx-sub'), node('span', 'n', '')]));
+      });
+    }).catch(function(){});
+  }
+  function reveals(){
+    fetch('/api/sec_13f/reveals').then(function(r){ return r.json(); }).then(function(d){
+      var host = document.getElementById('rv-list'); host.innerHTML = '';
+      var rv = d.reveals || [];
+      if(!rv.length){ host.appendChild(node('p', 'dx-cap', 'None stored yet.')); return; }
+      host.appendChild(row('head', [node('span', '', 'Filer'), node('span', 'n', 'Held / revealed'), node('span', 'n', 'Value')]));
+      rv.forEach(function(r){
+        host.appendChild(row('', [cell(r.filer_name || r.cik, r.top_issuer ? 'Biggest: ' + r.top_issuer : null),
+                                  cell(q(r.period), r.filed + ' · ' + r.days_late + ' days late', 'n'),
+                                  cell(money(r.value), r.names + (r.names === 1 ? ' name' : ' names'), 'n')]));
+      });
+    }).catch(function(){});
+  }
+  window.rcInvExtrasOpen = function(){
+    if(OPENED){ return; } OPENED = true;
+    var t = null; document.getElementById('rb-q').addEventListener('input', function(e){ var v = e.target.value; clearTimeout(t); t = setTimeout(function(){ rb(v.trim()); }, 250); });
+    rb(''); reveals();
+  };
+})();
+</script>"""
+
+
 def types_section_html(filers: dict[str, int] | None = None) -> str:
     """The collapsed "Top holdings by investor type" section (#760): a type picker and the chart host. The chart is
     fetched from ``/api/sec_13f/types/<tag>`` when the section is opened, so a closed section costs nothing. Each
@@ -1879,7 +2074,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <title>RevenueChaser — SEC 13F Ownership</title>
 <script>{THEME_JS}</script><style>{THEME_CSS}</style>
 <script>var PLOTLY_URL = {script_json(PLOTLY_CDN_URL)};</script>
-{CSS}{FILTERS_CSS}{INVESTORS_CSS}{ETFS_CSS}</head><body>
+{CSS}{FILTERS_CSS}{INVESTORS_CSS}{ETFS_CSS}{EXTRAS_CSS}</head><body>
 <div class="header"><h1>SEC 13F — Total Institutional Ownership</h1>
 <div class="meta">{len(entries)} tickers · all 13F filers (incl. BlackRock/Vanguard/State Street) · quarterly · click a row for the chart</div>
 {status_html}</div>
@@ -1931,7 +2126,7 @@ does not change.
 <div id="chart"></div>
 </div></div>
 <footer>RevenueChaser — SEC 13F · SEC EDGAR bulk data · {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</footer>
-{payload_js}{meta_js}<script>{FILTERS_JS}</script>{watchlist_html("sec_13f")}{js}<script>var DEFAULT_FILER = {script_json(DEFAULT_FILER)}; var DEFAULT_ETF = {script_json(DEFAULT_ETF)};</script>{INVESTORS_JS}{ETFS_JS}</body></html>"""
+{payload_js}{meta_js}<script>{FILTERS_JS}</script>{watchlist_html("sec_13f")}{js}<script>var DEFAULT_FILER = {script_json(DEFAULT_FILER)}; var DEFAULT_ETF = {script_json(DEFAULT_ETF)};</script>{INVESTORS_JS}{ETFS_JS}{EXTRAS_JS}</body></html>"""
 
 
 def _pct(cur, prev):

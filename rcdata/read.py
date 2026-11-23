@@ -1219,6 +1219,42 @@ def institution_tags(cik: str) -> list[str]:
     return [r["tag"] for r in rows if r["tag"]]
 
 
+def _newest_period_rows(table: str, ticker: str) -> list[dict]:
+    t = str(ticker or "").strip().upper()
+    if not t:
+        return []
+    return _rows(table, f"SELECT * FROM {table} WHERE ticker = ? AND period = (SELECT max(period) FROM {table} "
+                 "WHERE ticker = ?) ORDER BY cik", [t, t], missing_table_ok=True)
+
+
+def option_holders_13f(ticker: str) -> list[dict]:
+    """``sec13f_option_holders`` rows of one ticker in its newest quarter (#1447): per filer its call and put lines,
+    in underlying shares and dollars. A store built before the table existed gives no rows."""
+    return _newest_period_rows("sec13f_option_holders", ticker)
+
+
+def prn_holders_13f(ticker: str) -> list[dict]:
+    """``sec13f_prn_holders`` rows of one issuer ticker in its newest quarter (#1450): per filer and note its
+    principal and dollars. A store built before the table existed gives no rows."""
+    return _newest_period_rows("sec13f_prn_holders", ticker)
+
+
+def reported_by_13f(query: str = "", limit: int = 200) -> list[dict]:
+    """``sec13f_reported_by`` rows of the newest quarter (#1449), the filers whose name holds ``query`` (all when
+    empty), at most ``limit`` rows, by filer and the list's order."""
+    like = "%" + str(query or "").strip().upper().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    return _rows("sec13f_reported_by", "SELECT * FROM sec13f_reported_by WHERE period = "
+                 "(SELECT max(period) FROM sec13f_reported_by) AND (upper(filer_name) LIKE ? ESCAPE '\\' "
+                 "OR upper(coalesce(manager_name, '')) LIKE ? ESCAPE '\\') ORDER BY filer_name, cik, seq NULLS FIRST "
+                 "LIMIT ?", [like, like, int(limit)], missing_table_ok=True)
+
+
+def late_reveals_13f(limit: int = 20) -> list[dict]:
+    """``sec13f_late_reveals`` (#1450): the newest reveals first, at most ``limit``."""
+    return _rows("sec13f_late_reveals", "SELECT * FROM sec13f_late_reveals ORDER BY filed DESC, value DESC NULLS LAST "
+                 "LIMIT ?", [int(limit)], missing_table_ok=True)
+
+
 def periods_13f() -> list[dict]:
     """``sec13f_periods``: per report period its filers, value, the share of value named a ticker (``coverage``) and
     ``complete``, by period."""

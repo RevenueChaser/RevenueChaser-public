@@ -172,6 +172,45 @@ def sec13f_filer(cik: str) -> dict:
     return out
 
 
+def sec13f_ticker_extras(ticker: str) -> dict:
+    """What one ticker's 13F lines say beside the long book, for the row's detail (#1447, #1450): ``options`` (its
+    ``sec13f_option_holders`` rows) and ``prn`` (its ``sec13f_prn_holders`` rows), each in its newest quarter, dates
+    as ISO strings. Empty lists and a warning when the store cannot be read."""
+    from revenuechaser.rcdata import read as rcread
+
+    out: dict = {"options": [], "prn": []}
+    try:
+        out["options"] = [_iso_row(r) for r in rcread.option_holders_13f(ticker)]
+        out["prn"] = [_iso_row(r) for r in rcread.prn_holders_13f(ticker)]
+    except Exception as exc:                      # noqa: BLE001 - an empty detail, never a failed board
+        logger.warning("13F extras of %s unreadable: %s", ticker, exc)
+    return out
+
+
+def sec13f_reported_by(query: str = "") -> list[dict]:
+    """``sec13f_reported_by`` rows of the newest quarter whose filer or manager name holds ``query`` (#1449), dates
+    as ISO strings; ``[]`` and a warning when the store cannot be read."""
+    from revenuechaser.rcdata import read as rcread
+
+    try:
+        return [_iso_row(r) for r in rcread.reported_by_13f(query)]
+    except Exception as exc:                      # noqa: BLE001 - an empty card, never a failed board
+        logger.warning("13F reported-by unreadable: %s", exc)
+        return []
+
+
+def sec13f_late_reveals(limit: int = 20) -> list[dict]:
+    """``sec13f_late_reveals``, newest first (#1450), dates as ISO strings; ``[]`` and a warning when the store
+    cannot be read."""
+    from revenuechaser.rcdata import read as rcread
+
+    try:
+        return [_iso_row(r) for r in rcread.late_reveals_13f(limit)]
+    except Exception as exc:                      # noqa: BLE001 - an empty card, never a failed board
+        logger.warning("13F late reveals unreadable: %s", exc)
+        return []
+
+
 def nport_etf_search(query: str, limit: int = 20) -> list[dict]:
     """The ETFs the 13F board's ETFs view can open (#1441): spine ETFs that file N-PORT whose ticker or name holds
     ``query``. ``[]`` and a warning when the store cannot be read."""
