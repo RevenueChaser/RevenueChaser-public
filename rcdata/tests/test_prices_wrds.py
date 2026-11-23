@@ -767,8 +767,8 @@ def test_the_split_twin_rule_drops_compustats_row_only_and_only_near_an_alpaca_s
     alpaca, wrds_name = prices_serving.ALPACA_ACTIONS, wrds_history.NAME
     rows = [("A", alpaca, "forward_split", "2026-10-26"),         # Alpaca's own row is never the one dropped
             ("A", wrds_name, "forward_split", "2026-10-27"),      # a session off: the same split, dropped
-            ("B", alpaca, "stock_dividend", "2026-10-26"),        # a stock dividend is one kind with a split
-            ("B", wrds_name, "forward_split", "2026-10-23"),      # SPLIT_SAME_DAYS off: dropped
+            ("B", alpaca, "stock_dividend", "2026-10-26"),        # an Alpaca stock dividend never stands in for
+            ("B", wrds_name, "forward_split", "2026-10-23"),      # Compustat's step (#1413 P-D, SCCO): kept
             ("C", alpaca, "forward_split", "2026-10-26"),
             ("C", wrds_name, "forward_split", "2026-10-30"),      # further off: a split of its own, kept
             ("D", alpaca, "cash_dividend", "2026-10-26"),         # no Alpaca split near it
@@ -782,10 +782,10 @@ def test_the_split_twin_rule_drops_compustats_row_only_and_only_near_an_alpaca_s
     con = duckdb.connect()
     con.execute("CREATE TABLE _act (security_id TEXT, source TEXT, action_type TEXT, ex_date DATE)")
     con.executemany("INSERT INTO _act VALUES (?, ?, ?, ?)", rows)
-    assert con.execute(prices_serving.SPLIT_TWIN_SQL.format(mine="")).fetchone()[0] == 2
+    assert con.execute(prices_serving.SPLIT_TWIN_SQL.format(mine="")).fetchone()[0] == 1
     left = [(r[0], r[1], str(r[2])) for r in
             con.execute("SELECT security_id, source, ex_date FROM _act ORDER BY security_id, ex_date").fetchall()]
-    assert left == [("A", alpaca, "2026-10-26"), ("B", alpaca, "2026-10-26"),
+    assert left == [("A", alpaca, "2026-10-26"), ("B", wrds_name, "2026-10-23"), ("B", alpaca, "2026-10-26"),
                     ("C", alpaca, "2026-10-26"), ("C", wrds_name, "2026-10-30"),
                     ("D", alpaca, "2026-10-26"), ("D", wrds_name, "2026-10-27"),
                     ("E", wrds_name, "2026-10-26"), ("E", wrds_name, "2026-10-27"),
@@ -797,9 +797,35 @@ def test_the_split_twin_rule_drops_compustats_row_only_and_only_near_an_alpaca_s
     con.executemany("INSERT INTO _act VALUES (?, ?, ?, ?)", rows[:4])
     con.execute("CREATE TABLE _bucket AS SELECT 'B' AS security_id")
     mine = " AND w.security_id IN (SELECT security_id FROM _bucket)"
-    assert con.execute(prices_serving.SPLIT_TWIN_SQL.format(mine=mine)).fetchone()[0] == 1
+    assert con.execute(prices_serving.SPLIT_TWIN_SQL.format(mine=mine)).fetchone()[0] == 0     # B's pair is no pair
     assert con.execute("SELECT count(*) FROM _act WHERE security_id = 'A' AND source = ?",
                        [wrds_name]).fetchone()[0] == 1
+
+
+def test_an_alpaca_stock_dividend_beside_compustats_step_is_held_back_compustats_applied(fake, http_mock):
+    """#1413 P-D (SCCO, 3 Nov 2026): Alpaca's stock dividend stood in for Compustat's step, and its ``1 + rate``
+    ratio of 2.0106 halved every adjusted close before it, where Compustat's own step was about 1.01. Compustat's row
+    is the applied one now and Alpaca's stays in ``corporate_action``, unapplied, naming why."""
+    conn, _ = fake
+    conn.data["comp.sec_split"].append({"gvkey": "001690", "iid": "01", "datadate": "2026-10-27", "split": 1.0106})
+    http_mock.routes[:] = [r for r in http_mock.routes if "/v1/corporate-actions" not in r[0]]
+    http_mock.add("/v1/corporate-actions", {"corporate_actions": {
+        "stock_dividends": [{"id": "sd-1", "symbol": "AAPL", "rate": 1.0106, "process_date": "2026-10-26",
+                             "ex_date": "2026-10-26"}]}, "next_page_token": None})
+    assert _backfill()["result"] == "changed"
+    assert base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})["result"] != "failed"
+    row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    assert row["result"] != "failed", row
+    acts = _q("SELECT ex_date, action, ratio, source, applied, not_applied_why FROM corporate_action "
+              "WHERE security_id = ? AND ex_date > '2026-01-01' ORDER BY ex_date", [AAPL])
+    by_source = {a["source"]: a for a in acts}
+    assert by_source[wrds_history.NAME]["applied"] and by_source[wrds_history.NAME]["ratio"] == pytest.approx(1.0106)
+    assert not by_source[actions.NAME]["applied"]
+    assert "Compustat records this step" in by_source[actions.NAME]["not_applied_why"]
+    # June's 2-for-1 and Compustat's 1.0106, never Alpaca's 2.0106 on top.
+    view = {str(r["session_date"]): r for r in _q(
+        "SELECT session_date, close FROM price_bars_daily WHERE ticker = 'AAPL'")}
+    assert view["2025-06-03"]["close"] == pytest.approx(202.0 / 2 / 1.0106)
 
 
 def test_a_compustat_split_alpaca_has_a_day_off_is_not_applied_a_second_time(fake, http_mock):

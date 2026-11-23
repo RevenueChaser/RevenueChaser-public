@@ -562,7 +562,10 @@ ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_d
 # session on the new basis and Alpaca's ``ex_date`` is not always that day, so the same-day rule in
 # ``_wrds_actions`` let both rows in and the share basis stepped twice -- a doubled split factor over every bar
 # before it. Alpaca's is kept, as on the same day. A split, a reverse split and a stock dividend are one kind here
-# (``ACTION_KIND``), so Alpaca's stock dividend stands in for Compustat's split too. Only Compustat's row is dropped,
+# (``ACTION_KIND``), but **an Alpaca stock dividend never stands in for Compustat's row** (SCCO, 3 Nov 2026, #1413
+# P-D): Alpaca's ``rate`` read as ``1 + rate`` gave 2.0106 where Compustat's own step was about 1.01, so every
+# adjusted close before it was halved. Compustat's row is kept and the Alpaca stock dividend beside it is held back
+# (``ALPACA_STOCK_DIV_BESIDE``, its ``not_applied_why``). Only Compustat's row is dropped,
 # and only against an Alpaca row, so a second Compustat split of its own is untouched; a cash dividend is matched by
 # amount instead (the twins in ``_wrds_actions``).
 # Side effect: a real second split within SPLIT_SAME_DAYS of Alpaca's would be dropped too. On the live copy a pair
@@ -570,8 +573,14 @@ ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_d
 SPLIT_TWIN_SQL = f"""DELETE FROM _act w WHERE w.source = '{wrds_history.NAME}'
     AND {ACTION_KIND.format(a='w')} = 'split'{{mine}}
     AND EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.source = '{ALPACA_ACTIONS}'
-                AND {ACTION_KIND.format(a='p')} = 'split'
+                AND {ACTION_KIND.format(a='p')} = 'split' AND p.action_type <> 'stock_dividend'
                 AND abs(date_diff('day', p.ex_date, w.ex_date)) <= {SPLIT_SAME_DAYS})"""
+# The Alpaca stock dividend ``SPLIT_TWIN_SQL`` lets Compustat's split-kind row stand beside: one share-basis step,
+# Compustat's, is applied, never both (#1413 P-D). Over ``_act`` and an alias ``a`` of the action.
+ALPACA_STOCK_DIV_BESIDE = f"""(a.source = '{ALPACA_ACTIONS}' AND a.action_type = 'stock_dividend'
+    AND EXISTS (SELECT 1 FROM _act w WHERE w.security_id = a.security_id AND w.source = '{wrds_history.NAME}'
+                AND {ACTION_KIND.format(a='w')} = 'split'
+                AND abs(date_diff('day', w.ex_date, a.ex_date)) <= {SPLIT_SAME_DAYS}))"""
 
 
 class PricesServing:
@@ -744,11 +753,13 @@ class PricesServing:
         """The WRDS history's part of the actions, over the WRDS staging: Compustat's into ``_act``, CRSP's lone
         splits into ``_crsp_split_near``. A chunk (``Chunked``) adds the rows of its own securities to both."""
         mine = " AND w.security_id IN (SELECT security_id FROM _bucket)" if chunk else ""
-        # Compustat's actions of the securities with bars, unless Alpaca has one of that kind that day.
+        # Compustat's actions of the securities with bars, unless Alpaca has one of that kind that day (an Alpaca stock
+        # dividend does not count: Compustat's step is the one applied, ``ALPACA_STOCK_DIV_BESIDE``).
         con.execute(f"""INSERT INTO _act BY NAME SELECT w.* FROM ({wrds_history.ACTIONS_SQL}) w
             WHERE w.security_id IN (SELECT DISTINCT security_id FROM price_bar_daily){mine}
               AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.ex_date = w.ex_date
-                              AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='w')})""")
+                              AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='w')}
+                              AND p.action_type <> 'stock_dividend')""")
         # The split Alpaca and Compustat both know, its day a session or two apart (``SPLIT_TWIN_SQL``, #268); the
         # dropped ones are counted for the build note.
         splits = con.execute(SPLIT_TWIN_SQL.format(mine=mine)).fetchone()[0]
@@ -947,6 +958,9 @@ class PricesServing:
         restated_by = ("(SELECT max(r.crsp_ex_date) FROM _split_restated_by_crsp r "
                        "WHERE r.security_id = a.security_id AND r.dup_ex_date = a.ex_date)")
         why = f"""CASE
+            WHEN {ALPACA_STOCK_DIV_BESIDE}
+                THEN 'Compustat records this step within {SPLIT_SAME_DAYS} days and its row is the applied one '
+                     || '(an Alpaca stock dividend never stands in for it, #1413)'
             WHEN action IN ('split', 'stock_dividend') AND {restated_by} IS NOT NULL
                 THEN 'restated by CRSP: the same split, and the served close changes basis across '
                      || CAST({restated_by} AS TEXT) || ', the real ex-date, which CRSP''s row carries'
