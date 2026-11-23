@@ -434,6 +434,35 @@ def _named(rows: list[tuple[str, int, int]]) -> str:
     return ", ".join(f"{sid} {was:,} -> {has:,}" for sid, was, has in rows[:20]) + (" ..." if len(rows) > 20 else "")
 
 
+# A live ``cik:<CIK>:<T>`` id whose spine row (same CIK and ticker) now carries a stronger id this build serves: the
+# spine re-keyed it (the night run of 22 Nov 2026 linked 208 names by ticker, ``link_source = 'tic_nocik'``; five of
+# them -- BRRR, IBIT, NCIQ, XRPC, GBUG -- had bars under the old id on the live file, 23 Nov 2026, #1413 / C3).
+REKEYED_SQL = """
+    SELECT l.security_id AS old_id, any_value(s.security_id) AS new_id
+    FROM (SELECT unnest(?) AS security_id) l
+    JOIN stg_spine s ON s.cik = split_part(l.security_id, ':', 2) AND s.ticker = split_part(l.security_id, ':', 3)
+    WHERE s.security_id <> l.security_id
+      AND s.security_id IN (SELECT DISTINCT security_id FROM price_bar_daily)
+    GROUP BY 1 HAVING count(DISTINCT s.security_id) = 1"""
+
+
+def _move_rekeyed(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, live: dict[str, int]) -> set[str]:
+    """C3 option (a), #1413: a re-keyed id is **moved**, not lost and not served twice. The new id takes the old
+    id's live bars for every session it has none of (its own bar wins a session both hold), and the old id is not
+    carried back by ``_refuse_shrink``. Without this the build served the name under both ids, two rows a session in
+    ``price_bars_daily``. The old id's rows leave the served file with it: avo's word (C3), so the build that first
+    does it is a whole build with a backup."""
+    old = sorted(sid for sid in live if sid.startswith("cik:"))
+    if not old:
+        return set()
+    pairs = dict(con.execute(REKEYED_SQL, [old]).fetchall())
+    if pairs:
+        carried = stage.carry_live_as(con, pairs)
+        ctx.notes.append(f"{len(pairs)} re-keyed ids moved to their spine id with {carried:,} live bars the new id "
+                         "had no session of: " + ", ".join(f"{o} -> {n}" for o, n in sorted(pairs.items())[:20]))
+    return set(pairs)
+
+
 def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None:
     """Refuse a build whose ``price_bar_daily`` serves fewer securities or fewer rows than the live file, unless the
     request asked for it (``allow_shrink``). The serving swap's own guard allows a 1 % row shrink per table, and
@@ -460,7 +489,10 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
     way past the guard is the request's explicit ``allow_shrink`` (avo's word, DECISIONS S18), which turns the whole
     guard off and is recorded with the request's params."""
     live = stage.live_served(con)
-    if not live or ctx.allow_shrink:
+    if not live:
+        return
+    rekeyed = _move_rekeyed(ctx, con, live)
+    if ctx.allow_shrink:
         return
 
     def served() -> dict[str, int]:
@@ -469,6 +501,7 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
 
     now = served()
     moved = {g for g, sid in con.execute("SELECT gid, security_id FROM _gvkey_alias").fetchall() if sid in now}
+    moved |= rekeyed
     gone = sorted(set(live) - set(now) - moved)
     if gone:
         carried = stage.carry_live(con, gone)
