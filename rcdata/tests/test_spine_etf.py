@@ -473,10 +473,23 @@ def test_without_tickerinside_files_the_identity_columns_stay_null_but_compustat
     ({"fund": 100.0}, False, False, None),                  # a fund of funds: its funds' class is not read here
     ({"equity": 85.0, "derivative": 12.0}, False, False, None),   # synthetic: options or swaps carry the exposure
     ({"equity": 100.0}, True, False, None),                 # leveraged or inverse: never read off the collateral
+    # avo, 23 Nov 2026 ("opsiyon 1"): a synthetic or leveraged fund takes the class of the contracts it holds most
+    ({"debt": 90.0, "derivative": 40.0, "d:DE": 40.0}, False, False, "equity"),    # a buffer fund's SPY options
+    ({"cash": 60.0, "derivative": 200.0, "d:DE": 200.0}, True, False, "equity"),   # a 2x single-stock swap
+    ({"cash": 90.0, "derivative": 30.0, "d:DIR": 25.0, "d:DE": 5.0}, False, False, "bond"),
+    ({"cash": 90.0, "derivative": 50.0, "d:DCO": 50.0}, True, False, "commodity"),
+    ({"cash": 90.0, "derivative": 50.0, "d:DFE": 50.0}, False, False, "currency"),
+    ({"cash": 90.0, "derivative": 50.0, "d:DO": 50.0}, False, False, None),         # "other": unread
     ({"equity": 60.0, "debt": 40.0}, False, False, "equity"),     # the cut is inclusive
 ])
 def test_the_nport_mix_rule(mix, lev, mm, cls):
     assert etf.nport_class(mix, lev=lev, mm=mm) == cls
+
+
+def test_a_crypto_fund_on_fx_contracts_is_crypto():
+    """SOLT and XRPT: N-PORT files their crypto futures as foreign exchange (DFE); the name says crypto."""
+    assert etf.nport_class({"cash": 90.0, "derivative": 200.0, "d:DFE": 200.0}, lev=True, crypto=True) == "crypto"
+    assert etf.nport_class({"equity": 95.0}, crypto=True) == "equity"     # a crypto-miners stock fund holds shares
 
 
 @pytest.mark.parametrize("mix, cls", [
@@ -520,7 +533,7 @@ def with_nport(request):
             ("A4", "S000099001", day), ("A5", "S000024908", day)],
            [("A1", 95.0, "DBT", "CORP"), ("A2", 97.0, "EC", "CORP"), ("A2", 3.0, "STIV", "RF"),
             ("A3", 40.0, "EC", "CORP"), ("A3", 35.0, "DBT", "UST"), ("A3", 20.0, "STIV", "RF"),
-            ("A4", 95.0, "EC", "RF"), ("A5", 100.0, "EC", "CORP")])
+            ("A4", 95.0, "EC", "RF"), ("A5", 100.0, "EC", "CORP"), ("A5", 100.0, "DE", None)])
     return request.getfixturevalue("identity")
 
 
@@ -531,6 +544,6 @@ def test_nport_fills_only_what_the_earlier_sources_left_null(with_nport):
     assert rows["SOXX"]["asset_class"] == "equity"           # the newest report, not the quarter before
     assert rows["TAPR"]["asset_class"] == "multi_asset"
     assert rows["CCOI"]["asset_class"] is None               # held funds: unread
-    assert rows["SOXL"]["asset_class"] is None               # leveraged
+    assert rows["SOXL"]["asset_class"] == "equity"           # leveraged: the class of its equity swaps
     assert rows["SPY"]["asset_class"] == "equity"            # TickerInside's, as before
 
