@@ -37,9 +37,10 @@ SERVING_SCHEMA_VERSION = {"market": 5, "spine": 11, "ownership": 7}
 # ownership 6: ``etf_holdings_nport_history``, every typed N-PORT quarter's spine-ETF long equity, one row per holding,
 #              unmapped holdings kept by ISIN or name (#1441, avo 22 Nov 2026); ``etf_holdings_nport`` serves long
 #              equity only (~3,950 short and non-equity rows leave, so its first build asks ``allow_shrink``).
-# ownership 7: ``sec13f_option_exposure`` and ``sec13f_filer_options`` (13F put/call exposure, #1447),
-#              ``sec13f_prn_par`` and ``sec13f_late_reveals`` (#1450) and ``sec13f_reported_by`` (#1449); one bump for
-#              all five (13F plan decision E), built in ``build/ownership/sec13f_extras.py``.
+# ownership 7: ``sec13f_option_exposure``, ``sec13f_option_holders`` and ``sec13f_filer_options`` (13F put/call
+#              exposure, #1447), ``sec13f_prn_par``, ``sec13f_prn_holders`` and ``sec13f_late_reveals`` (#1450) and
+#              ``sec13f_reported_by`` (#1449); one bump for all seven (13F plan decision E), built in
+#              ``build/ownership/sec13f_extras.py``.
 # spine 2: ``fund``, the SEC fund file's share classes and the ETF rule (``build/spine/sec_tickers_mf.py``).
 # spine 3: ``etf_holdings``, the rotation board's ETFs read whole (``build/spine/etf_holdings.py``).
 # spine 4: ``etf``, the ETF universe from Alpha Vantage and N-CEN (``build/spine/etf.py``, #346).

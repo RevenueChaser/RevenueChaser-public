@@ -29,5 +29,6 @@ KIND = "ownership"
 SERVED_13F = ("sec13f_cusip_map", "sec13f_filer_period", "sec13f_ticker_period", "sec13f_periods",
               "sec13f_filer_breaks", "sec13f_type_holdings", "sec13f_type_sector", "sec13f_type_flow",
               "sec13f_filer_style", "sec13f_filer_holdings", "sec13f_option_exposure", "sec13f_filer_options",
-              "sec13f_prn_par", "sec13f_reported_by", "sec13f_late_reveals")
+              "sec13f_prn_par", "sec13f_reported_by", "sec13f_late_reveals",
+              "sec13f_option_holders", "sec13f_prn_holders")
 

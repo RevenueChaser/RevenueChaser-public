@@ -45,6 +45,11 @@ def test_option_lines_are_exposure_by_stock_and_filer_with_market_makers_apart(m
     assert _served("SELECT holders, shares FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(4, 400.0)]
     assert _served("SELECT cik, filer_name, market_maker, put_call, names FROM sec13f_filer_options ORDER BY cik") == [
         ("2000001", "MANAGER 2000001", False, "PUT", 1), ("2000004", "CTC LLC", True, "CALL", 1)]
+    # The board's list of who holds them: one row per filer, call and put side by side.
+    assert _served("SELECT cik, filer_name, market_maker, call_shares, call_value, put_shares, put_value, "
+                   "contracts_read FROM sec13f_option_holders WHERE ticker = 'MSFT' ORDER BY cik") == [
+        ("2000001", "MANAGER 2000001", False, None, None, 100.0, 40_000.0, 0),
+        ("2000004", "CTC LLC", True, 1000.0, 400_000.0, None, None, 1)]
 
 
 def test_the_market_maker_names_match_as_whole_words_only():
@@ -70,6 +75,9 @@ def test_convertible_par_sums_by_the_one_issuer_its_cusip6_names(monkeypatch, ht
     _serve()
     assert _served("SELECT ticker, filers, cusips, par, value FROM sec13f_prn_par") == [
         ("MSFT", 2, 1, 1_500_000.0, 1_650_000.0)]
+    assert _served("SELECT ticker, cik, cusip, name_of_issuer, par, value FROM sec13f_prn_holders ORDER BY cik") == [
+        ("MSFT", "2000001", "594918AX2", "MICROSOFT CORP NOTE 0.5% 2030", 1_000_000.0, 1_100_000.0),
+        ("MSFT", "2000002", "594918AX2", "MICROSOFT CORP NOTE 0.5% 2030", 500_000.0, 550_000.0)]
     assert _served("SELECT shares FROM sec13f_ticker_period WHERE ticker = 'MSFT'") == [(300.0,)]
 
 
