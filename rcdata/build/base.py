@@ -264,6 +264,20 @@ def honours_scope(ds) -> bool:
     return bool(getattr(ds, "honours_scope", False))
 
 
+#: The step a member of a batch pass is in while the pass runs **another** member's fetch or build (``run_batch``,
+#: ``build_kind_many``). Its seconds are kept, so the run row still adds up to the whole span, and ``own_seconds``
+#: leaves them out: that is the dataset's own run, the Jobs board's "took" (avo, 23 Nov 2026).
+WAITING = "waiting"
+
+
+def own_seconds(steps: dict | None) -> float | None:
+    """A run's own seconds from its ``job_runs2.counts["steps"]``: every step but ``WAITING``; None without steps.
+    A run recorded before ``WAITING`` existed counts its wait inside its ``parquet`` step and reads long."""
+    if not steps:
+        return None
+    return round(sum(float(v) for k, v in steps.items() if k != WAITING), 3)
+
+
 def _step_now() -> float:
     """The clock the step stamps read. Not ``RunContext.clock``: that one is the run's **pacing** clock, which a
     caller may inject as a fixed sequence (a run budget's reads in ``rcdata/tests/test_options_list.py``), and
@@ -1251,12 +1265,17 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
             for table in serving.RETIRED_TABLES.get(kind, ()):
                 b.con.execute(f'DROP TABLE IF EXISTS "{table}"')
         counts: dict[str, int] = {}
+        # Each member's clock says "build" only while its own dataset builds, and the lead's also while a dataset
+        # of the kind no request of the pass named builds; the rest of the pass is ``WAITING`` to it.
         for c in every:
-            c.step = "build"
+            c.step = WAITING
         for d in kind_datasets(kind):
+            own = ctxs.get(d.name, lead)
+            own.step = "build"
             started = time.monotonic()
             with spill_peak(serving.spill_dir(b.path)) as peak:
-                counts.update(d.build(ctxs.get(d.name, lead), b.con))
+                counts.update(d.build(own, b.con))
+            own.step = WAITING
             # What a dataset costs, so a chunked or SSD-spilling build is decided from a measure (#654 review).
             logger.info("build %s %s (%s): %.1f s, spill peak %.2f GB", kind, d.name, b.mode,
                         time.monotonic() - started, peak[0] / 1e9)
@@ -1386,10 +1405,12 @@ def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False
 
 
 def _failed(ctx: RunContext, req: dict, e: Exception) -> dict:
-    logger.exception("%s %s step of run %s failed", req["dataset"], ctx.step, ctx.run_id)
+    # A member waiting while another member's build failed was failed by that build: ``WAITING`` is bookkeeping.
+    step = "build" if ctx.step == WAITING else ctx.step
+    logger.exception("%s %s step of run %s failed", req["dataset"], step, ctx.run_id)
     # The step comes first, so a 504 a fetch got and the same class from a check read are told apart in the check
     # row, the ``job_runs2`` error and the CLI line (#1119).
-    error = f"{ctx.step} failed: {type(e).__name__}: {e}"[:500]
+    error = f"{step} failed: {type(e).__name__}: {e}"[:500]
     return _finish(ctx, req, {"result": "failed", "note": error}, "failed", error)
 
 
@@ -1509,6 +1530,7 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             if done is not None:
                 end(ctx, done)
             else:
+                ctx.step = WAITING                  # the next members' fetches are not this dataset's time
                 ready.append((req, ds, ctx, note))
         wanted = [r for r in ready if r[3] is None]
         if not wanted:

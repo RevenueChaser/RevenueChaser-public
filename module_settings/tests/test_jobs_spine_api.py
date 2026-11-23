@@ -190,7 +190,7 @@ def test_the_served_routes_answer_and_say_why_when_they_cannot(client):
     view = client.get("/api/build/served/market/sample/series_ids").get_json()
     assert view["ok"] is True and len(view["rows"]) == 3
     assert client.get("/api/build/served/market/sample/serving_schema_version").status_code == 404
-    assert client.get('/api/build/served/market/sample/x";DROP TABLE other;--').status_code == 404
+    assert client.get("/api/build/served/market/sample/x%22%3BDROP%20TABLE%20other%3B--").status_code == 404
     assert client.get("/api/build/served/nope/sample/market_series").status_code == 404
 
 

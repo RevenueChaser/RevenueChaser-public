@@ -1404,6 +1404,20 @@ def ever_built(dataset: str) -> bool:
 
 
 @_routed
+def open_issues_of_kind(dataset: str, kind: str, limit: int = 10) -> list[dict]:
+    """The newest ``limit`` unresolved ``build_issues`` of ``dataset`` of one ``kind``, newest first."""
+    return _select("SELECT * FROM build_issues WHERE dataset = ? AND kind = ? AND resolved_on IS NULL "
+                   "ORDER BY id DESC LIMIT ?", (dataset, kind, int(limit)))
+
+
+@_routed
+def run_steps(run_id: str) -> dict | None:
+    """The seconds per step a builder run recorded (``job_runs2.counts["steps"]``), None without them."""
+    rows = _select("SELECT counts FROM job_runs2 WHERE run_id = ?", (run_id,))
+    return ((_loads(rows[0]["counts"]) or {}).get("steps") or None) if rows else None
+
+
+@_routed
 def open_issue_kinds(dataset: str) -> list[dict]:
     """``[{kind, count}]`` of the unresolved ``build_issues`` of ``dataset``, the most first."""
     return _select("SELECT kind, count(*) AS count FROM build_issues WHERE dataset = ? AND resolved_on IS NULL "

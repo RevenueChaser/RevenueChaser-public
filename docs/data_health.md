@@ -1075,3 +1075,25 @@ minute after they were made. The daily counters beside it are unchanged.
 
 `GET /api/build/datasets` lists every dataset the builder knows (`name`, `kind`, `attended`, `providers`): the
 allow-list for the Grafana buttons.
+
+`GET /api/build/datasets?detail=1` (`metrics.datasets_detail`) adds each dataset's health and fetch settings, and
+for the Grafana Jobs board's rows (avo, 23 Nov 2026): `about` (one line of what it fetches, from its
+`DatasetCard.about` in `rcdata/needs/screen.py`, else its label), `group` (`build` for the dataset that builds the
+served tables, else its cadence) and `order` (its place in its kind's flow: the sources slowest cadence first, each
+in registry order, the build last), `took_s` (the own seconds of its last run that was not skipped), `rows`,
+`coverage`, `coverage_target`, `checks` and `recent` (Settings' checks and last three checks) and `issue_kinds`
+(open build issues by kind, the most first, the newest ten of each). A pass fetches its members one after another
+and builds the kind once, so a member's run row spans the others' work: each member's step clock reads `waiting`
+while another member fetches or builds (`base.WAITING`), and `took_s` is every step but that one
+(`base.own_seconds`). A run recorded before `waiting` existed counts its wait in its `parquet` step.
+
+`GET /api/build/served/<kind>` (`newdata.served`) is one served file whole: `schema_version` (the file's own
+version row), `build` (`build_id`, `built_at`, `mode` and the manifest and audit numbers), and `tables` and `views`,
+each `{name, rows, columns: [{name, type}]}`, the build's bookkeeping left out. The spine adds `tier_rule`,
+`identity` (the funnel Settings draws, with `spine/security`'s open issues), `tiers` (`{A, B, C, D}`) and
+`my_universe` (Settings' card plus `by_tier`, `entered_names` / `left_names` of its last change day and
+`rule_values`, the rules file with its entry and exit floors). `GET /api/build/served/<kind>/sample/<table>`
+(`newdata.read_served_sample`) is six real rows of one table or view, newest first where the table has a date
+column. Both are one `serving.open_read`, closed before the answer, and read the file at most once an hour per
+build. A kind that is not served or a name the file does not hold is 404, a file not built yet 409, a file that
+cannot be read right now 503.

@@ -556,6 +556,16 @@ def open_issues(dataset: str, limit: int = 20) -> tuple[int, list[dict]]:
     return r.zcard(k), (_fetch("build_issues", r.zrevrange(k, 0, limit - 1)) if limit > 0 else [])
 
 
+def open_issues_of_kind(dataset: str, kind: str, limit: int = 10) -> list[dict]:
+    k = _key("build_issues", "open", dataset, "kind", kind)
+    return _fetch("build_issues", _client().zrevrange(k, 0, int(limit) - 1)) if int(limit) > 0 else []
+
+
+def run_steps(run_id: str) -> dict | None:
+    row = _one("job_runs2", run_id)
+    return ((ops._loads(row.get("counts")) or {}).get("steps") or None) if row else None
+
+
 def open_issue_kinds(dataset: str) -> list[dict]:
     r = _client()
     kinds = sorted(r.smembers(_key("build_issues", "kinds", dataset)))
