@@ -75,21 +75,21 @@ def test_convertible_par_sums_by_the_one_issuer_its_cusip6_names(monkeypatch, ht
 
 def test_a_combination_report_is_partial_and_a_late_new_holdings_after_a_confidential_report_is_a_reveal(
         monkeypatch, http_mock):
-    """Filer 1 left holdings out in confidence on 27 Oct and revealed an MSFT position on 15 Dec, 29 days after the
-    16 Nov deadline. Filer 2's new-holdings amendment is not a reveal: nothing was omitted. Filer 3 files a
+    """Filer 1 left holdings out in confidence on 27 Oct and revealed an MSFT position on 20 Nov, 4 days after the
+    16 Nov deadline (a day in the past: a backfill walks only up to yesterday). Filer 2's new-holdings amendment is not a reveal: nothing was omitted. Filer 3 files a
     combination report: other managers report part of its book."""
     _world(monkeypatch, http_mock, {
         "2026-10-27": [
             _f("0002000001-26-000001", 2000001, "2026-10-27", _book(names=3), confidential=True),
             _f("0002000002-26-000002", 2000002, "2026-10-27", _book(names=3)),
             _f("0002000003-26-000003", 2000003, "2026-10-27", _book(names=3), report_type="13F COMBINATION REPORT")],
-        "2026-12-15": [
-            _f("0002000001-26-000009", 2000001, "2026-12-15", [_h("MICROSOFT CORP", MSFT, 2_000_000, 5_000)],
+        "2026-11-20": [
+            _f("0002000001-26-000009", 2000001, "2026-11-20", [_h("MICROSOFT CORP", MSFT, 2_000_000, 5_000)],
                form="13F-HR/A", amendment_type="NEW HOLDINGS", amendment_no=1),
-            _f("0002000002-26-000010", 2000002, "2026-12-15", [_h("MICROSOFT CORP", MSFT, 40_000, 100)],
+            _f("0002000002-26-000010", 2000002, "2026-11-20", [_h("MICROSOFT CORP", MSFT, 40_000, 100)],
                form="13F-HR/A", amendment_type="NEW HOLDINGS", amendment_no=1)]})
-    _serve("2026-12-16")
+    _serve("2026-11-21")
     assert _served("SELECT cik, accession, filed, days_late, names, value, top_issuer FROM sec13f_late_reveals") == [
-        ("2000001", "0002000001-26-000009", date(2026, 12, 15), 29, 1, 2_000_000.0, "MICROSOFT CORP")]
+        ("2000001", "0002000001-26-000009", date(2026, 11, 20), 4, 1, 2_000_000.0, "MICROSOFT CORP")]
     assert _served("SELECT cik, report_type, partial, manager_name FROM sec13f_reported_by") == [
         ("2000003", "13F COMBINATION REPORT", True, None)]
