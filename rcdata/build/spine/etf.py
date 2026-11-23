@@ -97,11 +97,28 @@ LEV_INVERSE_NAME = re.compile(
 
 #: A crypto asset by the fund's or trust's name (avo's E, 17 Nov 2026; ``etf_class`` reads it from here).
 CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|zcash|"
-                         r"polkadot|avalanche|cardano|hedera|chainlink|hyperliquid|digital assets?)\b", re.IGNORECASE)
+                         r"polkadot|avalanche|cardano|hedera|chainlink|hyperliquid|digital assets?|digital holdings)\b",
+                         re.IGNORECASE)
+#: A currency or a VIX trust by its name (avo, 23 Nov 2026, "Evet düzenle": FXE, FXY, UUP, UVXY, SVXY).
+CURRENCY_NAME = re.compile(r"\b(currencyshares|currency|dollar index|euro|yen|swiss franc|british pound|yuan)\b", re.I)
+VOLATILITY_NAME = re.compile(r"\b(vix|volatility)\b", re.I)
+#: The classes the trust rule gives, first match wins; anything else is a commodity trust or pool.
+TRUST_CLASSES = ("crypto", "volatility", "currency", "commodity")
+
+
+def trust_class(names) -> str:
+    """The ``asset_class`` of a 1933-Act trust or pool from its names: crypto, VIX, currency, else commodity."""
+    names = [n for n in names if n]
+    for cls, rx in (("crypto", CRYPTO_NAME), ("volatility", VOLATILITY_NAME), ("currency", CURRENCY_NAME)):
+        if any(rx.search(n) for n in names):
+            return cls
+    return "commodity"
+
+
 #: An ``etf`` row that is a **trust** (avo, 23 Nov 2026, "Bence trust lazım"): a 1933-Act grantor trust or commodity
-#: pool, no 40-Act fund -- no N-CEN series, no note, no CEF, and a commodity or crypto class. The one definition.
+#: pool, no 40-Act fund -- no N-CEN series, no note, no CEF, and a class of :data:`TRUST_CLASSES`. The one definition.
 TRUST_SQL = ("series_id IS NULL AND NOT coalesce(is_etn, FALSE) AND NOT coalesce(is_cef, FALSE) "
-             "AND asset_class IN ('commodity', 'crypto')")
+             f"AND asset_class IN {TRUST_CLASSES}")
 
 
 #: The ``security_type`` values of a security that is no fund: an operating company, a SPAC, a preferred, a unit or
@@ -145,7 +162,8 @@ ADV_YEARS = 2
 #: meaning"), filled only where the commodity rule left it NULL. The 103 ids of 20 Nov 2026 but ``unclassified``; an
 #: id not here leaves the column NULL and is one ``etf_category_unmapped`` issue (plan v4 X9). Leveraged, inverse,
 #: option-income and defined-outcome funds keep the class of what they track; their own flags say the rest.
-ASSET_CLASSES = ("equity", "bond", "cash", "commodity", "crypto", "multi_asset", "alternative", "currency")
+ASSET_CLASSES = ("equity", "bond", "cash", "commodity", "crypto", "multi_asset", "alternative", "currency",
+                 "volatility")
 _CATEGORIES = {
     "equity": "asia-pacific asia-pacific-ex-japan canada china communication-services consumer-discretionary "
               "consumer-staples emerging-markets energy europe financials global-large-blend global-large-growth "
@@ -439,8 +457,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                                   f"{cik}: nothing taken from TickerInside"))
         ti = ti if ti is not None and (not raw_cik or ti["cik"] == cik) else None
         fund = ti_funds.get(t) if ti is not None else None
-        asset_class = (("crypto" if any(CRYPTO_NAME.search(n) for n in names if n) else "commodity")
-                       if commodity else None)
+        asset_class = trust_class(names) if commodity else None
         if asset_class is None and fund and fund["category"]:
             asset_class = CATEGORY_ASSET_CLASS.get(fund["category"])
             if asset_class is None:

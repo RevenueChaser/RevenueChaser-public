@@ -210,6 +210,32 @@ def test_a_crypto_trust_is_crypto_and_a_metal_trust_stays_commodity(monkeypatch,
         "IBIT": "crypto", "ETHA": "crypto", "GLD": "commodity"}
 
 
+def test_a_currency_a_vix_and_a_digital_holdings_trust_get_their_own_class(monkeypatch, http_mock):
+    """avo, 23 Nov 2026 ("Evet düzenle"): FXE, UUP, UVXY and EZBC came out ``commodity``; they track a currency, VIX
+    futures and bitcoin. Gold stays commodity."""
+    monkeypatch.setattr(sec_edgar, "SEC_WWW_BASE", "https://sec.test")
+    http_mock.add("company_tickers_exchange.json", {**SEC_FILE, "data": SEC_FILE["data"] + [
+        [1328598, "Invesco CurrencyShares Euro Trust", "FXE", "NYSE"],
+        [1383151, "Invesco DB US Dollar Index Bullish Fund", "UUP", "NYSE"],
+        [1415311, "ProShares Ultra VIX Short-Term Futures ETF 2x Shares", "UVXY", "NYSE"],
+        [1992870, "Franklin Templeton Digital Holdings Trust", "EZBC", "Cboe"]]})
+    fx.add_ncen_routes(http_mock)
+    base.run_request({"dataset": ncen.NAME, "params": {"mode": "backfill", "to": "2026-11-02"}})
+    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-02"}})
+    rows = _etf()
+    assert {t: rows[t]["asset_class"] for t in ("FXE", "UUP", "UVXY", "EZBC", "GLD")} == {
+        "FXE": "currency", "UUP": "currency", "UVXY": "volatility", "EZBC": "crypto", "GLD": "commodity"}
+
+
+def test_trust_class_reads_the_name():
+    assert etf.trust_class(("Invesco CurrencyShares Japanese Yen Trust",)) == "currency"
+    assert etf.trust_class(("ProShares Short VIX Short-Term Futures ETF -1x Shares",)) == "volatility"
+    assert etf.trust_class(("iShares Bitcoin Trust", None)) == "crypto"
+    assert etf.trust_class(("SPDR Gold Shares",)) == "commodity"
+    assert etf.trust_class(("United States Oil Fund LP",)) == "commodity"
+    assert set(etf.TRUST_CLASSES) <= set(etf.ASSET_CLASSES)
+
+
 def test_a_trust_is_an_etf_row_with_no_series_no_note_no_cef_and_a_commodity_or_crypto_class():
     """``etf.TRUST_SQL`` is the one definition ``my_universe`` reads (avo, 23 Nov 2026, option a)."""
     import duckdb
@@ -220,9 +246,10 @@ def test_a_trust_is_an_etf_row_with_no_series_no_note_no_cef_and_a_commodity_or_
         ("DBC", "S1", False, False, "commodity"),           # a 40-Act commodity fund: a series, so a fund
         ("SPY", None, False, False, None),                  # a unit investment trust: no class here
         ("OILX", None, True, False, "commodity"), ("CEFX", None, False, True, "commodity"),
-        ("SOXX", None, False, False, "equity")])
+        ("SOXX", None, False, False, "equity"), ("FXE", None, False, False, "currency"),
+        ("UVXY", None, False, False, "volatility")])
     got = {r[0] for r in con.execute(f"SELECT ticker FROM etf WHERE {etf.TRUST_SQL}").fetchall()}
-    assert got == {"GLD", "IBIT"}
+    assert got == {"GLD", "IBIT", "FXE", "UVXY"}
 
 
 def test_the_columns_later_prs_fill_stay_null(built):
