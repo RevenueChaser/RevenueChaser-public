@@ -113,6 +113,27 @@ def carry_live(con: duckdb.DuckDBPyConnection, ids: list[str], table: str = "pri
         con.execute("DETACH live_carry")
 
 
+def carry_live_as(con: duckdb.DuckDBPyConnection, pairs: dict[str, str], table: str = "price_bar_daily") -> int:
+    """Copy the live file's ``table`` rows of each old id of ``pairs`` under its new id, for the sessions the build
+    holds no row of the new id for (the build's own row wins its session); the rows copied."""
+    from ... import serving
+    if not pairs:
+        return 0
+    con.execute("CREATE OR REPLACE TEMP TABLE _rekey (old_id TEXT, new_id TEXT)")
+    con.executemany("INSERT INTO _rekey VALUES (?, ?)", sorted(pairs.items()))
+    con.execute(f"ATTACH {base.sql_path(serving.live_path(KIND))} AS live_carry (READ_ONLY)")
+    try:
+        before = count(con, table)
+        con.execute(f'''INSERT INTO "{table}" BY NAME
+            SELECT l.* REPLACE (k.new_id AS security_id) FROM live_carry."{table}" l
+            JOIN _rekey k ON k.old_id = l.security_id
+            WHERE NOT EXISTS (SELECT 1 FROM "{table}" b WHERE b.security_id = k.new_id
+                              AND b.session_date = l.session_date)''')
+        return count(con, table) - before
+    finally:
+        con.execute("DETACH live_carry")
+
+
 def view(con: duckdb.DuckDBPyConnection, name: str, schema: list[tuple[str, str]], files=(),
          added_later=()) -> None:
     """``CREATE TEMP VIEW name`` over ``files`` (Parquet, by name), typed by ``schema``: what :func:`create` would
