@@ -1916,7 +1916,7 @@ EXTRAS_JS = r"""<script>
     p.rows.forEach(function(r){
       sec.appendChild(row('prn', [cell(r.filer_name || ''), cell(r.title_of_class || r.name_of_issuer || '', r.cusip), cell(money(r.par), money(r.value) + ' value', 'n')]));
     });
-    sec.appendChild(node('p', 'dx-note', 'Principal (PRN), not shares. Convert holders often short the stock to hedge, so part of the short interest (Short% above) is not a bet on a fall. Shown beside it, never subtracted from it. The issuer is matched by the first six CUSIP characters when exactly one ticker has them.'));
+    sec.appendChild(node('p', 'dx-note', 'Principal (PRN), not shares. Convert holders often short the stock to hedge, so part of the short interest (Short% above) is not a bet on a fall. Shown beside it, never subtracted from it. The issuer is matched by the first six CUSIP characters; when share classes or preferreds share them, the notes go to the class managers hold most.'));
     host.appendChild(sec);
   }
   window.rcDetailExtras = function(td, ticker){
