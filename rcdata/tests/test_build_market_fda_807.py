@@ -130,7 +130,7 @@ def test_no_market_file_reads_as_no_rows():
     assert read.fda_calendar() == [] and read.fda_events() == []
 
 
-def test_the_dataset_is_an_hourly_market_source_and_the_kind_is_market_5_or_later(http_mock):
+def test_the_dataset_is_an_hourly_market_source_and_the_kind_is_market_5(http_mock):
     from revenuechaser.rcdata import scaffold
     assert serving.SERVING_SCHEMA_VERSION["market"] >= 5      # 6 since #1433: ``source`` joined the key
     assert DATASETS[fda.NAME].cadence == "hourly" and DATASETS[fda.NAME].kind == "market"
