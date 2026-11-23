@@ -1023,7 +1023,9 @@ still name a file #860 deleted. That list is #1209's work and the test makes it 
 The page is the library: what data exists, where it comes from, its settings and the complex presses. The live
 view of health and fetch is Grafana on homesrv (avo, 6 Nov 2026), fed by the dashboard's `GET /metrics`
 (`module_settings/metrics.py`, Prometheus text format, scraped every 60 s on loopback). It reads only the ops store,
-the backup manifests and the IBKR login record, never the serving DuckDB files, so the route opens no store session.
+the backup manifests and the IBKR login record, so the route opens no store session. The one serving file it opens
+is the live `spine.duckdb`, read-only, for the Tier A rows of type `unknown`, and only once per spine build: the
+reading is kept until the builder swaps a new file in.
 The builder timer is read in the background at most once a minute. A part that cannot be read leaves its family
 empty and counts one `rc_metrics_read_errors_total{part}` (every part starts at 0); a dataset that cannot be read is left
 out whole and counted under `datasets`, and the others still report. The scrape itself never fails.
@@ -1047,6 +1049,8 @@ code:
 | `rc_dataset_paused` | `dataset`, `kind` | 1 when its schedule is paused |
 | `rc_dataset_mode` | `dataset`, `kind`, `mode` | 1 for the mode the hourly pass runs it in: off, raw, parquet, full |
 | `rc_dataset_open_issues` | `dataset`, `kind` | open build issues |
+| `rc_dataset_coverage` | `dataset`, `kind` | the share the newest check that built reported (`spine/security`: Tier A with a CUSIP); absent when it reported none |
+| `rc_spine_tier_a_unknown_type` | | Tier A rows of security type `unknown` in the live spine (#1334: under 30); absent while there is no spine file |
 | `rc_builder_last_run_timestamp_seconds` | | when the builder last started a run |
 | `rc_builder_timer_on` | | 1 on, 0 off, absent when not known |
 | `rc_backup_newest_timestamp_seconds` | `kind`, `step` | the newest backup of a kind, per backup step (`duckdb`, `boards`, `ops`, `uw-raw`, `edgar-docs`); the old store's files are not reported |
@@ -1057,7 +1061,7 @@ code:
 | `rc_news_lane_fresh_timestamp_seconds` | `lane` | when the newest headline of a News lane (`market`, `stocks`, `x`) was fetched; absent for a lane with no row |
 | `rc_news_lane_ok_timestamp_seconds` | `lane` | when a News lane last came back with nothing refused; the `market` lane's is the listener's own last write |
 | `rc_news_lane_late_after_seconds` | `lane` | how long that lane may go without one, from its own cadence (`market`: the listener's own staleness); the Grafana rule reads it instead of a limit of its own |
-| `rc_threshold` | `name` | the page's alarm thresholds, from `control.py`, so an alert rule does not retype them |
+| `rc_threshold` | `name` | the page's alarm thresholds, from `control.py`, so an alert rule does not retype them; the spine health alerts read `spine_coverage_min` (the screen's coverage target), `spine_tier_a_unknown_max` and `spine_issues_rise_share` |
 | `rc_metrics_read_errors_total` | `part` | readers that failed since the dashboard started |
 | `rc_metrics_build_seconds` | | what the scrape cost |
 
