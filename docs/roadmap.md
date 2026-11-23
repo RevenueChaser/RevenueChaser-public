@@ -76,7 +76,7 @@ gh api graphql -f query='
 - **From an issue** (keeps full text, comments, PR links in the repo):
 
   ```bash
-  gh issue create -R alsanvolkan/RevenueChaser-public --title "…" --body "…"
+  gh issue create -R RevenueChaser/RevenueChaser-public --title "…" --body "…"
   gh project item-add 1 --owner alsanvolkan --url <issue-url>
   ```
 
