@@ -305,11 +305,15 @@ def test_a_re_keyed_id_moves_to_its_spine_id_and_is_not_served_twice(live):
                     "FROM price_bar_daily WHERE security_id = ?", [AAPL])
         old_days = sorted(r[0] for r in con.execute(
             "SELECT session_date FROM price_bar_daily WHERE security_id = ?", [OLD_AAPL]).fetchall())
+        # and a cik: id with no spine row of its CIK and ticker: a security no source returns, carried as before
+        con.execute("INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('cik:1:GONECO' AS security_id) "
+                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
     finally:
         con.close()
     first = old_days[0]
     # The build: the new id has every session but the oldest, the old id none (no source keys it any more).
-    build = _shrunk_build(f"security_id = '{OLD_AAPL}' OR (security_id = '{AAPL}' AND session_date = '{first}')")
+    build = _shrunk_build(f"security_id IN ('{OLD_AAPL}', 'cik:1:GONECO') "
+                          f"OR (security_id = '{AAPL}' AND session_date = '{first}')")
     try:
         build.execute("INSERT INTO stg_spine VALUES (?, '320193', 'AAPL')", [AAPL])
         ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
@@ -320,25 +324,7 @@ def test_a_re_keyed_id_moves_to_its_spine_id_and_is_not_served_twice(live):
             "SELECT session_date FROM price_bar_daily WHERE security_id = ?", [AAPL]).fetchall())
         assert new_days == old_days                                         # the oldest session moved over
         assert any("re-keyed" in n and f"{OLD_AAPL} -> {AAPL}" in n for n in ctx.notes), ctx.notes
-    finally:
-        build.close()
-
-
-def test_an_id_the_spine_did_not_re_key_is_carried_as_before(live):
-    """The other side: a ``cik:`` id whose spine row is gone (no spine row of its CIK and ticker) is a security no
-    source returns, and keeps its stored bars under its own id."""
-    import duckdb
-    con = duckdb.connect(str(serving.live_path("prices")))
-    try:
-        con.execute(f"INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('cik:1:GONECO' AS security_id) "
-                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
-    finally:
-        con.close()
-    build = _shrunk_build("security_id = 'cik:1:GONECO'")
-    try:
-        build.execute("INSERT INTO stg_spine VALUES (?, '320193', 'AAPL')", [AAPL])
-        prices_serving._refuse_shrink(base.RunContext(run_id="t", dataset=prices_serving.NAME), build)
         assert build.execute("SELECT count(*) FROM price_bar_daily WHERE security_id = 'cik:1:GONECO'"
-                             ).fetchone()[0] > 0
+                             ).fetchone()[0] > 0                            # the un-re-keyed id is carried
     finally:
         build.close()
