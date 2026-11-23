@@ -1082,7 +1082,9 @@ for the Grafana Jobs board's rows (avo, 23 Nov 2026): `about` (one line of what 
 served tables, else its cadence) and `order` (its place in its kind's flow: the sources slowest cadence first, each
 in registry order, the build last), `took_s` (the own seconds of its last run that was not skipped), `rows`,
 `coverage`, `coverage_target`, `checks` and `recent` (Settings' checks and last three checks) and `issue_kinds`
-(open build issues by kind, the most first, the newest ten of each). A pass fetches its members one after another
+(open build issues by kind, the most first, the newest ten of each, and `issues_url`), and `label` (its short
+name on the board, `DatasetCard.short`, else its card's label). `GET /api/build/issues/<dataset>?kind=<kind>`
+(`metrics.issue_list`) is the whole open list, of one kind or all, newest first, at most 5,000 rows. A pass fetches its members one after another
 and builds the kind once, so a member's run row spans the others' work: each member's step clock reads `waiting`
 while another member fetches or builds (`base.WAITING`), and `took_s` is every step but that one
 (`base.own_seconds`). A run recorded before `waiting` existed counts its wait in its `parquet` step.

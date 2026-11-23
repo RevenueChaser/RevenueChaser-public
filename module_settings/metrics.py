@@ -21,6 +21,7 @@ change on both sides.
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 import threading
 import time
@@ -420,8 +421,9 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
     ``took_s`` (the own seconds of its last run that was not skipped, ``base.own_seconds``: the time a pass spent
     on the other members' fetches and builds left out; None before step times were recorded), ``rows``,
     ``coverage`` and ``coverage_target`` (that run's), ``checks`` and ``recent`` (Settings' checks list and last
-    three checks) and ``issue_kinds``: its open build issues by kind, the most first, each ``{kind, count, rows}``
-    with the newest ``ISSUE_ROWS`` as ``{key, detail, found_on}``."""
+    three checks), ``label`` (its short name on the board, ``DatasetCard.short``, else its card's label) and
+    ``issue_kinds``: its open build issues by kind, the most first, each ``{kind, count, rows, issues_url}`` with the
+    newest ``ISSUE_ROWS`` as ``{key, detail, found_on}`` and the route of the kind's whole list (``issue_list``)."""
     from revenuechaser.module_settings import newdata
     from revenuechaser.rcdata import ops
     now = now or datetime.now(timezone.utc)
@@ -445,6 +447,7 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
     for row in datasets_list(datasets):
         name, ds = row["name"], datasets[row["name"]]
         card = screen.DATASETS.get(name)
+        row["label"] = (card.short or card.label) if card else name
         row["about"] = (card.about or card.label) if card else name
         row["badges"] = [{"id": p, "name": names.get(p, p), "icon": control.ICONS.get(p, ""),
                           "color": colour.get(p, control.SOURCE_COLORS[0]), "paid": p in paid}
@@ -471,7 +474,8 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
                 "checks": newdata._checks_list(name, base_check, last, missed, n_issues, newdata._held(name, ds)),
                 "recent": newdata.recent_checks(recent),
                 "issue_kinds": [{**k, "rows": [{f: i[f] for f in ("key", "detail", "found_on")}
-                                               for i in ops.open_issues_of_kind(name, k["kind"], ISSUE_ROWS)]}
+                                               for i in ops.open_issues_of_kind(name, k["kind"], ISSUE_ROWS)],
+                                 "issues_url": f"/api/build/issues/{name}?kind={quote(k['kind'])}"}
                                 for k in ops.open_issue_kinds(name)],
                 "state": state, "reason": reason, "cadence": cadence, "cadence_own": raw.get("cadence"),
                 "next_due": str(raw.get("next_due") or "")[:10] or None, "paused": schedule["paused"],
@@ -496,6 +500,21 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
 
 #: How many of each kind's open build issues a dataset's detail row lists (the Jobs board's problem bars).
 ISSUE_ROWS = 10
+#: The most rows ``issue_list`` answers: the spine's whole list was 886 on 23 Nov 2026.
+ISSUE_LIST_MAX = 5000
+
+
+def issue_list(dataset: str, kind: str | None = None) -> dict:
+    """``GET /api/build/issues/<dataset>?kind=<kind>``: the open build issues of ``dataset`` (of one kind, or all),
+    newest first, at most ``ISSUE_LIST_MAX``; ``count`` is how many are open. The Jobs board's "all N" link."""
+    from revenuechaser.rcdata import ops
+    if kind:
+        count = next((k["count"] for k in ops.open_issue_kinds(dataset) if k["kind"] == kind), 0)
+        rows = ops.open_issues_of_kind(dataset, kind, ISSUE_LIST_MAX)
+    else:
+        count, rows = ops.open_issues(dataset, limit=ISSUE_LIST_MAX)
+    return {"dataset": dataset, "kind": kind or None, "count": count,
+            "issues": [{f: i[f] for f in ("kind", "key", "detail", "found_on")} for i in rows]}
 
 
 def _flow(rows: list[dict], registry: list[str]) -> None:

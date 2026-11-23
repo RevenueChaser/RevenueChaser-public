@@ -1916,6 +1916,18 @@ def _served_answer(read):
         return jsonify({"ok": False, "error": f"the file could not be read right now: {str(exc)[:200]}"}), 503
 
 
+@app.route("/api/build/issues/<path:dataset>")
+def api_build_issues(dataset: str):
+    """The open build issues of one dataset, newest first: ``?kind=<kind>`` for one kind (``metrics.issue_list``).
+    The Jobs board's "all N" link (``issues_url`` of ``/api/build/datasets?detail=1``). A dataset the builder does
+    not know is 404."""
+    from revenuechaser.module_settings import metrics
+
+    if _build_dataset(dataset) is None:
+        return jsonify({"ok": False, "error": "unknown dataset"}), 404
+    return jsonify({"ok": True, **metrics.issue_list(dataset, request.args.get("kind"))})
+
+
 @app.route("/api/build/served/<kind>")
 def api_build_served(kind: str):
     """One served DuckDB file whole, for the Grafana Jobs board's file panel (avo, 23 Nov 2026): ``schema_version``,
