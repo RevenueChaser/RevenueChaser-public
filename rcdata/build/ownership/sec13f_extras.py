@@ -119,10 +119,12 @@ def build(con: duckdb.DuckDBPyConnection, pad) -> dict[str, int]:
                sum(value) AS value, count(*) FILTER (WHERE contracts) AS contracts_read
         FROM _optx GROUP BY ALL ORDER BY ticker, period, put_call, market_maker""")}
     counts["sec13f_option_holders"] = common.create_table(con, "sec13f_option_holders", OPTION_HOLDERS, f"""
-        SELECT ticker, period, cik, max(filer_name), bool_or(market_maker),
-               sum(shares) FILTER (WHERE put_call = 'CALL'), sum(value) FILTER (WHERE put_call = 'CALL'),
-               sum(shares) FILTER (WHERE put_call = 'PUT'), sum(value) FILTER (WHERE put_call = 'PUT'),
-               count(*) FILTER (WHERE contracts)
+        SELECT ticker, period, cik, max(filer_name) AS filer_name, bool_or(market_maker) AS market_maker,
+               sum(shares) FILTER (WHERE put_call = 'CALL') AS call_shares,
+               sum(value) FILTER (WHERE put_call = 'CALL') AS call_value,
+               sum(shares) FILTER (WHERE put_call = 'PUT') AS put_shares,
+               sum(value) FILTER (WHERE put_call = 'PUT') AS put_value,
+               count(*) FILTER (WHERE contracts) AS contracts_read
         FROM _optx WHERE period >= DATE '{DETAIL_FROM}'
         GROUP BY ticker, period, cik ORDER BY ticker, period, cik""")
     counts["sec13f_filer_options"] = common.create_table(con, "sec13f_filer_options", FILER_OPTIONS, f"""
@@ -139,8 +141,8 @@ def build(con: duckdb.DuckDBPyConnection, pad) -> dict[str, int]:
                sum(shares) AS par, sum(value) AS value
         FROM _prnx GROUP BY ALL ORDER BY ticker, period""")
     counts["sec13f_prn_holders"] = common.create_table(con, "sec13f_prn_holders", PRN_HOLDERS, f"""
-        SELECT ticker, period, cik, max(filer_name), cusip, max(name_of_issuer), max(title_of_class),
-               sum(shares), sum(value)
+        SELECT ticker, period, cik, max(filer_name) AS filer_name, cusip, max(name_of_issuer) AS name_of_issuer,
+               max(title_of_class) AS title_of_class, sum(shares) AS par, sum(value) AS value
         FROM _prnx WHERE period >= DATE '{DETAIL_FROM}'
         GROUP BY ticker, period, cik, cusip ORDER BY ticker, period, cik, cusip""")
     counts["sec13f_reported_by"] = _reported_by(con)
