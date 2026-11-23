@@ -324,7 +324,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     trusts = {t for (t,) in con.execute(f"SELECT ticker FROM {etf_mod.TABLE} WHERE {etf_mod.TRUST_SQL}").fetchall()}
     for r in kept.values():
         if r["kind"] == ETF and r["ticker"] in trusts:
-            r["kind"] = TRUST
+            pass  # mutation: the trust kind is never set
     by_hand = {r["ticker"]: r["reason"] for r in removes if r["ticker"] in removed}
     issues.extend(_undecided_issue(con, undecided, kept, removed))
     issues.extend(_held_issue(held, kept))
