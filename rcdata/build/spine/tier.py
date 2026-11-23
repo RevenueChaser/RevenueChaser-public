@@ -1,4 +1,4 @@
-"""Tier rule v6: which SEC-file names the boards screen (Tier A) and why the others are not.
+"""Tier rule v7: which SEC-file names the boards screen (Tier A) and why the others are not.
 
 The rule is the one ``equity_universe`` and ``core/universe.py`` already apply, written once for the spine:
 
@@ -51,7 +51,7 @@ import re
 
 from ....core.identity.types import _COMMON_LIKE, EXCLUDED_TYPES, classify_type, sic_int
 
-VERSION = 6
+VERSION = 7
 # v6 (#1334, plan v4 step 6): K-B notes are etp (Tier B), K-G a name Compustat delisted is Tier C, and K-C links
 # more names to Compustat (so tpci, SIC and the exchange code reach them): three rules that change ``tier``.
 # TXSE (v5, avo 22 Nov 2026): the SEC file names it for Texas companies that list there beside their old exchange.
@@ -112,7 +112,9 @@ def tier(exchange: str | None, security_type: str | None, compustat_exchg: int |
 # Compustat's issue type code (``comp.security.tpci``) of the linked security, used only when OpenFIGI and the name
 # rules leave a name untyped (review should-fix 6). Only the codes read with confidence are mapped; not verified
 # against WRDS from here, so an unexpected code types nothing.
-TPCI_TYPES = {"0": "common", "F": "adr", "%": "etp"}
+# ``R`` (v7, avo 23 Nov 2026): exchange-traded debt -- notes, baby bonds, ETNs, trust certificates; every active US
+# ``R`` security of the 22 Nov 2026 snapshot (321) is one.
+TPCI_TYPES = {"0": "common", "F": "adr", "%": "etp", "R": "etp"}
 UNTYPED = ("unknown", "other", None)
 
 # 2a. Compustat's company SIC (``comp.company.sic``). 6770 is "blank checks": the identity master already types a

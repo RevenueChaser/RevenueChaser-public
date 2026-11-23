@@ -636,7 +636,7 @@ def test_the_spine_gives_the_type_rules_the_exchange(built, monkeypatch):
     run_all("2026-10-28", names=(sec_tickers.NAME, security.NAME))
     got = {t: (_sec(t)["security_type"], _sec(t)["tier"]) for t in ("SOMEW", "FNGU", "XETP", "SOME-UN")}
     assert got == {"SOMEW": ("warrant", "B"), "FNGU": ("etp", "B"), "XETP": ("etp", "B"), "SOME-UN": ("unit", "B")}
-    assert _sec("MSFT")["tier_rule"] == tier.VERSION == 6
+    assert _sec("MSFT")["tier_rule"] == tier.VERSION == 7
 
 
 def test_the_spine_uses_tpci_for_a_name_openfigi_did_not_answer(built, monkeypatch):
