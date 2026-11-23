@@ -372,6 +372,33 @@ def test_a_label_on_a_security_the_spine_knows_is_no_fund_gives_no_etf_row_and_o
     assert "adr" in pam and "openfigi" in pam
 
 
+def test_a_fund_record_under_another_cik_does_not_make_a_stock_ticker_a_fund():
+    """CORZ (Grok xReview, 23 Nov 2026; avo "Ok yap"): N-CEN files Tradr's "2X Long CORZ Daily ETF" under the
+    ticker CORZ, Core Scientific's. A fund record counts only under the security's own CIK, so the stock's ticker gets
+    no etf row. KCCA (carbon allowances) is a commodity fund by its name, whatever its collateral says."""
+    import duckdb
+    from revenuechaser.rcdata.build.spine import stage
+    con = duckdb.connect()
+    stage.create(con, av_listing.STAGING, av_listing.SCHEMA)
+    stage.create(con, ncen.STAGING, ncen.SCHEMA)
+    stage.create(con, ncen.FILERS, ncen.FILER)
+    stage.create(con, "stg_sec_mf", sec_tickers_mf.SCHEMA)
+    con.execute("CREATE TABLE security (ticker TEXT, cik TEXT, name TEXT, security_type TEXT, type_source TEXT, "
+                "source_as_of DATE, fetched_at DOUBLE)")
+    con.executemany("INSERT INTO security VALUES (?, ?, ?, ?, ?, NULL, NULL)", [
+        ("CORZ", "1839341", "Core Scientific, Inc./tx", "common", "openfigi"),
+        ("NCCO", "3000011", "EXAMPLE N-CEN CO", "common", "openfigi")])
+    con.executemany(f"INSERT INTO {ncen.STAGING} (ticker, cik, series_id, fund_name, is_etf) VALUES (?, ?, ?, ?, ?)", [
+        ("CORZ", "0001587982", "S000095067", "Tradr 2X Long CORZ Daily ETF", True),
+        ("NCCO", "0003000011", "S000000011", "Example N-CEN Co Fund", True),     # its own CIK, zero-padded
+        ("KCCA", "1592900", "S000071111", "KraneShares California Carbon Allowance Strategy ETF", True)])
+    issues: list = []
+    rows = {r["ticker"]: r for r in etf.rows(base.RunContext(run_id="r", dataset=security.NAME), con, issues)}
+    assert "CORZ" not in rows and "NCCO" in rows
+    assert [k for kind, k, _ in issues if kind == "etf_label_not_a_fund"] == ["CORZ"]
+    assert rows["KCCA"]["asset_class"] == "commodity"
+
+
 def test_the_not_a_fund_issue_kind_is_registered():
     assert "etf_label_not_a_fund" in security.ISSUE_KINDS
 

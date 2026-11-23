@@ -33,8 +33,8 @@ Such a row is a **trust** to ``my_universe`` (:data:`TRUST_SQL`), not an ETF.
 listed notes ``ETF`` (PAM, an ADR; PFX; SPAC units), and the spine's ``etp`` type reaches baby bonds through
 Compustat's ``tpci`` ``R`` and the note name rule (OXLCG, ECCU). A ticker ``security`` types
 :data:`NOT_A_FUND_TYPES`, or ``etp`` by :data:`NOTE_TYPE_SOURCES`, for which the SEC holds no fund record (no
-``sec/company_tickers_mf`` row, no N-CEN series with the ticker) gets no row here, and one ``etf_label_not_a_fund``
-issue. A CEF, an ETN by its issuer and a plain fund ``etp`` (SPY, GLD) are untouched.
+``sec/company_tickers_mf`` row, no N-CEN series with the ticker, under the security's own CIK) gets no row here,
+and one ``etf_label_not_a_fund`` issue. A CEF, an ETN by its issuer and a plain fund ``etp`` (SPY, GLD) are untouched.
 """
 from __future__ import annotations
 
@@ -119,6 +119,11 @@ def trust_class(names) -> str:
 #: pool, no 40-Act fund -- no N-CEN series, no note, no CEF, and a class of :data:`TRUST_CLASSES`. The one definition.
 TRUST_SQL = ("series_id IS NULL AND NOT coalesce(is_etn, FALSE) AND NOT coalesce(is_cef, FALSE) "
              f"AND asset_class IN {TRUST_CLASSES}")
+
+
+#: A carbon-allowance fund (KCCA, KRBN): a commodity whatever its collateral or category says (Grok xReview,
+#: 23 Nov 2026; avo "Ok yap").
+CARBON_NAME = re.compile(r"\bcarbon (?:allowance|credit)s?\b|\bcarbon strategy\b", re.I)
 
 
 #: The ``security_type`` values of a security that is no fund: an operating company, a SPAC, a preferred, a unit or
@@ -415,12 +420,15 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                                ORDER BY filing_date DESC NULLS LAST, accession DESC, series_id) = 1),
              etp AS (SELECT ticker, cik, name, source_as_of, fetched_at FROM security WHERE security_type = 'etp'),
              cef AS (SELECT ticker FROM security WHERE security_type = 'cef'),
-             not_fund AS (SELECT ticker, security_type, type_source FROM security
+             -- a fund record counts only under the security's own CIK (CORZ: N-CEN files Tradr's 2x ETF under it)
+             not_fund AS (SELECT ticker, security_type, type_source FROM security s
                           WHERE (security_type IN ({", ".join(f"'{t}'" for t in NOT_A_FUND_TYPES)})
                                  OR (security_type = 'etp'
                                      AND type_source IN ({", ".join(f"'{t}'" for t in NOTE_TYPE_SOURCES)})))
-                            AND ticker NOT IN (SELECT ticker FROM stg_sec_mf WHERE ticker IS NOT NULL)
-                            AND ticker NOT IN (SELECT ticker FROM {NCEN} WHERE ticker IS NOT NULL))
+                            AND NOT EXISTS (SELECT 1 FROM (SELECT ticker, cik FROM stg_sec_mf
+                                                          UNION ALL SELECT ticker, cik FROM {NCEN}) f
+                                            WHERE f.ticker = s.ticker AND (s.cik IS NULL
+                                                  OR try_cast(f.cik AS BIGINT) = try_cast(s.cik AS BIGINT))))
         SELECT t.ticker, nf.security_type AS nf_type, nf.type_source AS nf_source,
                av.ticker IS NOT NULL AS in_av, nc.ticker IS NOT NULL AS in_nc,
                etp.ticker IS NOT NULL AS in_etp, cef.ticker IS NOT NULL AS is_cef,
@@ -440,7 +448,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     issues += [("etf_label_not_a_fund", r["ticker"],
                 f"{'Alpha Vantage lists' if r['in_av'] else 'the spine types'} {r['ticker']} "
                 f"({r['av_name'] or r['etp_name']}) as an ETF, but security types it {r['nf_type']} by "
-                f"{r['nf_source']} and the SEC holds no fund record for it: no etf row")
+                f"{r['nf_source']} and the SEC holds no fund record for it under its CIK: no etf row")
                for r in found if r["nf_type"]]
     found = [r for r in found if not r["nf_type"]]
     filers = {r[0] for r in con.execute(f"SELECT DISTINCT cik FROM {FILERS}").fetchall()}
@@ -468,7 +476,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                                   f"{cik}: nothing taken from TickerInside"))
         ti = ti if ti is not None and (not raw_cik or ti["cik"] == cik) else None
         fund = ti_funds.get(t) if ti is not None else None
-        asset_class = trust_class(names) if commodity else None
+        asset_class = (trust_class(names) if commodity else
+                       "commodity" if any(CARBON_NAME.search(n) for n in names if n) else None)
         if asset_class is None and fund and fund["category"]:
             asset_class = CATEGORY_ASSET_CLASS.get(fund["category"])
             if asset_class is None:
