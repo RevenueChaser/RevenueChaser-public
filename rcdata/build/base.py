@@ -1530,7 +1530,6 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             if done is not None:
                 end(ctx, done)
             else:
-                ctx.step = WAITING                  # the next members' fetches are not this dataset's time
                 ready.append((req, ds, ctx, note))
         wanted = [r for r in ready if r[3] is None]
         if not wanted:
