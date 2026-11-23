@@ -131,11 +131,21 @@ def build(con: duckdb.DuckDBPyConnection, pad) -> dict[str, int]:
         SELECT cik, period, max(filer_name) AS filer_name, {market_maker_sql('max(filer_name)')} AS market_maker,
                put_call, count(DISTINCT cusip) AS names, sum(value) AS value
         FROM _opt GROUP BY cik, period, put_call ORDER BY period, cik, put_call""")
+    # A note's issuer is its CUSIP6's ticker that 13F managers hold the most long dollars of that quarter, so an
+    # issuer whose preferreds or second share class share the CUSIP6 (MSTR and STRK, BF-A and BF-B) keeps its
+    # notes; a CUSIP6 no one holds long that quarter falls back to the spine's, when only one ticker has it.
     con.execute("""CREATE OR REPLACE TEMP TABLE _prnx AS
-        WITH issuer AS (SELECT left(cusip, 6) AS c6, min(ticker) AS ticker FROM _sp_security
-                        WHERE cusip IS NOT NULL AND length(cusip) >= 6 AND ticker IS NOT NULL
-                        GROUP BY 1 HAVING count(DISTINCT ticker) = 1)
-        SELECT i.ticker, p.* FROM _prn p JOIN issuer i ON i.c6 = left(p.cusip, 6)""")
+        WITH held AS (SELECT left(cusip, 6) AS c6, period, ticker, sum(value) AS v FROM sec13f_cusip_map
+                      WHERE ticker IS NOT NULL AND length(cusip) >= 6 GROUP BY ALL),
+             by_value AS (SELECT c6, period, first(ticker ORDER BY v DESC NULLS LAST, ticker) AS ticker
+                          FROM held GROUP BY c6, period),
+             spine AS (SELECT left(cusip, 6) AS c6, min(ticker) AS ticker FROM _sp_security
+                       WHERE cusip IS NOT NULL AND length(cusip) >= 6 AND ticker IS NOT NULL
+                       GROUP BY 1 HAVING count(DISTINCT ticker) = 1)
+        SELECT coalesce(b.ticker, s.ticker) AS ticker, p.* FROM _prn p
+        LEFT JOIN by_value b ON b.c6 = left(p.cusip, 6) AND b.period = p.period
+        LEFT JOIN spine s ON s.c6 = left(p.cusip, 6)
+        WHERE coalesce(b.ticker, s.ticker) IS NOT NULL""")
     counts["sec13f_prn_par"] = common.create_table(con, "sec13f_prn_par", PRN, """
         SELECT ticker, period, count(DISTINCT cik) AS filers, count(DISTINCT cusip) AS cusips,
                sum(shares) AS par, sum(value) AS value

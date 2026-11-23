@@ -65,9 +65,11 @@ def test_the_market_maker_names_match_as_whole_words_only():
                    ("ARCTCO CAPITAL", False), ("SIGMA PLANNING", False), (None, False)]
 
 
-def test_convertible_par_sums_by_the_one_issuer_its_cusip6_names(monkeypatch, http_mock):
-    """Two funds hold MSFT notes (CUSIP6 594918, MSFT's alone); a BF note's CUSIP6 is two share classes' and is left
-    out rather than guessed. Par is principal, never shares, and stays off the long book."""
+def test_convertible_par_sums_by_the_issuer_its_cusip6_names(monkeypatch, http_mock):
+    """Two funds hold MSFT notes (CUSIP6 594918, MSFT's alone). A BF note's CUSIP6 is two share classes' (as MSTR's is
+    its common's and its preferreds'): it goes to the class managers hold the most long dollars of, BF-A in this
+    book ($6,000 a filer against BF-B's $5,800), never dropped. Par is principal, never shares, and stays off the long
+    book."""
     _world(monkeypatch, http_mock, {"2026-10-27": [
         _f("0002000001-26-000001", 2000001, "2026-10-27", _book() + [
             _h("MICROSOFT CORP NOTE 0.5% 2030", "594918AX2", 1_100_000, 1_000_000, sh_type="PRN"),
@@ -76,9 +78,11 @@ def test_convertible_par_sums_by_the_one_issuer_its_cusip6_names(monkeypatch, ht
             _h("MICROSOFT CORP NOTE 0.5% 2030", "594918AX2", 550_000, 500_000, sh_type="PRN")]),
         _f("0002000003-26-000003", 2000003, "2026-10-27", _book())]})
     _serve()
-    assert _served("SELECT ticker, filers, cusips, par, value FROM sec13f_prn_par") == [
-        ("MSFT", 2, 1, 1_500_000.0, 1_650_000.0)]
-    assert _served("SELECT ticker, cik, cusip, name_of_issuer, par, value FROM sec13f_prn_holders ORDER BY cik") == [
+    assert _served("SELECT ticker, filers, cusips, par, value FROM sec13f_prn_par ORDER BY ticker") == [
+        ("BF-A", 1, 1, 500_000.0, 500_000.0), ("MSFT", 2, 1, 1_500_000.0, 1_650_000.0)]
+    assert _served("SELECT ticker, cik, cusip, name_of_issuer, par, value FROM sec13f_prn_holders "
+                   "ORDER BY ticker, cik") == [
+        ("BF-A", "2000001", "115637AB6", "BROWN FORMAN NOTE", 500_000.0, 500_000.0),
         ("MSFT", "2000001", "594918AX2", "MICROSOFT CORP NOTE 0.5% 2030", 1_000_000.0, 1_100_000.0),
         ("MSFT", "2000002", "594918AX2", "MICROSOFT CORP NOTE 0.5% 2030", 500_000.0, 550_000.0)]
     from revenuechaser.rcdata import read as rcread
