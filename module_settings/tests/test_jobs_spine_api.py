@@ -253,3 +253,38 @@ def test_the_served_spine_carries_the_funnel_the_tiers_and_my_universe():
     assert mu["rule_values"]["etf_adv_floor"] == 10_000_000 and mu["rule_values"]["etf_adv_exit_floor"] == 8_000_000
     sample = newdata.read_served_sample("spine", "equity_universe", NOW)
     assert 0 < len(sample["rows"]) <= 6 and sample["columns"][0]["name"] == "ticker"
+
+
+def test_a_row_carries_settings_wrds_difference_command_backfill_cost_and_each_check_has_a_time():
+    """avo, 23 Nov 2026 18:14 ("close your still missing list"): what Settings' card shows and the detail row did
+    not send -- the WRDS difference, the run-by-hand command, backfill progress and cost -- from the card's own
+    functions, and each recent check's time (its run's start), not only its day."""
+    ds = "spine/security"
+    ops.start_run("r-at", ds, "queue")
+    ops.finish_run("r-at", "ok")
+    ops.record_check(ds, "unchanged", run_id="r-at")
+    ops.record_check(ds, "unchanged")
+    rows = _detail()
+    assert [r["at"] for r in rows[ds]["recent"]] == [None, newdata._iso_utc(ops.run_started_at("r-at"))]
+    for name in newdata.WRDS_DIFFERENCE:
+        if name in rows:
+            assert rows[name]["wrds"] == newdata._wrds_difference(name)
+    assert rows[ds]["wrds"] is None
+    for name, row in rows.items():
+        d = newdata._datasets()[name]
+        view = newdata.BACKFILL[name](NOW) if name in newdata.BACKFILL else None
+        assert row["backfill"] == view, name
+        assert row["cost"] == newdata._cost(name, view, {}), name
+        want = ((newdata.ATTENDED_COMMANDS.get(name) or newdata.attended_command(d.kind))
+                if getattr(d, "attended", False) else None)
+        assert row["attended_command"] == want, name
+    assert any(n in rows for n in newdata.BACKFILL), "a dataset with a backfill view is in the registry"
+
+
+def test_the_settings_card_gives_its_recent_checks_the_same_time():
+    ds = "sec/ncen"
+    ops.start_run("r-ncen", ds, "queue")
+    ops.finish_run("r-ncen", "ok")
+    ops.record_check(ds, "changed", run_id="r-ncen")
+    got = newdata.recent_checks(ops.recent_checks(ds))
+    assert got[0]["at"] == newdata._iso_utc(ops.run_started_at("r-ncen"))
