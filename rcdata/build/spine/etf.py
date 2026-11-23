@@ -380,6 +380,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                           WHERE (security_type IN ({", ".join(f"'{t}'" for t in NOT_A_FUND_TYPES)})
                                  OR (security_type = 'etp'
                                      AND type_source IN ({", ".join(f"'{t}'" for t in NOTE_TYPE_SOURCES)})))
+                            AND ticker NOT IN (SELECT ticker FROM stg_sec_mf WHERE ticker IS NOT NULL)
                             AND ticker NOT IN (SELECT ticker FROM {NCEN} WHERE ticker IS NOT NULL))
         SELECT t.ticker, nf.security_type AS nf_type, nf.type_source AS nf_source,
                av.ticker IS NOT NULL AS in_av, nc.ticker IS NOT NULL AS in_nc,
