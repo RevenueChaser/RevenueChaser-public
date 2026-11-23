@@ -148,7 +148,7 @@ class PublicEconomicCalendar:
         tv = _json(base.http_get(ctx, "tradingview", url, params=params, headers=headers))
         fed = _json(base.http_get(ctx, "fed", f"{FED_BASE}/json/calendar.json"))
         empty = [src for src, (rows, _) in (("tradingview", tradingview_rows(tv)), ("fed", fed_rows(fed))) if not rows]
-        if False and empty:  # MUTATION CHECK
+        if empty:
             # Both or nothing (the module's note): a day missing one source would retire its rows on the News board.
             ctx.issue("source_empty", as_of.isoformat(), f"no usable row from {', '.join(empty)}")
             raise base.ProviderEmpty(f"{NAME}: no rows from {', '.join(empty)}")
