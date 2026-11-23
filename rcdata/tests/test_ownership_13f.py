@@ -114,6 +114,20 @@ def test_a_filing_before_2023_reports_value_in_thousands(feed):
         (500000.0, 500_000_000.0)]
 
 
+def test_the_quarter_index_is_read_under_its_own_header():
+    """#1467: ``full-index/<YYYY>/QTR<q>/master.idx`` spells its last column ``Filename`` (line 10 of the 2014 Q2
+    file, read on homesrv 23 Nov 2026); the daily index spells it ``File Name``. Read as not the index, the 2014 Q2
+    gap stopped every 13F and Form 4 run on the same day."""
+    body = "\n".join(["Description:           Master Index of EDGAR Dissemination Feed",
+                      "Last Data Received:    June 30, 2014", "Comments:              webmaster@sec.gov",
+                      "Anonymous FTP:         ftp://ftp.sec.gov/edgar/", "", "", "", "",
+                      "CIK|Company Name|Form Type|Date Filed|Filename", "-" * 80,
+                      "1000001|ALPHA CAPITAL|13F-HR|2014-05-15|edgar/data/1000001/0001000001-14-000001.txt",
+                      "1000001|ALPHA CAPITAL|4|2014-05-16|edgar/data/1000001/0001000001-14-000002.txt"]).encode()
+    assert [(r["form"], r["filed"], r["accession"]) for r in edgar.parse_index(body, filed=date(2014, 5, 15))] == [
+        ("13F-HR", date(2014, 5, 15), "0001000001-14-000001")]
+
+
 def test_a_day_already_walked_is_not_asked_again(feed, http_mock):
     _run()
     http_mock.requests.clear()
