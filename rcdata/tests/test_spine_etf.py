@@ -366,6 +366,15 @@ def test_the_nport_mix_rule(mix, lev, mm, cls):
     assert etf.nport_class(mix, lev=lev, mm=mm) == cls
 
 
+@pytest.mark.parametrize("mix, cls", [
+    ({"equity": 96.0, "derivative": 2.0}, "equity"),        # a covered-call fund holds the shares it writes on
+    ({"debt": 100.0, "derivative": 1.0}, None),             # a buffer fund's T-bills: its exposure is the options
+    ({"equity": 51.0, "debt": 48.0}, None),                 # a put-write fund's collateral is no multi_asset mix
+])
+def test_an_option_income_fund_is_read_only_where_it_holds_the_shares(mix, cls):
+    assert etf.nport_class(mix, opt=True) == cls
+
+
 def _nport(reports, lines, quarter="2026q3") -> None:
     """The ``sec/nport`` Parquet of one quarter, as its dataset writes it (only the columns this build reads)."""
     import duckdb
