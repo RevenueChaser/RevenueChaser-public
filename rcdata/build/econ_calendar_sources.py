@@ -36,12 +36,13 @@ import duckdb
 
 from ...core import calendar
 from . import base
+from . import dirty as dirty_set
 from .uw_economic_calendar import DAYS_AHEAD, DAYS_BACK, SCHEMA, TABLE, event_ts
 
 NAME = "public/economic_calendar"
 SOURCES = ("tradingview", "fed")
 NY = ZoneInfo("America/New_York")
-TRADINGVIEW_BASE = os.getenv("RC_TRADINGVIEW_CALENDAR_BASE") or "https://economic-calendar.tradingview.com"
+TRADINGVIEW_BASE = "https://economic-calendar.tradingview.com"
 FED_BASE = os.getenv("RC_FED_BASE") or "https://www.federalreserve.gov"
 #: The Board's event types as ``economic_event`` names them; every other type (statistical releases, conferences,
 #: Board meetings) is not a market event and is left out.
@@ -191,6 +192,9 @@ class PublicEconomicCalendar:
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         raise base.SourceError(f"{NAME} has no history: a day's row is what the sources said on that day")
+
+    def dirty(self, ctx: base.RunContext):
+        return dirty_set.CLEAN           # builds no table: its Parquet is the calendar dataset's dirty set
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {}                        # the table is ``uw/economic_calendar``'s to build

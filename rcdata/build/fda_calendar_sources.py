@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import html
 import json
-import os
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -36,13 +35,14 @@ import duckdb
 
 from ...core import calendar
 from . import base
+from . import dirty as dirty_set
 from .fundamentals import common
 from .uw_fda_calendar import DAY, HALF, LATE, MID, QUARTER, SCHEMA, TABLE
 
 NAME = "public/fda_calendar"
 SOURCES = ("sec", "federalregister")
-EFTS_BASE = os.getenv("RC_SEC_EFTS_BASE") or "https://efts.sec.gov"
-FEDREG_BASE = os.getenv("RC_FEDREG_BASE") or "https://www.federalregister.gov"
+EFTS_BASE = "https://efts.sec.gov"
+FEDREG_BASE = "https://www.federalregister.gov"
 #: 8-Ks this far back are read: a PDUFA date is set about ten months after a filing is accepted, and companies
 #: repeat it in every quarter's results release, so nine months reach every date still ahead.
 LOOKBACK_DAYS = 270
@@ -311,6 +311,9 @@ class PublicFdaCalendar:
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
         raise base.SourceError(f"{NAME} has no history: a day's row is what the sources said on that day")
+
+    def dirty(self, ctx: base.RunContext):
+        return dirty_set.CLEAN           # builds no table: its Parquet is the calendar dataset's dirty set
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {}                        # the table is ``uw/fda_calendar``'s to build
