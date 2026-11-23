@@ -96,8 +96,8 @@ LEV_INVERSE_NAME = re.compile(
     r"|\bdaily\b.*\b(?:long|short|bull|bear)\b|\b(?:long|short|bull|bear)\b.*\bdaily\b", re.I)
 
 #: A crypto asset by the fund's or trust's name (avo's E, 17 Nov 2026; ``etf_class`` reads it from here).
-CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|"
-                         r"digital assets?)\b", re.IGNORECASE)
+CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|zcash|"
+                         r"polkadot|avalanche|cardano|hedera|chainlink|hyperliquid|digital assets?)\b", re.IGNORECASE)
 #: An ``etf`` row that is a **trust** (avo, 23 Nov 2026, "Bence trust lazım"): a 1933-Act grantor trust or commodity
 #: pool, no 40-Act fund -- no N-CEN series, no note, no CEF, and a commodity or crypto class. The one definition.
 TRUST_SQL = ("series_id IS NULL AND NOT coalesce(is_etn, FALSE) AND NOT coalesce(is_cef, FALSE) "
