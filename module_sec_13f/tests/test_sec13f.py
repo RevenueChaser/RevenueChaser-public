@@ -8,10 +8,10 @@ from revenuechaser.module_sec_13f import engine as sf
 
 
 class TestQuarterEnds:
-    def test_six_quarters_from_2025q1(self):
+    def test_the_quarters_start_in_2019(self):
+        """#1442 (avo, 22 Nov 2026): the board goes back to 2019q1."""
         qs = sf.quarter_ends(today=date(2026, 8, 15))
-        assert qs == ["2025-03-31", "2025-06-30", "2025-09-30",
-                      "2025-12-31", "2026-03-31", "2026-06-30"]
+        assert qs[:2] == ["2019-03-31", "2019-06-30"] and qs[-1] == "2026-06-30" and len(qs) == 30
 
     def test_early_year(self):
         assert sf.quarter_ends(start="2025-03-31", today=date(2025, 5, 1)) == ["2025-03-31"]

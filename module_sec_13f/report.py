@@ -1896,7 +1896,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <div class="legend-note">
 <b>Total ownership</b> = shares held by every 13F filer, on <b>today's share basis</b>: a quarter's count is divided
 by the split factor of its quarter end, so a split is not read as buying (hover a cell for the count as filed).
-The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every stored one.
+The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every quarter from 2019.
 <b>Δ% vs prior</b> = QoQ change in the shares of the filers that reported in both quarters, shown small under each
 quarter's count (click Δ% in the header to sort by it); the counts above it are every filer's.
 <b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest SEC cover count; ≈ = market cap ÷ price for one-class common; † = over 100%, 13F can count a block twice; — over 150% or no usable count).

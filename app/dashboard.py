@@ -2243,7 +2243,9 @@ def api_sec13f(ticker: str):
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
     from revenuechaser.module_sec_13f import store as sec13f_store
-    periods = sec13f_store.read_ticker(t)              # one ticker's rows, not the whole board file (#732)
+    from revenuechaser.module_sec_13f import engine as sec13f_engine
+    periods = {q: v for q, v in sec13f_store.read_ticker(t).items()     # one ticker's rows, not the board file (#732)
+               if q >= sec13f_engine.START_QUARTER}                     # #1442: the store reaches 2013, the board 2019
     if not periods:
         return jsonify({"ok": False, "error": "no series", "ticker": t}), 404
     enrich = load_inputs({t: periods}).get(t, {})       # the board's inputs (#375 F2): D01 closes, store only
