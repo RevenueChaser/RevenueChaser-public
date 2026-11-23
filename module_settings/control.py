@@ -143,6 +143,9 @@ ICONS: dict[str, str] = {
     "fed": "M3 21l18 0 M3 10l18 0 M5 6l7 -3l7 3 M4 10l0 11 M20 10l0 11 M8 14l0 3 M12 14l0 3 M16 14l0 3",
     "bls": "M3 7m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z M8 7v-2a2 2 0 0 1 2 -2h4a2 "
            "2 0 0 1 2 2v2 M12 12l0 .01 M3 13a20 20 0 0 0 18 0",
+    "tradingview": "M4 19l16 0 M4 15l4 -6l4 2l4 -5l4 4",                                  # Tabler ``chart-line``
+    "federalregister": "M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0 M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0 M3 6l0 13 M12 6l0 13 "
+                       "M21 6l0 13",                                                          # Tabler ``book``
 }
 
 

@@ -181,14 +181,15 @@ def market_series(series_ids: Iterable[str] = (), start=None, end=None, prefix: 
 
 
 def economic_calendar(snapshot_date=None) -> list[dict]:
-    """UW's economic calendar as of one snapshot day (default: the newest held), by event time.
+    """The economic calendar as of one snapshot day (default: the newest held), by event time: TradingView's and the
+    Fed's rows when that day has them, else UW's (market 6, #1433).
 
     A file built before market 3 has no ``economic_event``: that reads as no rows, not an error."""
     where, params = "snapshot_date = (SELECT max(snapshot_date) FROM economic_event)", []
     if snapshot_date is not None:
         where, params = "snapshot_date = ?", [_day(snapshot_date)]
-    return _rows("economic_event", f"SELECT * FROM economic_event WHERE {where} ORDER BY event_ts, event, type",
-                 params, missing_table_ok=True)
+    return _rows("economic_event", f"SELECT * FROM economic_event WHERE {where} AND {_ECON_PREFERRED} "
+                 "ORDER BY event_ts, event, type", params, missing_table_ok=True)
 
 
 def economic_events(fetched_after: float | None = None) -> list[dict]:
@@ -196,14 +197,23 @@ def economic_events(fetched_after: float | None = None) -> list[dict]:
     only the rows of newer fetches. Each snapshot day holds that day's newest fetch (``uw/economic_calendar``).
 
     A file built before market 3 has no ``economic_event``: that reads as no rows, not an error."""
-    sql, params = "SELECT * FROM economic_event", []
+    sql, params = f"SELECT * FROM economic_event WHERE {_ECON_PREFERRED}", []
     if fetched_after is not None:
-        sql, params = sql + " WHERE fetched_at > ?", [float(fetched_after)]
+        sql, params = sql + " AND fetched_at > ?", [float(fetched_after)]
     return _rows("economic_event", sql + " ORDER BY fetched_at, event_ts, event, type", params, missing_table_ok=True)
 
 
+#: Market 6 (#1433): a snapshot day that holds a keyless source's rows (TradingView, the Fed) is read from them, and
+#: UW's rows of that day are left out, so a board never sees one release twice under two names. A day only UW
+#: fetched reads as before. A file built before market 6 has every row from UW, so this reads it unchanged.
+_ECON_PREFERRED = ("(source <> 'uw' OR snapshot_date NOT IN "
+                   "(SELECT snapshot_date FROM economic_event WHERE source <> 'uw'))")
+#: The same rule for the FDA calendar: the SEC's and the Federal Register's rows of a day, else UW's.
+_FDA_PREFERRED = "(source <> 'uw' OR snapshot_date NOT IN (SELECT snapshot_date FROM fda_event WHERE source <> 'uw'))"
+
+
 def fda_calendar(snapshot_date=None) -> list[dict]:
-    """UW's FDA calendar as of one snapshot day (default: the newest held), by target date.
+    """The FDA calendar (the SEC's 8-Ks and the Federal Register, else UW; market 6, #1433) as of one snapshot day (default: the newest held), by target date.
 
     A row's ``target_date`` is the day its ``target_text`` resolves to, and ``target_precision`` says what the text
     said (``day``, ``quarter``, ``half``, ``mid``, ``late``), so a quarter is never read as a day.
@@ -212,8 +222,8 @@ def fda_calendar(snapshot_date=None) -> list[dict]:
     where, params = "snapshot_date = (SELECT max(snapshot_date) FROM fda_event)", []
     if snapshot_date is not None:
         where, params = "snapshot_date = ?", [_day(snapshot_date)]
-    return _rows("fda_event", f"SELECT * FROM fda_event WHERE {where} ORDER BY target_date, ticker, drug",
-                 params, missing_table_ok=True)
+    return _rows("fda_event", f"SELECT * FROM fda_event WHERE {where} AND {_FDA_PREFERRED} "
+                 "ORDER BY target_date, ticker, drug", params, missing_table_ok=True)
 
 
 def fda_events(fetched_after: float | None = None) -> list[dict]:
@@ -221,9 +231,9 @@ def fda_events(fetched_after: float | None = None) -> list[dict]:
     the rows of newer fetches. Each snapshot day holds that day's newest fetch (``uw/fda_calendar``).
 
     A file built before market 5 has no ``fda_event``: that reads as no rows, not an error."""
-    sql, params = "SELECT * FROM fda_event", []
+    sql, params = f"SELECT * FROM fda_event WHERE {_FDA_PREFERRED}", []
     if fetched_after is not None:
-        sql, params = sql + " WHERE fetched_at > ?", [float(fetched_after)]
+        sql, params = sql + " AND fetched_at > ?", [float(fetched_after)]
     return _rows("fda_event", sql + " ORDER BY fetched_at, target_date, ticker, drug", params,
                  missing_table_ok=True)
 
