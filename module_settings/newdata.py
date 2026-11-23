@@ -498,7 +498,7 @@ def _sample_hour(now: datetime) -> str:
     return now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
 
 
-def _sample_key(table: str, now: datetime) -> str:
+def _sample_key(table: str, now: datetime, kind: str | None = None) -> str:
     """The cache key: the table, the hour, and the serving file it was read from with its last write.
 
     The file belongs in the key for two reasons. A swap mid-hour replaces the rows, and a sample from before it is
@@ -506,7 +506,7 @@ def _sample_key(table: str, now: datetime) -> str:
     table and hour alone serves one test's rows to the next.
     """
     from revenuechaser.rcdata import read
-    kind = read.KIND_OF_TABLE.get(table.split("#")[0])      # "price_bar_daily#sessions" is that table's file
+    kind = kind or read.KIND_OF_TABLE.get(table.split("#")[0])      # "price_bar_daily#sessions" is that table's file
     path = serving.live_path(kind) if kind is not None else None
     try:
         stamp = path.stat().st_mtime_ns if path is not None else None
@@ -515,9 +515,10 @@ def _sample_key(table: str, now: datetime) -> str:
     return f"{table}|{_sample_hour(now)}|{path}|{stamp}"
 
 
-def _cached_sample(table: str, now: datetime, read):
-    """``read(table)`` at most once an hour per table and serving file (A16's hourly cache)."""
-    key = _sample_key(table, now)
+def _cached_sample(table: str, now: datetime, read, kind: str | None = None):
+    """``read(table)`` at most once an hour per table and serving file (A16's hourly cache). ``kind`` names the
+    file when the table is not one ``read.KIND_OF_TABLE`` knows (a view, or a whole file's facts)."""
+    key = _sample_key(table, now) if kind is None else _sample_key(table, now, kind)   # a test's stand-in takes two
     hit = _SAMPLE_CACHE.get(table)
     if hit is not None and hit[0] == key:
         return hit[1]
@@ -526,13 +527,13 @@ def _cached_sample(table: str, now: datetime, read):
     return value
 
 
-def _read_sample(con, table: str, day_column: str | None) -> dict:
-    """The newest ``SAMPLE_ROWS`` rows of one table, through the read-only connection already open.
+def _read_sample(con, table: str, day_column: str | None, limit: int = SAMPLE_ROWS) -> dict:
+    """The newest ``limit`` rows of one table, through the read-only connection already open.
 
     One SELECT and nothing else: this runs on a page render, against the live store, and must not write.
     """
     order = f' ORDER BY "{day_column}" DESC' if day_column else ""
-    cur = con.execute(f'SELECT * FROM "{table}"{order} LIMIT {SAMPLE_ROWS}')
+    cur = con.execute(f'SELECT * FROM "{table}"{order} LIMIT {int(limit)}')
     columns = [{"name": d[0], "type": str(d[1])} for d in cur.description]
     rows = [[_cell(v) for v in r] for r in cur.fetchall()]
     return {"columns": columns, "rows": rows}
@@ -766,10 +767,22 @@ def _my_universe_counts(con) -> dict:
     moved = {str(c): int(n) for c, n in con.execute(
         f"SELECT change, count(*) FROM {MY_UNIVERSE_CHANGES} WHERE as_of = ? GROUP BY change",
         [last]).fetchall()} if last is not None else {}
-    return {"total": int(total or 0), "kinds": kinds, "rules": rules,
+    by_tier: dict[str, dict[str, int]] = {}
+    for k, t, n in con.execute(f"SELECT kind, tier, count(*) FROM {MY_UNIVERSE} GROUP BY 1, 2 ORDER BY 1, 2"
+                               ).fetchall():
+        by_tier.setdefault(str(k), {})["-" if t is None else str(t)] = int(n)
+    from revenuechaser.rcdata.build.spine import my_universe as mine
+    names: dict[str, list[str]] = {}
+    if last is not None:
+        for c, t in con.execute(f"SELECT change, ticker FROM {MY_UNIVERSE_CHANGES} WHERE as_of = ? ORDER BY ticker",
+                                [last]).fetchall():
+            names.setdefault(str(c), []).append(t)
+    return {"total": int(total or 0), "kinds": kinds, "rules": rules, "by_tier": by_tier,
             "as_of": as_of.isoformat() if as_of else None,
             "last_change": last.isoformat() if last else None,
-            "entered": moved.get("entered", 0), "left": moved.get("left", 0)}
+            "entered": moved.get("entered", 0), "left": moved.get("left", 0),
+            # the first names of that day, as an issue's detail names them (``my_universe.MANY``)
+            "entered_names": names.get("entered", [])[:mine.MANY], "left_names": names.get("left", [])[:mine.MANY]}
 
 
 def _my_universe_card(counts: dict | None) -> dict:
@@ -901,6 +914,106 @@ def _identity(counts: dict | None) -> dict:
              {"key": "excluded_type", "label": "Listed, but an excluded security type (Tier B)",
               "count": c["excluded_type"]}]
     return {"steps": steps, "drops": drops, "indexes": c["indexes"], "as_of": c["as_of"], "note": None, **issues}
+
+
+# ── One served file, whole (the Grafana Jobs board's file panel, avo 23 Nov 2026) ───────────────────────────────
+
+#: The example rows the Jobs board's file panel shows of a table or a view (the spine mock: "6 real rows").
+SERVED_SAMPLE_ROWS = 6
+
+
+def _relations(con) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """``({table: columns}, {view: columns})`` of the file this connection holds, its bookkeeping left out (the
+    version row, the build manifest and rules, the audit): each column ``{name, type}`` in the relation's order."""
+    from revenuechaser.rcdata.build import audit
+    skip = {serving.VERSION_TABLE, serving.WINDOW_TABLE, *serving.META_TABLES, audit.ROUNDS, audit.DIRTY}
+    cols: dict[str, list[dict]] = {}
+    for rel, name, kind in con.execute("SELECT table_name, column_name, data_type FROM duckdb_columns() "
+                                       "WHERE NOT internal ORDER BY table_name, column_index").fetchall():
+        cols.setdefault(rel, []).append({"name": name, "type": str(kind)})
+    views = {r[0] for r in con.execute("SELECT view_name FROM duckdb_views() WHERE NOT internal").fetchall()}
+    return ({t: c for t, c in sorted(cols.items()) if t not in views and t not in skip},
+            {v: cols.get(v, []) for v in sorted(views)})
+
+
+def _open_served(kind: str):
+    """``serving.open_read(kind)``; ``ValueError`` for a kind that is not served, ``SampleUnavailable`` before its
+    first build."""
+    try:
+        return serving.open_read(kind)
+    except serving.ServingFileMissing:
+        raise SampleUnavailable(f"the {kind} file has not been built yet") from None
+
+
+def _read_served(kind: str) -> dict:
+    """What one read of ``kind``'s live file says about it: one ``open_read``, closed before return."""
+    from revenuechaser.rcdata import opens
+    con = _open_served(kind)
+    try:
+        tables, views = _relations(con)
+        names = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
+        version = None
+        if serving.VERSION_TABLE in names:
+            version = con.execute(f"SELECT max(version) FROM {serving.VERSION_TABLE} WHERE kind = ?",
+                                  (kind,)).fetchone()[0]
+        build_id, _ = opens.stamp_of(con, serving.VERSION_TABLE, kind)
+        out = {"kind": kind, "file": serving.live_path(kind).name, "schema_version": version,
+               "build": {**_build_of(kind, con, names), "build_id": build_id},
+               **{group: [{"name": n, "rows": int(con.execute(f'SELECT count(*) FROM "{n}"').fetchone()[0]),
+                           "columns": c} for n, c in rels.items()]
+                  for group, rels in (("tables", tables), ("views", views))}}
+        if kind == "spine" and {"security", "index_membership"} <= names:
+            out["funnel"] = _spine_counts(con)
+            out["tier_rule"] = (con.execute("SELECT max(tier_rule) FROM security").fetchone()[0]
+                                if "tier_rule" in _columns(con, "security") else None)
+        if kind == "spine" and {MY_UNIVERSE, MY_UNIVERSE_CHANGES} <= names:
+            out["universe"] = _my_universe_counts(con)
+        return out
+    finally:
+        con.close()
+
+
+def served(kind: str, now: datetime | None = None) -> dict:
+    """``GET /api/build/served/<kind>``: the live file's schema version, its last build (``build``: ``build_id``,
+    ``built_at``, ``mode`` and the manifest and audit numbers of ``_build_of``), and every table and view with its
+    rows and columns. The spine adds ``tier_rule``, the identity funnel (``identity``, as Settings draws it, with
+    ``spine/security``'s open issues), ``tiers`` (A-D) and ``my_universe`` (Settings' card, its counts by kind and
+    tier, the entered and left names of its last change day, and ``rule_values``: avo's rules file, the entry and
+    exit floors among them).
+
+    The file's part is read at most once an hour per build of the file, like the samples, because a view's row
+    count can be a join over the whole file; the issues and the rules are read on every call.
+    """
+    got = dict(_cached_sample(f"#served/{kind}", now or datetime.now(timezone.utc), lambda _n: _read_served(kind),
+                              kind=kind))
+    funnel, universe = got.pop("funnel", None), got.pop("universe", None)
+    if kind != "spine":
+        return got
+    from dataclasses import asdict
+
+    from revenuechaser.rcdata.build.spine import my_universe as mine
+    tiers = (None if funnel is None else
+             {"A": funnel["tier_a"], "B": funnel["excluded_type"], "C": funnel["otc"], "D": funnel["no_exchange"]})
+    return {**got, "tier_rule": got.get("tier_rule"), "identity": _identity(funnel), "tiers": tiers,
+            "my_universe": {**_my_universe_card(universe), "rule_values": asdict(mine.load_rules())}}
+
+
+def read_served_sample(kind: str, table: str, now: datetime | None = None) -> dict:
+    """``GET /api/build/served/<kind>/sample/<table>``: ``SERVED_SAMPLE_ROWS`` rows of one table or view of
+    ``kind``'s live file (``{columns, rows}``, as Settings' samples), newest first where the table has a date
+    column. Cached by the hour and the build like them. ``KeyError`` for a name the file does not hold as data,
+    ``ValueError`` for a kind that is not served, :class:`SampleUnavailable` before the file's first build."""
+    def read(_name):
+        con = _open_served(kind)
+        try:
+            tables, views = _relations(con)
+            if table not in tables and table not in views:
+                raise KeyError(table)
+            return _read_sample(con, table, sampled_columns().get(table) if table in tables else None,
+                                SERVED_SAMPLE_ROWS)
+        finally:
+            con.close()
+    return _cached_sample(f"{kind}/{table}#served", now or datetime.now(timezone.utc), read, kind=kind)
 
 
 # ── Where the data sits (the control board's journey table) ───────────────────────────────────────────────────
@@ -1276,6 +1389,13 @@ def _silent_minutes(last_run: dict | None, now: datetime) -> int | None:
     return max(0, int((now - when).total_seconds() // 60))
 
 
+def recent_checks(rows: list[dict], n: int = 3) -> list[dict]:
+    """The newest ``n`` of ``ops.recent_checks``' rows (newest first) as the Health table and the Jobs board show
+    them (design v28)."""
+    return [{k: r.get(k) for k in ("checked_on", "result", "source_as_of", "rows", "added", "removed", "calls",
+                                   "coverage", "note")} for r in rows[:n]]
+
+
 def _card(dataset: str, ds, facts: dict, now: datetime, used_today: dict[str, int] | None = None) -> dict:
     newest = ops.recent_checks(dataset, limit=3)
     last = newest[0] if newest else None
@@ -1308,8 +1428,7 @@ def _card(dataset: str, ds, facts: dict, now: datetime, used_today: dict[str, in
         "samples": [_sample_block(name, (facts.get(name) or {}).get("sample")) for name in ds.tables],
         "wrds": _wrds_difference(dataset) if dataset in WRDS_DIFFERENCE else _wrds_slot(dataset, facts),
         # The control board's Health table: the last three checks, newest first (design v28).
-        "recent": [{k: r.get(k) for k in ("checked_on", "result", "source_as_of", "added", "removed", "calls",
-                                           "note")} for r in newest],
+        "recent": recent_checks(newest),
         "attended": bool(getattr(ds, "attended", False)),
         "attended_command": (ATTENDED_COMMANDS.get(dataset) or attended_command(ds.kind))
                             if getattr(ds, "attended", False) else None,

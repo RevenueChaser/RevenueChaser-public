@@ -21,6 +21,7 @@ change on both sides.
 from __future__ import annotations
 
 import re
+from urllib.parse import quote
 
 import threading
 import time
@@ -413,7 +414,16 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
 
     Each row also carries ``badges``, its providers as the RC page draws them (name, Tabler icon, colour), and, with
     ``span`` (epoch seconds, the Grafana picker's range), ``history``: its builder runs started in it,
-    ``[started_at, status]`` oldest first, for the board's heatmap."""
+    ``[started_at, status]`` oldest first, for the board's heatmap.
+
+    For the Grafana Jobs board's rows (avo, 23 Nov 2026, the spine mock): ``about`` (one line of what it fetches;
+    its card's label when it has none), ``group`` and ``order`` (its place in its kind's flow, ``_flow``),
+    ``took_s`` (the own seconds of its last run that was not skipped, ``base.own_seconds``: the time a pass spent
+    on the other members' fetches and builds left out; None before step times were recorded), ``rows``,
+    ``coverage`` and ``coverage_target`` (that run's), ``checks`` and ``recent`` (Settings' checks list and last
+    three checks), ``label`` (its short name on the board, ``DatasetCard.short``, else its card's label) and
+    ``issue_kinds``: its open build issues by kind, the most first, each ``{kind, count, rows, issues_url}`` with the
+    newest ``ISSUE_ROWS`` as ``{key, detail, found_on}`` and the route of the kind's whole list (``issue_list``)."""
     from revenuechaser.module_settings import newdata
     from revenuechaser.rcdata import ops
     now = now or datetime.now(timezone.utc)
@@ -426,6 +436,7 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
             providers = []
     colour = {p["id"]: control.SOURCE_COLORS[i % len(control.SOURCE_COLORS)] for i, p in enumerate(providers)}
     names = {p["id"]: p["name"] for p in providers}
+    from revenuechaser.rcdata.build import base
     from revenuechaser.rcdata.needs import screen
     paid = {pid for pid, w in screen.PROVIDERS.items() if w.paid}
     history: dict[str, list] = {}
@@ -435,6 +446,9 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
     out = []
     for row in datasets_list(datasets):
         name, ds = row["name"], datasets[row["name"]]
+        card = screen.DATASETS.get(name)
+        row["label"] = (card.short or card.label) if card else name
+        row["about"] = (card.about or card.label) if card else name
         row["badges"] = [{"id": p, "name": names.get(p, p), "icon": control.ICONS.get(p, ""),
                           "color": colour.get(p, control.SOURCE_COLORS[0]), "paid": p in paid}
                          for p in row.get("providers") or []]
@@ -445,11 +459,24 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
             last = recent[0] if recent else None
             raw = ops.read_schedule(name) or {}
             cadence = newdata._cadence(name, raw)
-            state, reason, _ = newdata.status_of(name, last, ops.latest_unskipped_check(name), cadence, now)
+            state, reason, base_check = newdata.status_of(name, last, ops.latest_unskipped_check(name), cadence, now)
             own = ops.dataset_mode_get(name)
             mode = ops.dataset_mode(name, row["kind"])
             schedule = {"paused": raw.get("paused_at") is not None, "next_due": raw.get("next_due")}
+            n_issues = ops.open_issues(name, limit=0)[0]
+            missed = newdata._missed(cadence, base_check, now, name) if base_check else None
+            ran = base_check or {}
             row.update({
+                "group": "build" if card and card.role == "build" else cadence,
+                "took_s": base.own_seconds(ops.run_steps(ran["run_id"])) if ran.get("run_id") else None,
+                "rows": ran.get("rows"), "coverage": ran.get("coverage"),
+                "coverage_target": newdata.COVERAGE_TARGET.get(name),
+                "checks": newdata._checks_list(name, base_check, last, missed, n_issues, newdata._held(name, ds)),
+                "recent": newdata.recent_checks(recent),
+                "issue_kinds": [{**k, "rows": [{f: i[f] for f in ("key", "detail", "found_on")}
+                                               for i in ops.open_issues_of_kind(name, k["kind"], ISSUE_ROWS)],
+                                 "issues_url": f"/api/build/issues/{name}?kind={quote(k['kind'])}"}
+                                for k in ops.open_issue_kinds(name)],
                 "state": state, "reason": reason, "cadence": cadence, "cadence_own": raw.get("cadence"),
                 "next_due": str(raw.get("next_due") or "")[:10] or None, "paused": schedule["paused"],
                 "paused_by": raw.get("paused_by"), "mode": mode, "mode_own": (own or {}).get("mode"),
@@ -462,12 +489,50 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
                 "last": ({k: last.get(k) for k in ("checked_on", "result", "rows", "added", "removed", "note")}
                          if last else None),
                 "runs": [[r.get("checked_on"), r.get("result")] for r in recent],
-                "open_issues": ops.open_issues(name, limit=0)[0],
+                "open_issues": n_issues,
             })
         except Exception as e:  # noqa: BLE001 - one dataset never drops the rest
             row["error"] = f"{type(e).__name__}: {e}"[:200]
         out.append(row)
+    _flow(out, list(datasets))
     return out
+
+
+#: How many of each kind's open build issues a dataset's detail row lists (the Jobs board's problem bars).
+ISSUE_ROWS = 10
+#: The most rows ``issue_list`` answers: the spine's whole list was 886 on 23 Nov 2026.
+ISSUE_LIST_MAX = 5000
+
+
+def issue_list(dataset: str, kind: str | None = None) -> dict:
+    """``GET /api/build/issues/<dataset>?kind=<kind>``: the open build issues of ``dataset`` (of one kind, or all),
+    newest first, at most ``ISSUE_LIST_MAX``; ``count`` is how many are open. The Jobs board's "all N" link."""
+    from revenuechaser.rcdata import ops
+    if kind:
+        count = next((k["count"] for k in ops.open_issue_kinds(dataset) if k["kind"] == kind), 0)
+        rows = ops.open_issues_of_kind(dataset, kind, ISSUE_LIST_MAX)
+    else:
+        count, rows = ops.open_issues(dataset, limit=ISSUE_LIST_MAX)
+    return {"dataset": dataset, "kind": kind or None, "count": count,
+            "issues": [{f: i[f] for f in ("kind", "key", "detail", "found_on")} for i in rows]}
+
+
+def _flow(rows: list[dict], registry: list[str]) -> None:
+    """Number each kind's rows in the order its flow runs (``order``, from 0): the sources first, the slowest
+    cadence first (the weekly chain feeds the daily files), each in registry order -- the order a pass fetches them
+    (``build.__main__._claim_kind``) -- and the dataset that builds the served tables (``group`` "build") last.
+    Nothing here names a dataset: a new one, or a cadence set on Settings, moves its row by itself."""
+    from revenuechaser.module_settings import newdata
+    slow_first = {c: -i for i, c in enumerate(newdata.CARD_CADENCES)}
+    at = {name: i for i, name in enumerate(registry)}
+    kinds: dict[str, list[dict]] = {}
+    for r in rows:
+        kinds.setdefault(r["kind"], []).append(r)
+    for members in kinds.values():
+        members = sorted(members, key=lambda r: (r.get("group") == "build", slow_first.get(r.get("group"), 1),
+                                                 at.get(r["name"], len(at))))
+        for i, r in enumerate(members):
+            r["order"] = i
 
 
 def board_head(now: datetime | None = None, *, ibkr: Callable[[], dict] | None = None,

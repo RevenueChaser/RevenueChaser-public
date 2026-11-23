@@ -1896,6 +1896,55 @@ def api_build_state():
     return jsonify({"ok": True, "kinds": state.all_kinds()})
 
 
+def _served_answer(read):
+    """One served-file answer (``newdata.served`` / ``read_served_sample``) as JSON: a kind that is not served or a
+    name the file does not hold is 404, a file not built yet 409, a file DuckDB cannot read right now (mid-swap,
+    locked) 503 with the reason."""
+    import duckdb
+
+    from revenuechaser.module_settings import newdata
+
+    try:
+        return jsonify({"ok": True, **read(newdata)})
+    except newdata.SampleUnavailable as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 409
+    except KeyError:
+        return jsonify({"ok": False, "error": "unknown table"}), 404
+    except ValueError:
+        return jsonify({"ok": False, "error": "unknown kind"}), 404
+    except duckdb.Error as exc:
+        return jsonify({"ok": False, "error": f"the file could not be read right now: {str(exc)[:200]}"}), 503
+
+
+@app.route("/api/build/issues/<path:dataset>")
+def api_build_issues(dataset: str):
+    """The open build issues of one dataset, newest first: ``?kind=<kind>`` for one kind (``metrics.issue_list``).
+    The Jobs board's "all N" link (``issues_url`` of ``/api/build/datasets?detail=1``). A dataset the builder does
+    not know is 404."""
+    from revenuechaser.module_settings import metrics
+
+    if _build_dataset(dataset) is None:
+        return jsonify({"ok": False, "error": "unknown dataset"}), 404
+    return jsonify({"ok": True, **metrics.issue_list(dataset, request.args.get("kind"))})
+
+
+@app.route("/api/build/served/<kind>")
+def api_build_served(kind: str):
+    """One served DuckDB file whole, for the Grafana Jobs board's file panel (avo, 23 Nov 2026): ``schema_version``,
+    ``build`` (``build_id``, ``built_at``, ``mode``), ``tables`` and ``views`` (``{name, rows, columns}``), and for
+    the spine ``tier_rule``, ``identity``, ``tiers`` and ``my_universe`` (``newdata.served``). Read-only: one
+    ``serving.open_read``, closed before the answer; the file's part is read at most once an hour per build."""
+    return _served_answer(lambda newdata: newdata.served(kind))
+
+
+@app.route("/api/build/served/<kind>/sample/<table>")
+def api_build_served_sample(kind: str, table: str):
+    """``newdata.SERVED_SAMPLE_ROWS`` real rows of one table or view of a served file: ``{kind, table, columns,
+    rows}``, newest first where the table has a date column, cached by the hour and the build."""
+    return _served_answer(lambda newdata: {"kind": kind, "table": table,
+                                           **newdata.read_served_sample(kind, table)})
+
+
 @app.route("/api/settings/status")
 def api_settings_status():
     """Provider limits, the cross-check and board freshness as JSON, for the Grafana Fetch/Health board (#715)."""

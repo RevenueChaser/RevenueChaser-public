@@ -193,6 +193,47 @@ def test_every_member_of_a_batch_pass_gets_its_own_step_times(fakes):
         assert all(v >= 0.0 for v in steps.values())
 
 
+def test_a_batch_member_s_own_seconds_leave_out_the_time_it_waited_for_the_others(fakes, clock):
+    """The Jobs spine rows' ``took`` (avo, 23 Nov 2026): a pass fetches its members one after another and builds the
+    kind once, so a member's run row spans the other members' fetches and builds too. Each member's own steps are
+    its fetch, its Parquet write and **its own dataset's** build; the rest is ``waiting``, which ``own_seconds``
+    leaves out.
+
+    m/one fetches (4 + 2 s), waits while m/two fetches (6 s), builds its own table (8 s), waits while m/two builds
+    (8 s); both share the two checks (2 s) and the swap.
+    """
+    for name in ("m/one", "m/two"):
+        ops.enqueue(name, None, by="test")
+    assert cli._run_queue(None, once=True) == 0
+    by = {r["dataset"]: _steps(r["run_id"]) for r in ops.rows("job_runs2") if r["dataset"] in ("m/one", "m/two")}
+    one, two = by["m/one"], by["m/two"]
+    assert (one["fetch"], one["parquet"], one["build"], one["waiting"]) == (4.0, 2.0, 8.0, 14.0)
+    assert (two["fetch"], two["parquet"], two["build"], two["waiting"]) == (4.0, 2.0, 8.0, 8.0)
+    assert one["check"] == two["check"] == 2.0
+    assert base.own_seconds(one) == pytest.approx(sum(v for k, v in one.items() if k != "waiting"))
+    assert base.own_seconds(one) < sum(one.values())
+
+
+def test_own_seconds_is_none_without_steps_and_a_single_run_waits_for_nothing(fakes, clock):
+    assert base.own_seconds(None) is None and base.own_seconds({}) is None
+    row = base.run_request({"dataset": "m/one", "params": {}}, trigger="test")
+    steps = _steps(row["run_id"])
+    assert steps.get("waiting", 0.0) == 0.0, "a run alone builds the whole kind itself: none of it is waiting"
+    assert base.own_seconds(steps) == pytest.approx(sum(steps.values()))
+
+
+def test_a_member_whose_pass_failed_in_another_member_s_build_still_says_build_failed(fakes, clock):
+    """``waiting`` is bookkeeping, never the step a failure names (#1119): the pass's build failed under it."""
+    fakes["m/two"].fails = "build"
+    for name in ("m/one", "m/two"):
+        ops.enqueue(name, None, by="test")
+    cli._run_queue(None, once=True)
+    notes = {c["dataset"]: c["note"] for c in ops.rows("dataset_check")}
+    assert notes["m/one"].startswith("build failed") and notes["m/two"].startswith("build failed")
+    [one] = [r for r in ops.rows("job_runs2") if r["dataset"] == "m/one"]
+    assert _steps(one["run_id"])["waiting"] == 6.0 + 8.0, "m/one waited for m/two's fetch and its failing build"
+
+
 # --- the chain id -----------------------------------------------------------------------------------
 
 
