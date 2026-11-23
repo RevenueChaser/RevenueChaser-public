@@ -104,7 +104,7 @@ _ARTIFACT_JQ = r'.artifacts[] | select(.name|startswith("junit-unit")) | "\(.id)
 
 
 def _artifacts(run_id: str) -> list[tuple[str, str]]:
-    out = subprocess.run(["gh", "api", f"repos/alsanvolkan/revenuechaser-public/actions/runs/{run_id}/artifacts",
+    out = subprocess.run(["gh", "api", f"repos/RevenueChaser/RevenueChaser-public/actions/runs/{run_id}/artifacts",
                           "--jq", _ARTIFACT_JQ],
                          check=True, capture_output=True, text=True).stdout.split("\n")
     return [tuple(line.split(" ", 1)) for line in out if line.strip()]
@@ -115,7 +115,7 @@ def _run_table(run_id: str, work: Path) -> dict[str, float]:
     for art_id, name in _artifacts(run_id):
         zip_path = work / f"{run_id}-{name}.zip"
         with open(zip_path, "wb") as fh:
-            subprocess.run(["gh", "api", f"repos/alsanvolkan/revenuechaser-public/actions/artifacts/{art_id}/zip"],
+            subprocess.run(["gh", "api", f"repos/RevenueChaser/RevenueChaser-public/actions/artifacts/{art_id}/zip"],
                            check=True, stdout=fh)
         with zipfile.ZipFile(zip_path) as zf:
             for member in zf.namelist():

@@ -11,7 +11,7 @@ here) stay as the
 detailed work order and must cite their issue numbers. The GitHub board is the single
 source of truth for status; never keep a local backlog file.
 
-- Repo: `alsanvolkan/RevenueChaser-public` · Board: Projects v2 **#1** (owner `alsanvolkan`)
+- Repo: `RevenueChaser/RevenueChaser-public` (org since 23 Nov 2026) · Board: Projects v2 **#1** (owner stays the user `alsanvolkan`)
 - Board fields: **Status** (`Todo` → `In Progress` → `Done`; moving an item to Done
   usually auto-closes the issue; check it and close it by hand if not), **Area** (one of
   the 13 keys below) and **Review** (next section).
@@ -44,7 +44,7 @@ The epics are per **board**, not per area key, so several share a key. Each row 
 in this repo carrying the `epic` label; read it from the repo rather than trusting this copy, because
 issue numbers are the one thing a table like this gets wrong:
 
-    gh issue list -R alsanvolkan/RevenueChaser-public --label epic --state open
+    gh issue list -R RevenueChaser/RevenueChaser-public --label epic --state open
 
 | Epic | Board / scope | `--area` key |
 |---|---|---|

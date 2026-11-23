@@ -16,7 +16,7 @@ import json
 import subprocess
 import sys
 
-REPO = "alsanvolkan/RevenueChaser-public"
+REPO = "RevenueChaser/RevenueChaser-public"
 OWNER = "alsanvolkan"
 PROJECT = "1"
 
