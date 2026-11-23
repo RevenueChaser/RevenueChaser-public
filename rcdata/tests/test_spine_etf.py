@@ -345,3 +345,79 @@ def test_without_tickerinside_files_the_identity_columns_stay_null_but_compustat
     xlk = _etf()["XLK"]
     assert (xlk["gvkey"], xlk["figi"], xlk["expense_ratio"], xlk["identity_source"]) == (
         "131856", None, None, "compustat_secd")
+
+
+# ── asset_class from the fund's newest N-PORT report: the third source, below the trust rule and the category ───
+
+@pytest.mark.parametrize("mix, lev, mm, cls", [
+    ({"equity": 95.0, "cash": 5.0}, False, False, "equity"),
+    ({"debt": 80.0, "equity": 15.0}, False, False, "bond"),
+    ({"commodity": 70.0, "cash": 30.0}, False, False, "commodity"),
+    ({"cash": 99.0}, False, True, "cash"),                  # a money market fund (N-CEN) holds cash
+    ({"cash": 93.0, "derivative": 5.0}, False, False, None),  # T-bills behind futures: what it tracks is unread
+    ({"equity": 40.0, "debt": 30.0, "commodity": 10.0}, False, False, "multi_asset"),
+    ({"equity": 30.0, "debt": 20.0, "fund": 50.0}, False, False, None),   # half unread: no mix to call
+    ({"fund": 100.0}, False, False, None),                  # a fund of funds: its funds' class is not read here
+    ({"equity": 85.0, "derivative": 12.0}, False, False, None),   # synthetic: options or swaps carry the exposure
+    ({"equity": 100.0}, True, False, None),                 # leveraged or inverse: never read off the collateral
+    ({"equity": 60.0, "debt": 40.0}, False, False, "equity"),     # the cut is inclusive
+])
+def test_the_nport_mix_rule(mix, lev, mm, cls):
+    assert etf.nport_class(mix, lev=lev, mm=mm) == cls
+
+
+@pytest.mark.parametrize("mix, cls", [
+    ({"equity": 96.0, "derivative": 2.0}, "equity"),        # a covered-call fund holds the shares it writes on
+    ({"debt": 100.0, "derivative": 1.0}, None),             # a buffer fund's T-bills: its exposure is the options
+    ({"equity": 51.0, "debt": 48.0}, None),                 # a put-write fund's collateral is no multi_asset mix
+])
+def test_an_option_income_fund_is_read_only_where_it_holds_the_shares(mix, cls):
+    assert etf.nport_class(mix, opt=True) == cls
+
+
+def _nport(reports, lines, quarter="2026q3") -> None:
+    """The ``sec/nport`` Parquet of one quarter, as its dataset writes it (only the columns this build reads)."""
+    import duckdb
+    folder = base.parquet_root() / "sec" / "nport" / f"quarter={quarter}"
+    folder.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+    base.rows_table(con, "f", [("accession", "TEXT"), ("series_id", "TEXT"), ("series_name", "TEXT"),
+                               ("report_date", "DATE"), ("filed", "DATE")],
+                    [{"accession": a, "series_id": s, "series_name": s, "report_date": d, "filed": d}
+                     for a, s, d in reports])
+    base.rows_table(con, "h", [("accession", "TEXT"), ("issuer_name", "TEXT"), ("cusip", "TEXT"), ("isin", "TEXT"),
+                               ("ticker", "TEXT"), ("pct_of_net_assets", "DOUBLE"), ("asset_cat", "TEXT"),
+                               ("issuer_type", "TEXT"), ("country", "TEXT")],
+                    [{"accession": a, "issuer_name": "A Company", "cusip": None, "isin": None, "ticker": None,
+                      "pct_of_net_assets": p, "asset_cat": c, "issuer_type": i, "country": "US"}
+                     for a, p, c, i in lines])
+    for t, n in (("f", "fund"), ("h", "holdings")):
+        con.execute(f"COPY {t} TO {base.sql_path(folder / (n + '.parquet'))} (FORMAT PARQUET)")
+    con.close()
+
+
+@pytest.fixture
+def with_nport(request):
+    """N-PORT reports for the identity fixture's funds. XLK (TickerInside: equity) reports bonds; SOXX (no
+    TickerInside class: its CIK conflicts) reported bonds a quarter ago and shares now; TAPR holds a mix; CCOI holds
+    funds; SOXL (leveraged) holds shares."""
+    day, older = date(2026, 6, 30), date(2026, 3, 31)
+    _nport([("B1", "S000004348", older)], [("B1", 90.0, "DBT", "CORP")], quarter="2026q2")
+    _nport([("A1", "S000006408", day), ("A2", "S000004348", day), ("A3", "S000099101", day),
+            ("A4", "S000099001", day), ("A5", "S000024908", day)],
+           [("A1", 95.0, "DBT", "CORP"), ("A2", 97.0, "EC", "CORP"), ("A2", 3.0, "STIV", "RF"),
+            ("A3", 40.0, "EC", "CORP"), ("A3", 35.0, "DBT", "UST"), ("A3", 20.0, "STIV", "RF"),
+            ("A4", 95.0, "EC", "RF"), ("A5", 100.0, "EC", "CORP")])
+    return request.getfixturevalue("identity")
+
+
+def test_nport_fills_only_what_the_earlier_sources_left_null(with_nport):
+    rows = _etf()
+    assert rows["XLK"]["asset_class"] == "equity"            # TickerInside's category is never overwritten
+    assert rows["GLD"]["asset_class"] == "commodity"         # the trust rule neither
+    assert rows["SOXX"]["asset_class"] == "equity"           # the newest report, not the quarter before
+    assert rows["TAPR"]["asset_class"] == "multi_asset"
+    assert rows["CCOI"]["asset_class"] is None               # held funds: unread
+    assert rows["SOXL"]["asset_class"] is None               # leveraged
+    assert rows["SPY"]["asset_class"] == "equity"            # TickerInside's, as before
+
