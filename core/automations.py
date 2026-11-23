@@ -48,6 +48,9 @@ RESULT_RUNNING = 0x41301      # SCHED_S_TASK_RUNNING
 RESULT_NOT_YET_RUN = 0x41303  # SCHED_S_TASK_HAS_NOT_RUN
 
 _LOG_MAX_BYTES = 256 * 1024
+# Rotated logs kept per entry, gzipped beside the log (avo 24 Nov 2026: "son 2 geçişin logundan daha fazlasını
+# tutsun"). One builder pass logs ~4 MB, ~0.3 MB gzipped, so 200 is about a week of hourly passes in ~60 MB.
+_LOG_KEEP = 200
 _TAIL_LINES = 5
 _TAIL_WIDTH = 200
 _EXIT_RE = re.compile(r"^=== (\S+) exit (-?\d+)\s*$")
@@ -1028,6 +1031,21 @@ def log_tail(path: Path) -> list[str]:
     return [ln[:_TAIL_WIDTH] for ln in lines[-_TAIL_LINES:]]
 
 
+def rotate_log(log: Path, keep: int = _LOG_KEEP) -> Path:
+    """Move ``log`` to ``<name>.log.<UTC stamp>.gz`` beside it and drop all but the newest ``keep`` of those."""
+    import gzip
+    import shutil
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    dest = log.with_name(f"{log.name}.{stamp}.gz")
+    with open(log, "rb") as src, gzip.open(dest, "wb") as out:
+        shutil.copyfileobj(src, out)
+    log.unlink()
+    for old in sorted(log.parent.glob(f"{log.name}.*.gz"))[:-keep]:   # the stamp sorts by time
+        old.unlink(missing_ok=True)
+    return dest
+
+
 def last_success(path: Path) -> str | None:
     """ISO time of the last ``=== <iso> exit 0`` footer in the log, if any."""
     best = None
@@ -1373,7 +1391,7 @@ def run_task(name: str, python: str | None = None, cwd: Path | str | None = None
     log.parent.mkdir(parents=True, exist_ok=True)
     try:
         if log.stat().st_size > _LOG_MAX_BYTES:
-            log.replace(log.with_suffix(".log.1"))
+            rotate_log(log)
     except OSError:
         pass
     stamp = lambda: datetime.now(timezone.utc).isoformat(timespec="seconds")  # noqa: E731

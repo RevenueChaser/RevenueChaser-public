@@ -340,3 +340,15 @@ def test_relatedness_reads_weekly_sunday_and_its_trigger_says_the_same():
     assert not e.fortnightly
     assert A.on_calendar(e).endswith("*-*-* 22:15:00") and "Sun" in A.on_calendar(e)
     assert A.entry("RC-Backup-Weekly").schedule == "weekly Sunday 03:30 (local)"
+
+
+def test_a_rotated_log_is_gzipped_and_only_the_newest_are_kept(tmp_path):
+    import gzip
+
+    log = tmp_path / "RC-Build.log"
+    for i in range(4):
+        log.write_text(f"pass {i}\n")
+        A.rotate_log(log, keep=3)
+    kept = sorted(tmp_path.glob("RC-Build.log.*.gz"))
+    assert len(kept) == 3 and not log.exists()
+    assert [gzip.open(p, "rt").read() for p in kept] == ["pass 1\n", "pass 2\n", "pass 3\n"]
