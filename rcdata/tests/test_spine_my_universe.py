@@ -674,7 +674,7 @@ def test_a_live_etf_that_is_now_a_trust_moves_kind_without_a_left_or_entered_row
     live_my_universe(rows=[{"ticker": "GLD", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)},
                            {"ticker": "IBIT", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 2e9,
                             "entered_on": date(2026, 10, 1)}])
-    con = _con(etfs=[_etf("GLD", aum=1e11, asset_class="commodity"),
+    con = _con(etfs=[_etf("GLD", aum=1e11, adv=5e9, asset_class="commodity"),   # the volume source answers
                      _etf("IBIT", asset_class="crypto")])          # no volume today: held on its live row
     rows, changes, _ = _rows(con)
     assert (rows["GLD"]["kind"], rows["IBIT"]["kind"]) == ("trust", "trust")
