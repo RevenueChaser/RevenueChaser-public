@@ -491,7 +491,7 @@ def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> None
     live = stage.live_served(con)
     if not live:
         return
-    rekeyed: set[str] = set()  # MUTATION
+    rekeyed = _move_rekeyed(ctx, con, live)
     if ctx.allow_shrink:
         return
 
