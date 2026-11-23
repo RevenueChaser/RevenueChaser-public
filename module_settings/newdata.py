@@ -518,7 +518,7 @@ def _sample_key(table: str, now: datetime, kind: str | None = None) -> str:
 def _cached_sample(table: str, now: datetime, read, kind: str | None = None):
     """``read(table)`` at most once an hour per table and serving file (A16's hourly cache). ``kind`` names the
     file when the table is not one ``read.KIND_OF_TABLE`` knows (a view, or a whole file's facts)."""
-    key = _sample_key(table, now, kind)
+    key = _sample_key(table, now) if kind is None else _sample_key(table, now, kind)   # a test's stand-in takes two
     hit = _SAMPLE_CACHE.get(table)
     if hit is not None and hit[0] == key:
         return hit[1]
