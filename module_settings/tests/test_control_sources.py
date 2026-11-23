@@ -134,6 +134,12 @@ def test_the_funnel_counts_come_from_the_spine_counts():
                for s in f["stocks"] + f["etfs"])
 
 
+def test_the_funds_on_the_list_count_the_trusts_too():
+    nd = _spine_nd()
+    nd["my_universe"]["kinds"] = {"stock": 5200, "etf": 730, "trust": 170}
+    assert control_sources.funnel(nd)["etfs"][-1]["n"] == 900
+
+
 def test_without_a_spine_nothing_is_counted():
     f = control_sources.funnel({"identity": {"steps": []}, "my_universe": {"built": False}})
     assert all(s["n"] is None for s in f["stocks"] + f["etfs"]) and f["added"] is None

@@ -56,6 +56,11 @@ def test_the_rendered_card_names_the_counts_the_rules_and_the_manual_lines():
     assert "None." in text
 
 
+def test_the_card_counts_the_trusts_on_their_own_row():
+    card = {"built": True, "total": 6, "kinds": {"stock": 3, "etf": 2, "trust": 1}, "rules": {}}
+    assert re.search(r"Trusts\s+1\b", re.sub(r"\s+", " ", _text(card)))
+
+
 def test_the_manual_lines_reach_the_card_and_are_escaped(monkeypatch):
     monkeypatch.setattr(my_universe, "load_manual",
                         lambda *a, **k: ([{"ticker": "MSGS", "reason": "<script>x</script>"}],
