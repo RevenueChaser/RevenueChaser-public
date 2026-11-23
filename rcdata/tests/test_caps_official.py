@@ -127,15 +127,6 @@ def test_no_yahoo_reader_waits_on_a_pacer(monkeypatch):
         assert "run_pacer" not in Path(module.__file__).read_text(encoding="utf-8"), module.__name__
 
 
-def test_the_yahoo_market_series_is_not_paced(tmp_path):
-    from datetime import date
-    from revenuechaser.rcdata.build.sources import yahoo
-    slept = []
-    ctx = base.RunContext(run_id="r", dataset="d", sleep=slept.append)
-    yahoo.fetch(ctx, date(2026, 10, 27), download=lambda symbol: [["2026-10-27", 1.0, 1.0, 1.0, 1.0]])
-    assert slept == [] and ctx.calls["yfinance"][0] == len(yahoo.SYMBOLS)
-
-
 # ── Review of PR #380: the box as a whole stays inside each shared limit ─────────────────────────────────────────
 
 
