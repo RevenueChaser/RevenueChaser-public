@@ -68,6 +68,9 @@ INDEX_PATH = "/Archives/edgar/daily-index/{year}/QTR{q}/master.{ymd}.idx"
 # index is read from (``read_quarter``, #561).
 QUARTER_PATH = "/Archives/edgar/full-index/{year}/QTR{q}/master.idx"
 INDEX_HEADER = "CIK|Company Name|Form Type|Date Filed|File Name"
+# The quarter's index writes its last column "Filename" (``full-index/2014/QTR2/master.idx``, read on homesrv 23 Nov
+# 2026): the same five columns under another spelling.
+QUARTER_HEADER = "CIK|Company Name|Form Type|Date Filed|Filename"
 SETTLED = timedelta(days=3)
 FIRST_LOOKBACK = timedelta(days=3)
 DONE, MANIFEST, START = ".done", "manifest.jsonl", "start.json"
@@ -182,7 +185,7 @@ def parse_index(body: bytes, filed: date | None = None) -> list[dict]:
     the index. ``filed`` keeps only the rows of that day, dropped before a row is built: the quarterly index is
     22 MB and a quarter of rows (252,374 for 2014 Q2, measured 2026-11-20), and one day's are a few thousand."""
     lines = body.decode("latin-1").splitlines()
-    start = next((i for i, ln in enumerate(lines) if ln.strip() == INDEX_HEADER), None)
+    start = next((i for i, ln in enumerate(lines) if ln.strip() in (INDEX_HEADER, QUARTER_HEADER)), None)
     if start is None:
         raise base.SourceError(f"sec: not the EDGAR daily index ({(lines or [''])[0][:60]!r})")
     rows = []
