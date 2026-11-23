@@ -8,8 +8,10 @@ made-up value. ``sic`` is Compustat's company SIC (spine 6); its description and
 - ``equity_universe``: the listed rows (Tier A and B), the old table's membership rule (#264); the type filter stays
   with the reader (``core/universe.py``), as before.
 - ``security_master``: every SEC-file row, with each field's source.
-- ``index_constituents``: the current fund-file members (``sp500``, ``sp400``, ``sp600``, ``ndx``) and ``nasdaq``, the
-  listed Nasdaq rows (the old slug meant "listed on Nasdaq"). ``dow`` has no source in the spine and is absent.
+- ``index_constituents``: the current fund-file members (``sp500``, ``sp400``, ``sp600``, ``ndx``, ``dow``: DIA's
+  file alone, the single-file Russell and ``nasdaq100_top30`` indexes, and the S&P and Dow Jones indexes of
+  ``funds.WIDE``, ``funds.DERIVED`` and ``funds.PROSHARES``) and ``nasdaq``: Nasdaq's screener members together
+  with the listed Nasdaq rows (the old slug meant "listed on Nasdaq").
 - ``index_tickers``: as ``core/rawstore.py`` defines it, over the two views above.
 """
 from __future__ import annotations
@@ -33,7 +35,8 @@ VIEWS: dict[str, str] = {
     "index_constituents": (
         "SELECT index_slug AS slug, ticker FROM index_membership "
         "WHERE source = 'funds/index_holdings' AND valid_to IS NULL AND ticker IS NOT NULL "
-        "UNION ALL SELECT 'nasdaq' AS slug, ticker FROM security WHERE exchange = 'Nasdaq' AND tier IN ('A', 'B')"),
+        # UNION, not UNION ALL: the screener's ``nasdaq`` members and the listed Nasdaq rows are mostly the same names
+        "UNION SELECT 'nasdaq' AS slug, ticker FROM security WHERE exchange = 'Nasdaq' AND tier IN ('A', 'B')"),
     "index_tickers": (
         "SELECT c.slug, c.ticker, u.name, u.sector FROM index_constituents c "
         "LEFT JOIN equity_universe u ON u.ticker = c.ticker"),

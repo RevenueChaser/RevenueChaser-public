@@ -78,6 +78,7 @@ def test_the_rules_file_holds_avos_numbers_and_the_module_reads_them():
     assert r.stock_tiers == ("A", "D")
     assert r.stock_types == ("adr", "common", "mlp", "reit")
     assert (r.etf_aum_floor, r.etf_adv_floor) == (100_000_000.0, 10_000_000.0)
+    assert (r.etf_aum_exit_floor, r.etf_adv_exit_floor) == (80_000_000.0, 8_000_000.0)    # SP6: 20 % under entry
     assert r.exclude_etn is True and r.exclude_cef is True
 
 
@@ -148,6 +149,16 @@ def test_a_rules_file_without_a_rule_is_refused_rather_than_defaulted(tmp_path):
     path = tmp_path / "rules.json"
     path.write_text(json.dumps({"stocks": {"tiers": ["A"]}}), encoding="utf-8")
     with pytest.raises(ValueError, match="types"):
+        my_universe.load_rules(path)
+
+
+@pytest.mark.parametrize("key", ["aum_exit_floor_usd", "adv_usd_20d_exit_floor"])
+def test_a_rules_file_without_an_exit_floor_is_refused_rather_than_defaulted(tmp_path, key):
+    doc = json.loads(my_universe.RULES_FILE.read_text(encoding="utf-8"))
+    del doc["etfs"][key]
+    path = tmp_path / "rules.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(ValueError, match=key):
         my_universe.load_rules(path)
 
 
@@ -609,3 +620,38 @@ def test_a_name_that_left_names_the_rule_it_held_under(live_my_universe):
     assert rows == {}
     assert [(c["ticker"], c["change"], c["reason"]) for c in changes] == [
         ("CCOI", "left", "the rules no longer hold (was etf_aum)")]
+
+
+# ── The exit floors (SP6, avo 22 Nov 2026: 80 M AUM / 8 M dollar volume out, 20 % under the entry floors) ─────────
+
+def test_a_live_fund_that_fell_under_the_entry_floor_but_not_the_exit_floor_stays(live_my_universe):
+    """The buffer against churn (151 names in and out in two weeks): a fund in the list leaves only under the exit
+    floor. No ``left`` row is written, the live ``entered_on`` stands and the reason says why it stayed.
+    Under both exit floors a live fund leaves; a fund the live list does not hold needs the entry floors; a live
+    fund with no numbers at all is the volume guard's case (NULL is unknown, not under the floor)."""
+    live_my_universe(rows=[{"ticker": "MIDA", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)},
+                           {"ticker": "MIDV", "kind": "etf", "rule": "etf_adv", "entered_on": date(2026, 10, 1)},
+                           {"ticker": "LOW", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)},
+                           {"ticker": "SPY", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 4e10,
+                            "entered_on": date(2026, 10, 1)}])
+    con = _con(etfs=[_etf("MIDA", aum=90_000_000.0), _etf("MIDV", aum=10_000_000.0, adv=9_000_000.0),
+                     _etf("LOW", aum=79_999_999.0, adv=7_999_999.0), _etf("NEW", aum=90_000_000.0, adv=9e6),
+                     _etf("SPY"), _etf("GLD", adv=50_000_000.0)])
+    rows, changes, issues = _rows(con)
+    assert sorted(rows) == ["GLD", "MIDA", "MIDV", "SPY"]
+    assert rows["SPY"]["adv_usd_20d"] == 4e10 and not rows["SPY"]["reason"]          # the carried live row
+    assert rows["MIDA"]["reason"].startswith("held above the exit floor") and rows["MIDA"]["aum"] == 90_000_000.0
+    assert rows["MIDV"]["reason"].startswith("held above the exit floor") and rows["MIDV"]["adv_usd_20d"] == 9e6
+    assert (rows["MIDA"]["rule"], rows["MIDV"]["rule"]) == ("etf_aum", "etf_adv")     # the live rule it held under
+    assert rows["MIDA"]["entered_on"] == date(2026, 10, 1)
+    assert [(c["ticker"], c["change"]) for c in changes] == [("LOW", "left"), ("GLD", "entered")]
+    assert [k for k, _, _ in issues] == ["my_universe_etf_volume_lost"]
+
+
+def test_either_number_at_its_exit_floor_keeps_the_fund(live_my_universe):
+    """Like the entry rule: either number is enough, and the floor itself counts (at or over)."""
+    live_my_universe(rows=[{"ticker": t, "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)}
+                           for t in ("ATAUM", "ATADV")])
+    con = _con(etfs=[_etf("ATAUM", aum=80_000_000.0, adv=1.0), _etf("ATADV", aum=1.0, adv=8_000_000.0)])
+    rows, _, _ = _rows(con)
+    assert sorted(rows) == ["ATADV", "ATAUM"]

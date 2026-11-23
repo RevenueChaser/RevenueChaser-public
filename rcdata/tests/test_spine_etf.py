@@ -71,7 +71,8 @@ def test_the_columns_are_the_plans_and_there_is_no_active_column(built):
         cols = [d[0] for d in con.execute("SELECT * FROM etf LIMIT 0").description]
     assert cols == ["ticker", "name", "series_id", "cik", "source", "is_etn", "is_cef", "asset_class", "focus",
                     "country", "is_index", "is_lev_inverse", "is_money_market", "is_option_income", "is_fund_of_funds",
-                    "inception", "aum", "aum_as_of", "aum_source", "adv_usd_20d", "expense_ratio", "source_as_of",
+                    "inception", "aum", "aum_as_of", "aum_source", "adv_usd_20d", "expense_ratio",
+                    "gvkey", "iid", "cusip", "figi", "composite_figi", "identity_source", "source_as_of",
                     "fetched_at", "run_id"]
 
 
@@ -259,3 +260,88 @@ def test_a_cef_that_av_calls_an_etf_is_flagged_kept_and_not_counted():
     assert rows["DHY"]["source"] == "av" and rows["DHY"]["is_etn"] is False
     assert ("2 in etf: 1 ETFs, 0 ETNs flagged, 1 CEFs flagged; "
             "0 with a 20-session dollar volume" in ctx.notes)
+
+
+# ── ETF identity in the spine (#1334 K-A, SP1, SP7; plan v4 step 7, spine 11) ───────────────────────────────
+
+def _ti_files(day: str = "2026-11-02") -> None:
+    """TickerInside's ``identifiers.json`` and ``funds.json`` as ``funds/etf_holdings`` keeps them for the day."""
+    from revenuechaser.rcdata.build.spine import etf_holdings
+    folder = etf_holdings.raw_dir() / day
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / etf_holdings.TI_META["identifiers"]).write_bytes(fx.tickerinside_identifiers())
+    (folder / etf_holdings.TI_META["funds"]).write_bytes(fx.tickerinside_funds())
+
+
+@pytest.fixture
+def identity(request):
+    from .test_spine_etf_adv import put_secd, series
+    put_secd(series("131856", "01", "XLK", 3, 1.0, close=200.0, cshoc=5e8, cusip="81369Y803")
+             + series("131855", "01", "SPY", 3, 1.0, close=700.0, cshoc=1e9, cusip="78462F103")
+             # a series that carried XLK long ago: a reused ticker's, never this fund's (the recency rule)
+             + series("099001", "01", "XLK", 3, 1.0, last=date(2026, 9, 1), cusip="00000X000"))
+    _ti_files()
+    return request.getfixturevalue("built")
+
+
+def _open_issues() -> set[tuple[str, str]]:
+    from revenuechaser.rcdata import ops
+    return {(i["kind"], i["key"]) for i in ops.open_issues(security.NAME, limit=500)[1]}
+
+
+def test_an_etf_takes_its_gvkey_iid_and_cusip_from_the_series_the_spine_already_chose(identity):
+    rows = _etf()
+    assert (rows["XLK"]["gvkey"], rows["XLK"]["iid"], rows["XLK"]["cusip"]) == ("131856", "01", "81369Y803")
+    assert (rows["SPY"]["gvkey"], rows["SPY"]["iid"], rows["SPY"]["cusip"]) == ("131855", "01", "78462F103")
+    assert rows["SOXX"]["gvkey"] is None and rows["SOXX"]["cusip"] is None      # Compustat prices no SOXX here
+    assert "compustat_secd" in rows["XLK"]["identity_source"]
+
+
+def test_tickerinside_gives_the_figi_expense_ratio_and_asset_class_where_its_cik_agrees(identity):
+    rows = _etf()
+    xlk, spy = rows["XLK"], rows["SPY"]
+    assert (xlk["figi"], xlk["composite_figi"], xlk["expense_ratio"], xlk["asset_class"]) == (
+        "BBG000BJ7007", "BBG000BJ7007", 0.08, "equity")
+    assert (spy["figi"], spy["expense_ratio"], spy["asset_class"]) == ("BBG000BDTBL9", 0.0945, "equity")
+    assert "tickerinside" in xlk["identity_source"]
+    # cik and series_id are filled only where empty: N-CEN's own stay
+    assert (xlk["cik"], xlk["series_id"]) == ("1064641", "S000006408")
+
+
+def test_a_tickerinside_row_under_another_cik_fills_nothing_and_is_an_issue(identity):
+    soxx = _etf()["SOXX"]
+    assert (soxx["cik"], soxx["series_id"]) == ("1100663", "S000004348")
+    assert (soxx["figi"], soxx["composite_figi"], soxx["expense_ratio"], soxx["asset_class"]) == (None,) * 4
+    assert ("etf_cik_conflict", "SOXX") in _open_issues()
+
+
+def test_an_empty_cik_and_series_id_are_filled_and_an_unmapped_category_is_null_and_an_issue(identity):
+    newe, qyld = _etf()["NEWE"], _etf()["QYLD"]
+    assert (newe["cik"], newe["series_id"], newe["figi"], newe["asset_class"]) == (
+        "1777777", "S000077777", "BBG01NEWE001", None)
+    assert ("etf_category_unmapped", "something-new") in _open_issues()
+    assert (qyld["cik"], qyld["figi"], qyld["expense_ratio"], qyld["asset_class"]) == (
+        None, "BBG005QFDDX1", 0.6, "equity")
+
+
+def test_the_commodity_rule_wins_over_the_category(identity):
+    """S7b: GLD, SLV and USO are grantor trusts; a category of TickerInside's never takes that away."""
+    gld = _etf()["GLD"]
+    assert gld["asset_class"] == "commodity" and gld["expense_ratio"] == 0.4
+
+
+def test_every_tickerinside_category_of_20_nov_2026_but_unclassified_is_mapped():
+    """The 103 category ids of ``funds.json`` (20 Nov 2026), so only a new one, or ``unclassified``, is an issue."""
+    assert len(etf.CATEGORY_ASSET_CLASS) == 102 and "unclassified" not in etf.CATEGORY_ASSET_CLASS
+    assert set(etf.CATEGORY_ASSET_CLASS.values()) <= set(etf.ASSET_CLASSES)
+    assert etf.CATEGORY_ASSET_CLASS["precious-metals"] == "commodity"
+    assert etf.CATEGORY_ASSET_CLASS["core-bond"] == "bond" and etf.CATEGORY_ASSET_CLASS["bitcoin"] == "crypto"
+
+
+def test_without_tickerinside_files_the_identity_columns_stay_null_but_compustats(request):
+    from .test_spine_etf_adv import put_secd, series
+    put_secd(series("131856", "01", "XLK", 3, 1.0, close=200.0, cshoc=5e8, cusip="81369Y803"))
+    request.getfixturevalue("built")
+    xlk = _etf()["XLK"]
+    assert (xlk["gvkey"], xlk["figi"], xlk["expense_ratio"], xlk["identity_source"]) == (
+        "131856", None, None, "compustat_secd")

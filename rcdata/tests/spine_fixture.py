@@ -25,6 +25,8 @@ Plus WFC (common, so WFC-PC's CIK has two tickers), an OTC name (Tier C), a row 
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import io
 import json
 import re
@@ -296,7 +298,7 @@ def figi_answer(request):
 
 
 # ── Fund files ───────────────────────────────────────────────────────────────────────────────────────────────
-# The iShares, Vanguard and Invesco shapes follow the real files of 28 Oct 2026 (#237); the values are the tests'.
+# The iShares and Invesco shapes follow the real files of 28 Oct 2026 (#237); the values are the tests'.
 
 # (ticker as the file writes it, CUSIP or None, name)
 SP500 = [("MSFT", "594918104", "MICROSOFT CORP"), ("ETN", "G29183103", "EATON CORP PLC"),
@@ -325,8 +327,8 @@ def ssga_xlsx(holdings) -> bytes:
 
 
 # A fund file's request, by the part of its URL that names the fund (the http mock matches a substring).
-ISHARES_ROUTE = {"IVV": "products/239726/", "IJH": "products/239763/", "IJR": "products/239774/"}
-VANGUARD_ROUTE = {"VOO": "standard/01S990737/", "IVOO": "standard/00S991588/", "VIOO": "standard/00S991612/"}
+ISHARES_ROUTE = {"IVV": "products/239726/", "IJH": "products/239763/", "IJR": "products/239774/",
+                 "IWM": "products/239710/"}
 
 
 def ishares_csv(holdings, drop_dash=False, typed=True, weight_col="Market Weight") -> bytes:
@@ -377,22 +379,44 @@ def ishares_csv(holdings, drop_dash=False, typed=True, weight_col="Market Weight
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def vanguard_json(holdings, cusip_only=()) -> bytes:
-    """Vanguard's daily creation basket (PCF) of ``etfportal.vanguard.com/extrapi/v2/us/standard/<basket>/CRRD/
-    holdings.json``; a name in ``cusip_only`` is written with an empty ticker (as the real file writes two IVOO lines),
-    so only its CUSIP can match it. A futures line shows the non-equity lines are dropped."""
-    holding = [{"assetType": "EQUITY", "ticker": "" if t in cusip_only else t, "cusip": cusip, "shrtName": name,
-                "weighting": 1.0, "cashInLieu": "N"} for t, cusip, name in holdings]
-    holding.append({"assetType": "FUTURE", "ticker": "ESZ6", "cusip": None, "shrtName": "S&P500 EMINI FUT",
-                    "weighting": 0.03, "cashInLieu": "N"})
-    return json.dumps({"basketId": "01S990737", "portId": "0968", "trdDateStr": "10/27/2026 00:00:00",
-                       "equityHldgCnt": len(holdings), "holding": holding}).encode()
-
-
 def nasdaq_json(symbols) -> bytes:
     return json.dumps({"data": {"data": {"headers": {}, "rows": [{"symbol": s, "companyName": s + " Inc."}
                                                                  for s in symbols]}},
                        "message": None, "status": {"rCode": 200}}).encode()
+
+
+def nasdaq_screener_json(rows) -> bytes:
+    """Nasdaq's stock screener (``/api/screener/stocks?tableonly=true&exchange=NASDAQ&download=true``, the live
+    answer of 22 Nov 2026): the rows at ``data.rows``, one per listed symbol with its ``name``, warrants, rights and
+    units among them."""
+    return json.dumps({"data": {"asOf": None, "headers": {"symbol": "Symbol", "name": "Name"},
+                                "rows": [{"symbol": sym, "name": name, "marketCap": "1.00", "country": "United States",
+                                          "sector": "Technology", "industry": "Software"} for sym, name in rows]},
+                       "message": None, "status": {"rCode": 200}}).encode()
+
+
+#: The screener's row shapes seen on 22 Nov 2026: a stock, an ADR, an LP's common units (a member), and a SPAC's
+#: unit, warrant and right (not members).
+SCREENER_ROWS = [("MSFT", "Microsoft Corporation Common Stock"),
+                 ("AACG", "ATA Creativity Global American Depositary Shares"),
+                 ("PAA", "Plains All American Pipeline L.P. Common Units representing Limited Partner Interests"),
+                 ("AACIU", "Armada Acquisition Corp. III Units"), ("AACIW", "Armada Acquisition Corp. III Warrant"),
+                 ("BCTXZ", "BriaCell Therapeutics Corp. Warrant expiring 2030"),
+                 ("SPEGR", "Silver Pegasus Acquisition Corp Rights."),
+                 ("BLUWU", "Blue Water Acquisition Corp. III Unit.")]
+
+
+def proshares_csv(fund: str, holdings) -> bytes:
+    """ProShares' daily holdings CSV (``accounts.profunds.com/etfdata/ByFund/<fund>-psdlyhld.csv``, NOBL of
+    22 Nov 2026): three preamble lines, a header with a space after each comma, one line per holding with no CUSIP
+    (a SEDOL) and no weight (a market value), and a cash line with no ticker."""
+    lines = ["PORTFOLIO HOLDINGS INFORMATION,,,,", "AS OF 11/20/2026,,,,", ",,,,",
+             "Fund Ticker, Fund Name, Security Ticker, Security Sedol, Security Description, Coupon, Maturity Date, "
+             "Shares/Contracts, Exposure Value (Notional + G/L), Market Value"]
+    for t, _cusip, name in holdings:
+        lines.append(f'"{fund}","ProShares {fund} ETF","{t}","2000000","{name}",,,1000,,100000.0,')
+    lines.append(f'"{fund}","ProShares {fund} ETF","","","Net Other Assets (Liabilities)",,,27671551.7,,27671551.7,')
+    return ("\r\n".join(lines) + "\r\n").encode()
 
 
 def invesco_json(holdings, adr=False) -> bytes:
@@ -420,16 +444,21 @@ def invesco_json(holdings, adr=False) -> bytes:
 
 def add_fund_routes(http_mock, sp500=SP500, sp400=SP400, ndx=("MSFT",), fail=()) -> None:
     """Answer every fund file of ``funds.FILES``: S&P 500 and 400 from the lists above, the SmallCap 600 files 404;
-    the Nasdaq list and QQQ both hold ``ndx``; DIA (no index) holds the S&P 500 list."""
+    IWM holds the MidCap list (``russell2000``) and the other single-file indexes 404;
+    the Nasdaq list and QQQ both hold ``ndx``; DIA (the one ``dow`` file) holds the fixture's own S&P 500 list,
+    whatever ``sp500`` a test passes, so a test that moves the S&P 500 lines does not move ``dow``. The SSGA routes
+    end in ``.xlsx``, so ``spy`` does not also answer SPYG, SPYV or SPYD (nor ``mdy`` MDYG and MDYV): every other
+    fund file 404s."""
     def maybe(name, body):
         return (500, b"down", {}) if name in fail else (200, body, {})
-    http_mock.add("holdings-daily-us-en-spy", lambda r: maybe("SPY", ssga_xlsx(sp500)))
-    http_mock.add("holdings-daily-us-en-mdy", lambda r: maybe("MDY", ssga_xlsx(sp400)))
-    http_mock.add("holdings-daily-us-en-dia", lambda r: maybe("DIA", ssga_xlsx(sp500)))
+    http_mock.add("holdings-daily-us-en-spy.xlsx", lambda r: maybe("SPY", ssga_xlsx(sp500)))
+    http_mock.add("holdings-daily-us-en-mdy.xlsx", lambda r: maybe("MDY", ssga_xlsx(sp400)))
+    http_mock.add("holdings-daily-us-en-dia.xlsx", lambda r: maybe("DIA", ssga_xlsx(SP500)))
     http_mock.add(ISHARES_ROUTE["IVV"], lambda r: maybe("IVV", ishares_csv(sp500)))
     http_mock.add(ISHARES_ROUTE["IJH"], lambda r: maybe("IJH", ishares_csv(sp400, drop_dash=True)))
-    http_mock.add(VANGUARD_ROUTE["VOO"], lambda r: maybe("VOO", vanguard_json(sp500, cusip_only=("FDX",))))
-    http_mock.add(VANGUARD_ROUTE["IVOO"], lambda r: maybe("IVOO", vanguard_json(sp400)))
+    # IWM (``russell2000``, one file, the untyped shape): the MidCap list and a name the SEC file does not hold
+    http_mock.add(ISHARES_ROUTE["IWM"], lambda r: maybe("IWM", ishares_csv(
+        SP400 + [("ZZZQ", None, "UNKNOWN CO")], typed=False)))
     http_mock.add("list-type/nasdaq100", lambda r: maybe("NDX", nasdaq_json(ndx)))
     http_mock.add("shareclasses/QQQ/holdings", lambda r: maybe("QQQ", invesco_json(
         [h for h in sp500 + sp400 + [("NVDA", "67066G104", "NVIDIA CORP")] if h[0] in ndx])))
@@ -473,6 +502,87 @@ def tickerinside_fund_json(holdings, fund: str, as_of="2026-11-19", layer="issue
                        "holdings": weights}).encode()
 
 
+def tickerinside_index(bodies: dict, kept=(), list_sha256: str | None = None) -> dict[str, bytes]:
+    """TickerInside's index files by route, in the live shapes of 22 Nov 2026: ``manifest.json`` (its
+    ``files.list_sha256`` is the sha256 of the *uncompressed* list), ``sha256sums.txt.gz`` (``<sha256>  <path from the
+    site's root>`` per file) and ``status.json`` (``run.fetch_holdings.kept_previous``, the funds the site serves from
+    an older issuer file). ``bodies`` is fund -> the fund file served; ``kept`` the funds named as kept."""
+    text = "".join(f"{hashlib.sha256(b).hexdigest()}  api/v1/fund/{t.lower()}.json\n"
+                   for t, b in sorted(bodies.items())).encode()
+    manifest = {"manifest_version": 1, "build_date": "2026-11-21",
+                "files": {"count": len(bodies), "list": "https://tickerinside.com/api/v1/sha256sums.txt.gz",
+                          "list_sha256": list_sha256 or hashlib.sha256(text).hexdigest()}}
+    status = {"schema": 1, "run": {"fetch_holdings": {"funds_attempted": 425, "kept_previous": [
+        {"ticker": t, "issuer": "Global X", "since": "2026-11-13", "holdings_as_of": "2026-11-11"} for t in kept]}}}
+    return {"/manifest.json": json.dumps(manifest).encode(), "/sha256sums.txt.gz": gzip.compress(text),
+            "/status.json": json.dumps(status).encode(), "/identifiers.json": tickerinside_identifiers(),
+            "/funds.json": tickerinside_funds()}
+
+
+#: ``identifiers.json``'s ``fields`` in the live order of 20 Nov 2026 (one list per security under ``securities``).
+TI_ID_FIELDS = ["ticker", "name", "asset_type", "exchange", "composite_figi", "share_class_figi", "cik", "series_id",
+                "class_id"]
+#: The ETFs of ``test_spine_etf``'s fixture as TickerInside lists them (values chosen for the tests): XLK with the
+#: CIK N-CEN gives it, SPY with its trust's, GLD a commodity trust, SOXX
+#: under another CIK (a conflict), QYLD with no CIK (nothing to check it by) and BRK.B with its dot.
+TI_IDENTIFIERS = [
+    {"ticker": "XLK", "asset_type": "etf", "composite_figi": "BBG000BJ7007", "share_class_figi": "BBG001S5TZJ6",
+     "cik": "0001064641", "series_id": "S000099999", "class_id": "C000099999"},
+    {"ticker": "SPY", "asset_type": "etf", "composite_figi": "BBG000BDTBL9", "share_class_figi": "BBG001S72SM3",
+     "cik": "0000884394", "series_id": None, "class_id": None},
+    {"ticker": "GLD", "asset_type": "etf", "composite_figi": "BBG000CRF6Q8", "share_class_figi": "BBG001T7GM63",
+     "cik": "0001222333", "series_id": None, "class_id": None},
+    {"ticker": "SOXX", "asset_type": "etf", "composite_figi": "BBG000PZ3BK6", "share_class_figi": "BBG001T52N74",
+     "cik": "0009999999", "series_id": "S000011111", "class_id": None},
+    {"ticker": "QYLD", "asset_type": "etf", "composite_figi": "BBG005QFDDX1", "share_class_figi": "BBG005QFDDY0",
+     "cik": None, "series_id": None, "class_id": None},
+    {"ticker": "NEWE", "asset_type": "etf", "composite_figi": "BBG01NEWE001", "share_class_figi": None,
+     "cik": "0001777777", "series_id": "S000077777", "class_id": None},
+    {"ticker": "BRK.B", "asset_type": "stock", "composite_figi": "BBG000DWG505", "share_class_figi": "BBG001S5WXJ2",
+     "cik": "0001067983", "series_id": None, "class_id": None},
+]
+#: ``funds.json``: the funds by their layer's list, each ``t`` (ticker), ``c`` / ``cat_id`` (category) and ``er``
+#: (expense ratio, percent). NEWE's category is one the map does not know.
+TI_FUNDS = [
+    {"list": "funds", "t": "XLK", "c": "Technology", "cat_id": "technology", "er": 0.08},
+    {"list": "funds", "t": "SPY", "c": "Large Blend", "cat_id": "us-large-blend", "er": 0.0945},
+    # GLD under the miners' category (an equity one): the commodity rule still decides its asset class.
+    {"list": "trust_funds", "t": "GLD", "c": "Gold and Silver Miners", "cat_id": "gold-silver-miners", "er": 0.4},
+    {"list": "funds", "t": "SOXX", "c": "Technology", "cat_id": "technology", "er": 0.34},
+    {"list": "sec_funds", "t": "QYLD", "c": "Option Income", "cat_id": "option-income", "er": 0.6,
+     "report_date": "2026-07-31"},
+    {"list": "sec_funds", "t": "NEWE", "c": "Something New", "cat_id": "something-new", "er": None},
+]
+
+
+def tickerinside_identifiers(rows=None) -> bytes:
+    """``identifiers.json`` in its live shape of 20 Nov 2026: ``fields`` and one list per security."""
+    rows = TI_IDENTIFIERS if rows is None else rows
+    return json.dumps({"read_on": "2026-11-20", "count": len(rows), "fields": TI_ID_FIELDS,
+                       "securities": [[r.get(f) for f in TI_ID_FIELDS] for r in rows],
+                       "license": "CC BY 4.0"}).encode()
+
+
+def tickerinside_funds(rows=None) -> bytes:
+    """``funds.json`` in its live shape of 20 Nov 2026: one list per layer (``funds``, ``sec_funds``,
+    ``trust_funds``, ...), each fund an object keyed ``t``, ``n``, ``c``, ``cat_id``, ``er``, ..."""
+    rows = TI_FUNDS if rows is None else rows
+    by: dict[str, list] = {}
+    for r in rows:
+        by.setdefault(r["list"], []).append({k: v for k, v in r.items() if k != "list"})
+    return json.dumps({"as_of": "2026-11-20", "count": len(rows), **by, "license": "CC BY 4.0"}).encode()
+
+
+def add_tickerinside_index(http_mock, bodies: dict, kept=(), list_sha256: str | None = None,
+                           first: bool = False) -> None:
+    """Answer TickerInside's index files for ``bodies``; ``first`` puts them ahead of the routes already added."""
+    for route, body in tickerinside_index(bodies, kept, list_sha256).items():
+        if first:
+            http_mock.routes.insert(0, (route, body, 200, {}))
+        else:
+            http_mock.add(route, body)
+
+
 def ark_csv(holdings, fund: str = "ARKQ") -> bytes:
     """ARK's daily holdings CSV, in the shape of the real file of 30 Oct 2026 (``fixtures/ark_arkq_holdings.csv``
     is a trimmed copy): the header, one line per holding, the money-market line with no ticker, the disclaimer."""
@@ -487,7 +597,8 @@ def ark_csv(holdings, fund: str = "ARKQ") -> bytes:
 def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
     """Answer every file of ``spine/etf_holdings.FILES`` and of its ``FALLBACKS``: the SPDR workbooks, the iShares
     CSVs (each in the shape its own fund serves — IAK typed, the five sector funds not), TickerInside's fund files
-    and ARK's CSV, each holding ``holdings`` (``SP500`` by default). An ETF named in ``fail`` answers 500 instead.
+    (and its index files, which list them) and ARK's CSV, each holding ``holdings`` (``SP500`` by default). An ETF
+    named in ``fail`` answers 500 instead.
     ``repeat`` is UW's shape and reaches only the sweep's and a named request's routes."""
     from revenuechaser.rcdata.build.spine import etf_holdings as etf
     rows = SP500 if holdings is None else holdings
@@ -496,6 +607,7 @@ def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
         def go(_request):
             return (500, b"down", {}) if etf_name in fail else (200, body, {})
         return go
+    ti_bodies: dict[str, bytes] = {}
     for f in etf.FILES + tuple(etf.FALLBACKS.values()):
         if f.provider == "ssga":
             route, body = f"holdings-daily-us-en-{f.etf.lower()}.", ssga_xlsx(rows)
@@ -510,6 +622,9 @@ def add_etf_routes(http_mock, holdings=None, fail=(), repeat=()) -> None:
         else:
             route, body = f"/etfs/{f.etf}/holdings", uw_holdings_json(rows, repeat=repeat)
         http_mock.add(route, answer(body, f.etf))
+        if f.provider == "tickerinside":
+            ti_bodies[f.etf] = body
+    add_tickerinside_index(http_mock, ti_bodies)
 
 
 # ── The SEC's Form N-CEN data sets (``sec/ncen``) ────────────────────────────────────────────────────────────
@@ -613,7 +728,8 @@ def write_etf_holdings(by_etf: dict, as_of: str = "2026-11-07", provider: str = 
             for i, t in enumerate(tickers):
                 line = t if isinstance(t, dict) else {"ticker": t, "name": f"{t or 'NONE'} NAME",
                                                       "weight": float(len(tickers) - i)}
-                con.execute(f"INSERT INTO {etf.TABLE} VALUES (?, ?, ?, ?, NULL, ?, ?)",
+                con.execute(f"INSERT INTO {etf.TABLE} (as_of, etf, provider, ticker, name, weight) "
+                            "VALUES (?, ?, ?, ?, ?, ?)",
                             [as_of, fund, provider, line["ticker"], line.get("name"), line.get("weight")])
     finally:
         con.close()

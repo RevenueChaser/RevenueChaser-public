@@ -11,6 +11,9 @@
     "_": "An etf row that is no ETN and no CEF, with an AUM (etf.aum: shares times close, else N-CEN) at or over aum_floor_usd, or a 20-session average daily dollar volume at or over adv_usd_20d_floor. Either one is enough (avo, 18 Nov 2026).",
     "aum_floor_usd": 100000000,
     "adv_usd_20d_floor": 10000000,
+    "_exit": "A fund already in the list leaves only when both present numbers are under these exit floors, 20 % under the entry floors (avo, 22 Nov 2026, SP6). A NULL number is left to the hold rules of my_universe.py.",
+    "aum_exit_floor_usd": 80000000,
+    "adv_usd_20d_exit_floor": 8000000,
     "exclude_etn": true,
     "exclude_cef": true
   }

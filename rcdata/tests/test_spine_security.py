@@ -113,14 +113,23 @@ def test_membership_from_the_fund_files_matched_by_cusip_ticker_and_squashed_tic
     rows = _q("SELECT index_slug, ticker, valid_from, valid_to, files_held, files_counted FROM index_membership "
               "WHERE source = ? ORDER BY index_slug, ticker", funds.NAME)
     assert rows == [
+        ("dow", "ETN", date(2026, 10, 27), None, 1, 1),       # DIA's file alone: no vote (SP5)
+        ("dow", "FDX", date(2026, 10, 27), None, 1, 1),
+        ("dow", "MSFT", date(2026, 10, 27), None, 1, 1),
+        ("dow", "NVR", date(2026, 10, 27), None, 1, 1),
+        ("dow", "WFC", date(2026, 10, 27), None, 1, 1),
         ("ndx", "MSFT", date(2026, 10, 27), None, 2, 2),      # the Nasdaq list and QQQ
-        ("sp400", "HEI", date(2026, 10, 27), None, 3, 3),
-        ("sp400", "HEI-A", date(2026, 10, 27), None, 3, 3),      # iShares' HEIA, squashed back to HEI-A
-        ("sp500", "ETN", date(2026, 10, 27), None, 3, 3),
-        ("sp500", "FDX", date(2026, 10, 27), None, 3, 3),        # Vanguard's line has only the CUSIP
-        ("sp500", "MSFT", date(2026, 10, 27), None, 3, 3),
-        ("sp500", "NVR", date(2026, 10, 27), None, 3, 3),
-        ("sp500", "WFC", date(2026, 10, 27), None, 3, 3)]
+        ("russell2000", "HEI", date(2026, 10, 27), None, 1, 1),  # IWM's file alone, like dow
+        ("russell2000", "HEI-A", date(2026, 10, 27), None, 1, 1),
+        ("sp400", "HEI", date(2026, 10, 27), None, 2, 2),        # SSGA and iShares (Vanguard removed, 22 Nov)
+        ("sp400", "HEI-A", date(2026, 10, 27), None, 2, 2),      # iShares' HEIA, squashed back to HEI-A
+        ("sp500", "ETN", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "FDX", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "MSFT", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "NVR", date(2026, 10, 27), None, 2, 2),
+        ("sp500", "WFC", date(2026, 10, 27), None, 2, 2)]
+    # The CUSIP-only line (an empty ticker) was Vanguard's shape; matching by CUSIP first is still shown by SSGA's
+    # line in the ETN -> ETNX rename test below.
 
 
 def _funds_answer(http_mock, **kw) -> None:
@@ -141,7 +150,7 @@ def test_membership_periods_open_close_and_reopen(built):
 
 
 def test_a_day_without_a_counting_file_is_no_absence(built):
-    _funds_answer(built, fail=("SPY", "IVV", "VOO"))
+    _funds_answer(built, fail=("SPY", "IVV"))
     run_all("2026-10-28", names=(funds.NAME,))
     assert _q("SELECT valid_from, valid_to FROM index_membership WHERE source = ? AND index_slug = 'sp500' "
               "AND ticker = 'NVR'", funds.NAME) == [(date(2026, 10, 27), None)]
@@ -152,8 +161,41 @@ def test_files_that_disagree_vote_and_are_an_issue(built):
     built.routes.insert(0, (fx.ISHARES_ROUTE["IVV"], lambda r: (200, fx.ishares_csv(fx.SP500), {}), 200, {}))
     run_all("2026-10-28", names=(funds.NAME,))
     assert _q("SELECT valid_to, files_held, files_counted FROM index_membership WHERE source = ? "
-              "AND index_slug = 'sp500' AND ticker = 'NVR'", funds.NAME) == [(date(2026, 10, 28), 3, 3)]
+              "AND index_slug = 'sp500' AND ticker = 'NVR'", funds.NAME) == [(date(2026, 10, 28), 2, 2)]
     assert ("membership_files_disagree", "sp500:NVR") in _issues()
+
+
+def test_a_russell_line_the_sec_file_does_not_hold_is_no_issue(built):
+    """The Russell files hold thousands of small names: a per-name issue there would flood the list, so
+    ``member_not_in_sec`` and ``member_not_tier_a`` are raised for ``funds.CHECKED`` only (IWM's ZZZQ here)."""
+    assert ("member_not_in_sec", "russell2000:ZZZQ") not in _issues()
+    assert not {k for k, key in _issues() if key.startswith("russell") and k.startswith("member_not_")}
+    assert _q("SELECT count(*) FROM index_membership WHERE source = ? AND index_slug = 'russell2000'",
+              funds.NAME) == [(2,)]
+
+
+def test_a_sector_index_is_its_etf_holdings_file_of_the_day_with_no_second_fetch(built):
+    """Group B: ``sp500_information_technology`` is XLK's lines as ``funds/etf_holdings`` wrote them, one file and
+    no vote; a line the SEC file does not hold is no issue (not in ``funds.CHECKED``)."""
+    from revenuechaser.rcdata.build.spine import etf_holdings
+    rows = [{"as_of": date(2026, 10, 27), "etf": etf, "provider": "ssga", "ticker": t, "ticker_raw": t, "cusip": cu,
+             "name": n, "weight": 1.0, "holdings_as_of": None, "source_layer": None, "fetched_at": 1.0, "run_id": "r"}
+            for etf in ("XLK", "SMH") for t, cu, n in [("MSFT", "594918104", "MICROSOFT CORP"),
+                                                       ("ZZZQ", None, "UNKNOWN CO")]]
+    final = etf_holdings.parquet_dir() / "date=2026-10-27" / "part-0.parquet"
+    con = base.scratch_con()
+    try:
+        base.rows_table(con, "rows", etf_holdings.SCHEMA, rows)
+        base.write_parquet(con, "SELECT * FROM rows", final)
+    finally:
+        con.close()
+    built.requests.clear()
+    run_all("2026-10-28", names=(security.NAME,))
+    assert not built.requests                                           # read from the file, not fetched
+    assert _q("SELECT index_slug, ticker, valid_from, valid_to, files_held, files_counted FROM index_membership "
+              "WHERE source = ? AND index_slug LIKE 'sp500_%' ORDER BY 1, 2", funds.NAME) == [
+        ("sp500_information_technology", "MSFT", date(2026, 10, 27), None, 1, 1)]   # SMH is no index fund
+    assert not {key for _k, key in _issues() if key.startswith("sp500_information_technology:")}
 
 
 def test_a_line_carrying_another_securitys_cusip_is_no_match(built):
@@ -163,6 +205,37 @@ def test_a_line_carrying_another_securitys_cusip_is_no_match(built):
     run_all("2026-10-28", names=(funds.NAME,))
     assert _q("SELECT count(*) FROM index_membership WHERE source = ? AND ticker = 'VYLR'", funds.NAME) == [(0,)]
     assert ("member_not_in_sec", "sp500:VYLR") in _issues()
+
+
+def test_a_cash_or_futures_line_with_no_cusip_is_no_member_not_in_sec(built):
+    """#1418: most of the 11 live ``member_not_in_sec`` were cash and futures lines (``RTYZ6``, ``CASH_USD``). An
+    unknown stock line without a CUSIP is still raised."""
+    _funds_answer(built, sp500=fx.SP500 + [("RTYZ6", None, "RUSSELL 2000 EMINI DEC 26"),
+                                           ("CASH USD", None, "US DOLLAR"), ("ZZZQ", None, "UNKNOWN CO")])
+    run_all("2026-10-28", names=(funds.NAME,))
+    issues = _issues()
+    assert ("member_not_in_sec", "sp500:RTYZ6") not in issues
+    assert ("member_not_in_sec", "sp500:CASH-USD") not in issues
+    assert ("member_not_in_sec", "sp500:ZZZQ") in issues
+
+
+def test_a_cash_line_with_a_made_up_identifier_is_no_member_not_in_sec(built):
+    """#1418: SSGA's dollar line, ticker ``CASH_USD`` and identifier ``999USDZ92``, passes the CUSIP shape. A cash
+    ticker is never a security, so it is skipped whatever its identifier; a future with one is still raised."""
+    _funds_answer(built, sp500=fx.SP500 + [("CASH_USD", "999USDZ92", "US DOLLAR"),
+                                           ("RTYZ6", "999RTYZ62", "RUSSELL 2000 EMINI DEC 26")])
+    run_all("2026-10-28", names=(funds.NAME,))
+    issues = _issues()
+    assert ("member_not_in_sec", "sp500:999USDZ92") not in issues
+    assert ("member_not_in_sec", "sp500:RTYZ6") in issues
+
+
+def test_the_cash_and_futures_shapes_take_no_real_ticker():
+    assert all(security.CASH.match(t) for t in ("CASH_USD", "CASH USD", "CASH-EUR"))
+    assert all(security.FUTURE.match(t) for t in ("RTYZ6", "ESZ6"))
+    for shape in (security.CASH, security.FUTURE):
+        assert not any(shape.match(t) for t in ("CASH", "MSFT", "BRK-B", "HEI-A", "GOOGL", "Z", "NVR", "ETNX",
+                                                "ZZZQ"))
 
 
 def test_a_line_with_its_own_old_cusip_or_an_unknown_one_still_matches(built):
@@ -325,7 +398,9 @@ def test_a_member_the_sec_file_drops_for_a_week_keeps_one_period(built):
 def test_a_rename_the_fund_files_lag_is_not_matched_to_the_old_tickers_next_owner(built):
     """Delta-2 SF1, the other direction: the SEC file writes ETN as ETNX from 3 Nov, iShares still writes ETN
     without a CUSIP that day, and on 10 Nov the ticker ETN belongs to another CIK. iShares' line is no match for the
-    new ETN; SSGA and Vanguard carry the CUSIP and keep the member as ETNX, under Eaton's CIK (delta-3 nit 2)."""
+    new ETN; SSGA carries the CUSIP and matches the line to ETNX, under Eaton's CIK (delta-3 nit 2). With two S&P 500
+    files (Vanguard removed, 22 Nov 2026) one of two is no majority, so ETNX is no S&P 500 member that day and the
+    split is an issue; DIA's file (the one ``dow`` file, with the CUSIP) shows the match itself."""
     renamed = [[c, n, "ETNX" if t == "ETN" else t, e] for c, n, t, e in fx.SEC_FILE["data"]]
     _sec_answer(built, renamed)
     base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-03"}})
@@ -338,7 +413,10 @@ def test_a_rename_the_fund_files_lag_is_not_matched_to_the_old_tickers_next_owne
     assert _q("SELECT count(*) FROM index_membership WHERE source = ? AND ticker = 'ETN' AND cik = '8888888'",
               funds.NAME) == [(0,)]
     assert _q("SELECT cik, valid_from, valid_to, files_held FROM index_membership WHERE source = ? "
-              "AND index_slug = 'sp500' AND ticker = 'ETNX'", funds.NAME) == [("1551182", date(2026, 11, 3), None, 2)]
+              "AND index_slug = 'dow' AND ticker = 'ETNX'", funds.NAME) == [("1551182", date(2026, 11, 3), None, 1)]
+    assert _q("SELECT count(*) FROM index_membership WHERE source = ? AND index_slug = 'sp500' AND ticker = 'ETNX'",
+              funds.NAME) == [(0,)]
+    assert ("membership_files_disagree", "sp500:ETNX") in _issues()
     assert ("member_not_in_sec", "sp500:ETN") in _issues()          # iShares' line: no match, not the new ETN
 
 
@@ -558,7 +636,7 @@ def test_the_spine_gives_the_type_rules_the_exchange(built, monkeypatch):
     run_all("2026-10-28", names=(sec_tickers.NAME, security.NAME))
     got = {t: (_sec(t)["security_type"], _sec(t)["tier"]) for t in ("SOMEW", "FNGU", "XETP", "SOME-UN")}
     assert got == {"SOMEW": ("warrant", "B"), "FNGU": ("etp", "B"), "XETP": ("etp", "B"), "SOME-UN": ("unit", "B")}
-    assert _sec("MSFT")["tier_rule"] == tier.VERSION == 4
+    assert _sec("MSFT")["tier_rule"] == tier.VERSION == 6
 
 
 def test_the_spine_uses_tpci_for_a_name_openfigi_did_not_answer(built, monkeypatch):

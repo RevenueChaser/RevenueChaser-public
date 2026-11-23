@@ -1305,6 +1305,7 @@ SOURCE_WORDS = {
     "evren": "EVREN (paid writer)",
     "finra": "FINRA",
     "invesco": "Invesco (fund files)",
+    "proshares": "ProShares (fund files)",
     "ishares": "iShares (fund files)",
     "nasdaq": "Nasdaq",
     "nasdaqtrader": "Nasdaq Trader (symbol files)",

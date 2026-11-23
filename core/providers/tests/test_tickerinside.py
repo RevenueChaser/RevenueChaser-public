@@ -115,3 +115,96 @@ def test_the_licence_and_the_attribution_target_are_stated_in_the_module():
     """The licence's condition is a link where a figure is shown, so the link has to live somewhere a caller can
     reach: here, and in every file's own ``cite_as``."""
     assert ti.LICENCE == "CC BY 4.0" and ti.SITE == "https://tickerinside.com"
+
+
+# ── The index files: which fund files changed, and which the site kept at an older issuer file (plan B1) ────
+
+def _index(lines: str, list_sha256: str | None = None, gz: bool = True) -> tuple[bytes, bytes]:
+    import gzip
+    import hashlib
+    text = lines.encode()
+    manifest = json.dumps({"manifest_version": 1, "files": {
+        "list": "https://tickerinside.com/api/v1/sha256sums.txt.gz",
+        "list_sha256": list_sha256 or hashlib.sha256(text).hexdigest()}}).encode()
+    return manifest, gzip.compress(text) if gz else text
+
+
+def test_the_index_files_are_allowed_paths():
+    assert ti.manifest_url().endswith("/api/v1/manifest.json")
+    assert ti.status_url().endswith("/api/v1/status.json")
+    assert ti.sums_url().endswith("/api/v1/sha256sums.txt.gz")
+
+
+def test_the_file_list_gives_each_fund_files_sha256_by_ticker_and_nothing_else():
+    """The live list of 21 Nov 2026: 13,607 lines, 2,694 of them ``api/v1/fund/<t>.json``. Only those are read."""
+    manifest, sums = _index("2850cee0  api/v1/fund/smh.json\n"
+                            "e20c1d2a  api/v1/fund/brk.b.json\n"
+                            "5ae6a302  api/v1/ai-infrastructure-debt/aligned.json\n"
+                            "11111111  api/v1/history/smh.json\n")
+    assert ti.fund_hashes(manifest, sums) == {"SMH": "2850cee0", "BRK.B": "e20c1d2a"}
+
+
+def test_a_list_served_already_unzipped_is_read_the_same():
+    manifest, sums = _index("2850cee0  api/v1/fund/smh.json\n", gz=False)
+    assert ti.fund_hashes(manifest, sums) == {"SMH": "2850cee0"}
+
+
+def test_a_list_that_is_not_the_one_the_manifest_names_is_refused():
+    """``list_sha256`` is the sha256 of the uncompressed list (measured 22 Nov 2026). A list of another build would
+    say a changed file is unchanged, so it is no list at all."""
+    manifest, sums = _index("2850cee0  api/v1/fund/smh.json\n", list_sha256="0" * 64)
+    with pytest.raises(ValueError, match="list_sha256"):
+        ti.fund_hashes(manifest, sums)
+    with pytest.raises(ValueError):
+        ti.fund_hashes(b"{}", sums)
+
+
+def test_kept_previous_is_read_from_the_status_file():
+    status = json.dumps({"schema": 1, "run": {"fetch_holdings": {"funds_attempted": 425, "kept_previous": [
+        {"ticker": "CLOU", "issuer": "Global X", "since": "2026-11-13", "holdings_as_of": "2026-11-11"}]}}}).encode()
+    assert ti.kept_previous(status) == [
+        {"ticker": "CLOU", "issuer": "Global X", "since": "2026-11-13", "holdings_as_of": "2026-11-11"}]
+    with pytest.raises(ValueError):
+        ti.kept_previous(json.dumps({"schema": 1}).encode())
+
+
+# ── identifiers.json and funds.json: the spine's ETF identity, expense ratio and category (plan v4 step 7) ─────
+
+def test_identifiers_are_read_by_their_fields_with_the_dash_ticker_and_the_sec_cik():
+    """The live shape of 20 Nov 2026: ``fields`` names the columns of each ``securities`` list, so the reader goes by
+    the names, not the positions. ``BRK.B`` is our ``BRK-B``; the CIK loses its zero padding as the SEC file has it."""
+    fields = ["ticker", "name", "asset_type", "exchange", "composite_figi", "share_class_figi", "cik", "series_id",
+              "class_id"]
+    body = json.dumps({"read_on": "2026-11-20", "fields": fields, "securities": [
+        ["AAA", "Alternative Access ETF", "etf", "NYSE Arca", "BBG01B0JRCS6", "BBG01B0JRCT5", "0001587982",
+         "S000076539", "C000236514"],
+        ["BRK.B", "Berkshire Hathaway", "stock", "NYSE", "BBG000DWG505", "BBG001S5WXJ2", "0001067983", None, None],
+        ["NOCIK", "No CIK ETF", "etf", None, None, None, None, None, None]]}).encode()
+    got = ti.parse_identifiers(body)
+    assert got["AAA"] == {"asset_type": "etf", "composite_figi": "BBG01B0JRCS6", "share_class_figi": "BBG01B0JRCT5",
+                          "cik": "1587982", "series_id": "S000076539", "class_id": "C000236514"}
+    assert got["BRK-B"]["cik"] == "1067983" and got["NOCIK"]["cik"] is None
+
+
+@pytest.mark.parametrize("body", [b"[]", b"{}", b'{"fields": ["name"], "securities": []}', b"not json"])
+def test_an_identifiers_file_of_another_shape_is_refused(body):
+    with pytest.raises(ValueError):
+        ti.parse_identifiers(body)
+
+
+def test_funds_are_every_layer_list_with_the_expense_ratio_and_the_category_id():
+    body = json.dumps({"as_of": "2026-11-20", "note": "...", "funds": [
+        {"t": "SPY", "n": "SPDR S&P 500 ETF Trust", "c": "Large Blend", "cat_id": "us-large-blend", "er": 0.0945}],
+        "sec_funds": [{"t": "QQQ", "c": "Large Blend", "cat_id": "us-large-blend", "er": 0.18,
+                       "report_date": "2026-07-31"}],
+        "trust_funds": [{"t": "GLD", "c": "Gold and Precious Metals", "cat_id": "precious-metals", "er": "0.4"},
+                        {"t": "BAD", "cat_id": "x", "er": "n/a"}],
+        "license": "CC BY 4.0"}).encode()
+    got = ti.parse_funds(body)
+    assert got["SPY"] == {"expense_ratio": 0.0945, "category": "us-large-blend", "layer": "funds"}
+    assert got["QQQ"]["layer"] == "sec_funds" and got["GLD"]["expense_ratio"] == 0.4
+    assert got["BAD"]["expense_ratio"] is None
+
+
+def test_the_two_files_are_snapshots_a_builder_may_read():
+    assert ti.identifiers_url().endswith("/identifiers.json") and ti.funds_url().endswith("/funds.json")

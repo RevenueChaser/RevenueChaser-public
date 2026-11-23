@@ -252,11 +252,12 @@ def test_the_listing_status_card_reads_the_weekly_cadence_so_a_weekly_run_is_not
     assert nd_mod.CYCLE_DAYS["weekly"] == 8
 
 
-def test_ncens_monthly_cadence_is_the_datasets_own_not_a_second_copy_on_its_card():
-    """Review N6 of PR 349: the dataset carries ``cadence = "monthly"``; the screen's card does not repeat it."""
+def test_ncens_weekly_cadence_is_the_datasets_own_not_a_second_copy_on_its_card():
+    """Review N6 of PR 349: the dataset carries its cadence (weekly since 22 Nov 2026, on the SEC files' rhythm);
+    the screen's card does not repeat it."""
     from revenuechaser.module_settings import newdata as nd_mod
     assert screen.DATASETS["sec/ncen"].cadence == "daily"           # the card's default, not read for this dataset
-    assert nd_mod._cadence("sec/ncen", None) == "monthly"
+    assert nd_mod._cadence("sec/ncen", None) == "weekly"
 
 
 # ── the journey table's three folder states (#434) ──

@@ -48,7 +48,7 @@ _WORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("ibkr",), "ibkr"),
     (("alphavantage",), "av"),
     (("nasdaq", "nyse", "cboe"), "exch"),
-    (("ssga", "ishares", "vanguard", "invesco", "ark", "funds"), "issuer"),
+    (("ssga", "ishares", "vanguard", "invesco", "proshares", "ark", "funds"), "issuer"),
     (("fred", "bls", "cftc", "treasury", "fed"), "macro"),
     (("rule",), "rule"),
 )

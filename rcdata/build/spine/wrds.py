@@ -367,7 +367,7 @@ def parquet_files(dataset: str, table: str) -> list[Path]:
 
 
 def _sec_ciks() -> list[str]:
-    """The CIKs of the listed rows (Nasdaq, NYSE, Cboe) of the newest SEC-file snapshot in Parquet (no network):
+    """The CIKs of the listed rows (Nasdaq, NYSE, Cboe, TXSE) of the newest SEC-file snapshot in Parquet (no network):
     the names that need a Compustat link. An OTC name is never asked for."""
     from . import sec_tickers, tier
     parts = stage.partitions(sec_tickers.parquet_dir(), "date")
@@ -409,12 +409,15 @@ def _in_list(values) -> str:
 # ── The datasets ──────────────────────────────────────────────────────────────────────────────────────────────
 
 class WrdsDataset:
-    """One WRDS dataset: its tables' full snapshot once a month, and (``wrds/sec_idhist``) the new names between."""
+    """One WRDS dataset: its tables' full snapshot once a month, and (``wrds/sec_idhist``) the new names between.
+
+    Weekly (avo, 22 Nov 2026), on the SEC files' rhythm: a run before ``SNAPSHOT_DAYS`` asks only the new names, so a
+    new SEC ticker waits a week for its Compustat link, not a month."""
 
     kind = KIND
     providers = (PROVIDER,)
     tables: tuple[str, ...] = ()
-    cadence = "monthly"
+    cadence = "weekly"
     backfill_needs_from = False
     starts_by_hand = True             # not due until a first CLI run or Fetch built it (review should-fix 2)
 
@@ -433,7 +436,9 @@ class WrdsDataset:
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         folder = raw_dir(self.name) / as_of.isoformat()
-        if self._snapshot_due(as_of) or any((folder / f"{t}{RAW_SUFFIX}").exists() for t in self.own):
+        # ``{"full": true}`` asks the whole snapshot whatever SNAPSHOT_DAYS says (the fresh fetch the spine's
+        # ticker link and delisted rule wait for, ``spine/security.FRESH_SNAPSHOT_FROM``).
+        if ctx.full or self._snapshot_due(as_of) or any((folder / f"{t}{RAW_SUFFIX}").exists() for t in self.own):
             return self._full(ctx, as_of)
         return self._new_names(ctx, as_of)
 

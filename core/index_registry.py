@@ -3,13 +3,14 @@
 The badges on the cards (``annotate_cards``, ``index_for``), the index list of the shared filter
 (``filter_labels``) and ``load_index`` read the identity spine through ``rcdata.read`` (build plan PR 6):
 
-  - ``sp500``, ``sp400``, ``sp600``, ``ndx``  the spine's current members, voted from the index funds' daily
+  - ``sp500``, ``sp400``, ``sp600``, ``ndx``, ``dow`` and every slug of ``funds.INDEXES`` (the Russell, S&P,
+    Dow Jones and ProShares dividend indexes)  the spine's current members, voted from the index funds' daily
     holdings files (``funds/index_holdings``; ``rcdata.read.membership``)
-  - ``nasdaq``                               the spine's listed names (Tier A and B) on Nasdaq, as the spine's
-    ``index_constituents`` bridge view has it
+  - ``nasdaq``                               the members of Nasdaq's stock screener (``funds/index_holdings``)
+    together with the spine's listed names (Tier A and B) on Nasdaq, as the spine's ``index_constituents`` bridge
+    view has it
 
-No source the spine reads carries the Dow Jones, so on the spine no card carries it and the filter does not offer
-it. Each slug with a label in ``LABELS`` shows under that label; a slug without one (``sp400``, ``ndx`` today) is
+Each slug with a label in ``LABELS`` shows under that label; a slug without one (``sp400``, ``ndx`` today) is
 read by ``load_index`` but shows no badge, so the filter is unchanged by the move.
 
 The old store's ``index_constituents`` path (the weekly Unusual Whales lists) is no longer read here (#642 PR 6): no
@@ -23,6 +24,68 @@ LABELS: dict[str, str] = {
     "sp500": "S&P 500",
     "dow": "Dow Jones",
     "sp600": "S&P SmallCap 600",
+    "sp100": "S&P 100",
+    "sp500_growth": "S&P 500 Growth",
+    "sp500_value": "S&P 500 Value",
+    "sp500_ex_sp100": "S&P 500 ex S&P 100",
+    "sp400_growth": "S&P MidCap 400 Growth",
+    "sp400_value": "S&P MidCap 400 Value",
+    "sp600_growth": "S&P SmallCap 600 Growth",
+    "sp600_value": "S&P SmallCap 600 Value",
+    "sp900_growth": "S&P 900 Growth",
+    "sp900_value": "S&P 900 Value",
+    "sp1500": "S&P Composite 1500",
+    "sp_total_market": "S&P Total Market",
+    "sp_hy_dividend_aristocrats": "S&P High Yield Dividend Aristocrats",
+    "sp500_high_dividend": "S&P 500 High Dividend",
+    "sp500_dividend_aristocrats": "S&P 500 Dividend Aristocrats",
+    "sp400_dividend_aristocrats": "S&P MidCap 400 Dividend Aristocrats",
+    "sp_technology_dividend_aristocrats": "S&P Technology Dividend Aristocrats",
+    "sp500_energy": "S&P 500 Energy",
+    "sp500_materials": "S&P 500 Materials",
+    "sp500_industrials": "S&P 500 Industrials",
+    "sp500_consumer_discretionary": "S&P 500 Consumer Discretionary",
+    "sp500_consumer_staples": "S&P 500 Consumer Staples",
+    "sp500_health_care": "S&P 500 Health Care",
+    "sp500_financials": "S&P 500 Financials",
+    "sp500_information_technology": "S&P 500 Information Technology",
+    "sp500_communication_services": "S&P 500 Communication Services",
+    "sp500_utilities": "S&P 500 Utilities",
+    "sp500_real_estate": "S&P 500 Real Estate",
+    "sp_biotech": "S&P Biotechnology Select Industry",
+    "sp_oil_gas_exploration": "S&P Oil & Gas Exploration & Production Select Industry",
+    "sp_metals_mining": "S&P Metals & Mining Select Industry",
+    "sp_regional_banks": "S&P Regional Banks Select Industry",
+    "sp_homebuilders": "S&P Homebuilders Select Industry",
+    "sp_retail": "S&P Retail Select Industry",
+    "sp_insurance": "S&P Insurance Select Industry",
+    "sp_banks": "S&P Banks Select Industry",
+    "sp_capital_markets": "S&P Capital Markets Select Industry",
+    "sp_pharmaceuticals": "S&P Pharmaceuticals Select Industry",
+    "sp_transportation": "S&P Transportation Select Industry",
+    "dj_us": "Dow Jones U.S.",
+    "dj_us_select_dividend": "Dow Jones U.S. Select Dividend",
+    "dj_us_select_reit": "Dow Jones U.S. Select REIT",
+    "dj_us_aerospace_defense": "Dow Jones U.S. Select Aerospace & Defense",
+    "dj_us_home_construction": "Dow Jones U.S. Select Home Construction",
+    "dj_us_insurance": "Dow Jones U.S. Select Insurance",
+    "dj_us_medical_equipment": "Dow Jones U.S. Select Medical Equipment",
+    "dj_us_health_care_providers": "Dow Jones U.S. Select Health Care Providers",
+    "russell_top200": "Russell Top 200",
+    "russell1000": "Russell 1000",
+    "russell_midcap": "Russell Midcap",
+    "russell2000": "Russell 2000",
+    "russell3000": "Russell 3000",
+    "russell_microcap": "Russell Microcap",
+    "russell_top200_growth": "Russell Top 200 Growth",
+    "russell_top200_value": "Russell Top 200 Value",
+    "russell1000_growth": "Russell 1000 Growth",
+    "russell1000_value": "Russell 1000 Value",
+    "russell_midcap_growth": "Russell Midcap Growth",
+    "russell_midcap_value": "Russell Midcap Value",
+    "russell2000_growth": "Russell 2000 Growth",
+    "russell2000_value": "Russell 2000 Value",
+    "nasdaq100_top30": "Nasdaq-100 Top 30",
     "nasdaq": "Nasdaq Composite",
 }
 # The filter's short text for a label whose full name misleads (Nasdaq Composite ~ listed on the exchange).
@@ -51,12 +114,12 @@ def _listed_on_nasdaq(listed: list[dict]) -> set[str]:
 def load_index(slug: str) -> set[str] | None:
     """The current members of ``slug`` (upper-cased tickers), or None when it has none.
 
-    The spine's fund files' current members (``nasdaq``: the listed Nasdaq names); ``dow`` is always None."""
+    The spine's fund files' current members (``nasdaq``: the screener's and the listed Nasdaq names; ``dow``: DIA's
+    file)."""
     from . import spine_reads
+    tickers = {str(m["ticker"]).upper() for m in spine_reads.membership(slug)}
     if slug == NASDAQ:
-        tickers = _listed_on_nasdaq(spine_reads.universe(("A", "B")))
-    else:
-        tickers = {str(m["ticker"]).upper() for m in spine_reads.membership(slug)}
+        tickers |= _listed_on_nasdaq(spine_reads.universe(("A", "B")))
     return tickers or None
 
 

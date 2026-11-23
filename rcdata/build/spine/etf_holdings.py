@@ -11,6 +11,7 @@ relatedness peer sets can have a source. They read it (owner's decision E1 of #3
 | SSGA SPDR (21) | the 11 sector funds, ``XBI XOP XME KRE XHB XRT KIE KBE KCE XPH`` | the issuer's daily holdings xlsx |
 | iShares (10) | ``SOXX IBB ITA ITB IGV IAK IYT IHI IHF ICLN`` | the product page's ``latest-holdings.csv`` |
 | TickerInside (28) | ``SMH PAVE AIQ LIT URA NLR AIRR SKYY WCLD ARKQ ROBO JETS TAN PBW GDX OIH CIBR HACK REMX CLOU DTCR QTUM FINX GRID DRIV BLOK ESPO COPX`` | ``api/v1/fund/<t>.json`` |
+| TickerInside, ring 1 (92) | ``RING1`` of #354 C6 less the 26 with an issuer file above and AMLP | ``api/v1/fund/<t>.json`` |
 | ARK, behind TickerInside (1) | ``ARKQ``, on a day TickerInside holds nothing for it | ARK's daily holdings CSV |
 
 **Why TickerInside and not Unusual Whales for those 28 (#1365, avo 22 Nov 2026).** Their issuers publish no keyless
@@ -44,8 +45,16 @@ does not run. **The source's answer is kept whole:** the top-10 cap is the Rotat
 (``module_sector_rotation/etf_holdings.py``), and that board's ``raw.duckdb.etf_holdings`` is untouched by this
 dataset, which writes only the market store.
 
-One request per fund per run (31 issuer files, 28 TickerInside files, plus ARK's file on a day it is needed), each
-inside its provider's day cap and pacer. No key is needed for any of them.
+One request per fund per run (31 issuer files, up to 120 TickerInside files, plus ARK's file on a day it is needed),
+each inside its provider's day cap and pacer. No key is needed for any of them.
+
+**Ring 1 and the manifest (plan step B1).** The 133 funds of #354 C6 are read daily: the 26 with an SPDR or iShares
+file keep it (SB1, never fetched twice), AMLP stays the N-PORT Parquet's (no fund file there), and the other 92 are
+TickerInside's. Before its first fund file a run reads ``status.json``, ``manifest.json`` and ``sha256sums.txt.gz``
+once: a fund file whose listed sha256 is that of the bytes held from its last day is copied into the day (its meta
+says ``same_as``) and not asked, and the funds ``status.json`` names as ``kept_previous`` (served from an older issuer
+file) are one ``source_stale`` issue. A list that does not match the manifest saves nothing: every file is asked.
+This widens the daily overwrite of the served table to the whole ring before the lock of plan step 9 exists.
 
 **The sweep (#358, avo 1-2 Nov 2026), off for good** (avo, 2 Nov: UW answers at most 250 holdings a fund,
 measured on VTI, so it waited for N-PORT's full lists, #354; D3 of 22 Nov then settled that UW is not used for
@@ -96,14 +105,16 @@ shape or URL, an empty answer) is a ``source_failed`` issue for that fund, and t
 does; every fund failing fails the run.
 
 Raw: ``raw/funds/etf_holdings/<as-of>/<provider>-<etf>.<ext>`` (+ ``.meta.json``, written first: the raw file is the
-resume marker). Parquet: ``parquet/funds/etf_holdings/date=<as-of>/part-0.parquet``, every day kept. Served:
-``etf_holdings(as_of, etf, provider, ticker, cusip, name, weight)``, this dataset's own table in ``spine.duckdb``.
-The Parquet also keeps ``holdings_as_of`` and ``source_layer`` where the source states them (TickerInside does);
-serving them is a serving bump and so a PR of its own.
+resume marker), and TickerInside's ``identifiers.json`` and ``funds.json`` of the day (``TI_META``, read by the
+spine's ``etf``). Parquet: ``parquet/funds/etf_holdings/date=<as-of>/part-0.parquet``, every day kept. Served:
+``etf_holdings(as_of, etf, provider, ticker, cusip, name, weight, holdings_as_of, source_layer)``, this dataset's own
+table in ``spine.duckdb``; the last two (spine 11) are the day the source puts on its list and the layer it came
+from, where the source states them (TickerInside does), NULL otherwise.
 """
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import os
@@ -129,13 +140,18 @@ SCHEMA = [("as_of", "DATE"), ("etf", "TEXT"), ("provider", "TEXT"), ("ticker", "
           ("cusip", "TEXT"), ("name", "TEXT"), ("weight", "DOUBLE"),
           # The day the source itself puts on the list, and which layer it came from, where the source says so
           # (TickerInside: ``holdings_as_of`` and ``source_layer`` -- an issuer file of the day, or a fund's newest
-          # SEC filing, which can be months old). Parquet only: putting them in the served table is a serving bump
-          # and so a PR of its own (#1365), and no reader needs them yet.
+          # SEC filing, which can be months old). Served since spine 11 (``SERVED``).
           ("holdings_as_of", "TEXT"), ("source_layer", "TEXT"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
-SERVED = [(c, t) for c, t in SCHEMA
-          if c not in ("ticker_raw", "holdings_as_of", "source_layer", "fetched_at", "run_id")]
+# ``holdings_as_of`` and ``source_layer`` are served since spine 11 (plan v4 B2, #1365): a board can say which day and
+# which layer a list is of. A Parquet day typed before #1366 has neither, and reads them as NULL (``build``).
+SERVED = [(c, t) for c, t in SCHEMA if c not in ("ticker_raw", "fetched_at", "run_id")]
+LATER = ("holdings_as_of", "source_layer")
 META_SUFFIX = ".meta.json"
+#: TickerInside's two whole-universe snapshots, kept in the day's raw folder once a run (plan v4 step 7, SP1, SP7):
+#: the spine's ``etf`` takes each ETF's FIGI, CIK and series id from the first and its expense ratio and category
+#: from the second (``etf.rows``). CC BY 4.0 snapshots, which the licence lets us keep each night; not history.
+TI_META = {"identifiers": "tickerinside-identifiers.json", "funds": "tickerinside-funds.json"}
 
 # The SPDR funds: the 11 sector funds and the seven industry ones (all one URL template, by ticker).
 SSGA_FUNDS = ("XLB", "XLC", "XLE", "XLF", "XLI", "XLK", "XLP", "XLRE", "XLU", "XLV", "XLY",
@@ -177,6 +193,24 @@ TI_FUNDS = ("SMH", "PAVE", "AIQ", "LIT", "URA", "NLR", "AIRR", "SKYY", "WCLD", "
             "HACK", "REMX",
             # the themes the Relatedness research added (17 Nov 2026), none with a keyless issuer file wired here
             "CLOU", "DTCR", "QTUM", "FINX", "GRID", "DRIV", "BLOK", "ESPO", "COPX")
+# Ring 1 of #354 C6, by AUM: the ETF review's five rules together over the live spine and the 2026q3 N-PORT set,
+# measured 21 Nov 2026 (the issue's comment of 15:19Z). Not derived from TickerInside's ``funds.json``: the rules are
+# ours and read our spine. Plan step B1 reads them all daily.
+RING1 = ("VUG", "XLK", "QQQM", "IVW", "SMH", "XLF", "SPYG", "XLV", "XLE", "VNQ", "CGDV", "SOXX", "MGK", "XLI", "VOOG",
+         "XLU", "XLY", "GDX", "IYW", "XLC", "SPMO", "PVAL", "XLP", "QQQI", "IWY", "PAVE", "IGV", "SCHH", "VFLO", "AMLP",
+         "MOAT", "ITA", "BAI", "ARKK", "XLG", "VDE", "XBI", "BLCR", "AIQ", "VDC", "XLRE", "EWZ", "VPU", "XLB", "FTCS",
+         "IXN", "PPA", "QLTY", "FBCG", "GDXJ", "KBWB", "VOX", "SHLD", "RSPT", "COPX", "XAR", "IYH", "FDN", "IXJ",
+         "QTUM", "KWEB", "USRT", "AIA", "KRE", "URA", "FEZ", "JTEK", "IHI", "IYR", "XOP", "IYF", "QTEC", "FXI", "MLPX",
+         "SPHD", "GARP", "SIL", "ARTY", "SPUS", "XME", "EWL", "NLR", "SOXQ", "IXC", "XSD", "BUG", "IYT", "EWG", "FENY",
+         "ITB", "EWP", "FUTY", "RING", "RWR", "ARKG", "PSI", "DFAR", "IYE", "DTCR", "IHE", "IYC", "OIH", "EWW", "URNM",
+         "XHB", "IYK", "KBE", "IHF", "CHAT", "EWH", "EPOL", "REMX", "EWA", "FXN", "IHAK", "EWI", "PPH", "RSPH", "FTXL",
+         "TAN", "IYM", "EWS", "JETS", "QNDX", "IVES", "ECH", "XRT", "IAT", "FCG", "KIE", "IYZ", "CRAK", "WCLD")
+# The ring-1 funds read from TickerInside: not one that has an issuer file here (SB1: it keeps that file, and
+# ``FILES`` is a concatenation, so it would be fetched twice), and not AMLP, which TickerInside serves as a
+# multi-asset ``etf/amlp.json`` and not as a fund file (``funds.json``, 22 Nov 2026), so it stays the N-PORT
+# Parquet's. 92 funds; with the 31 issuer funds, ring 1 is a union of 138, 132 of the 133 read daily.
+TI_FUNDS += tuple(t for t in RING1 if t not in TI_FUNDS and t not in SSGA_FUNDS and t not in ISHARES_PRODUCTS
+                  and t != "AMLP")
 # The funds the relatedness peer sets need that the rotation board does not run (every ETF of
 # ``module_relatedness/validation/sets/etf_sets.json``; the review of 9 Nov 2026 added the last ten).
 # XHB, XRT, IHI, TAN, ICLN, GDX and CIBR joined the board's themes on 17 Nov 2026, so they are the board's now.
@@ -204,8 +238,9 @@ SWEEP_ENV = "RC_ETF_HOLDINGS_SWEEP"
 # Raws typed per pass: a sweep run types up to ``SWEEP_PER_RUN`` answers, merged into the day's partition in DuckDB.
 TYPE_CHUNK = 500
 # TickerInside publishes no request window (``caps.WINDOWS`` holds none for it), so this is politeness and not a
-# provider limit: two files a second, which walks the 28 funds in about fifteen seconds. Its own guidance is one
-# read per nightly build rather than polling, which one run a day is.
+# provider limit: two files a second, which walks the 120 funds in about a minute when every file changed. Its own
+# guidance is one read per nightly build rather than polling, which one run a day is, and a file whose sha256 did
+# not change is not asked at all.
 TI_PACE = (2, 1.0)
 # A requested name that can be a ticker (and so a path segment); the spine's own tickers are normalised already.
 TICKER = re.compile(r"[A-Z0-9][A-Z0-9.\-]{0,11}")
@@ -307,6 +342,61 @@ def _polite_pacer(ctx: base.RunContext) -> base.Pacer:
     if key not in ctx.pending:
         ctx.pending[key] = base.Pacer(*TI_PACE, clock=ctx.clock, sleep=ctx.sleep)
     return ctx.pending[key]
+
+
+def _ti_index(ctx: base.RunContext, day: Path) -> dict[str, str]:
+    """Each TickerInside fund file's sha256, after ``status.json``'s ``kept_previous`` funds of ours became one
+    ``source_stale`` issue. Read once a run, before the first fund file it asks. Any of the three files failing
+    costs only the saving: the note says so and every fund file is fetched, as before the manifest.
+
+    The same pass keeps ``identifiers.json`` and ``funds.json`` in ``day`` (:data:`TI_META`), each once a day and
+    only when it parses; one failing is a note, never the run (the spine's ``etf`` keeps reading the newest held)."""
+    from ....core.providers import tickerinside as ti
+
+    def get(url: str) -> bytes:
+        _polite_pacer(ctx).wait()
+        return base.http_get(ctx, ti.PROVIDER, url, headers={"Accept": "*/*"}).content
+    for key, url, parse in (("identifiers", ti.identifiers_url(), ti.parse_identifiers),
+                            ("funds", ti.funds_url(), ti.parse_funds)):
+        raw = day / TI_META[key]
+        if raw.exists():
+            continue
+        try:
+            content = get(url)
+            parse(content)
+            base.write_raw_json(_meta(raw), {"as_of": day.name, "fetched_at": time.time(), "run_id": ctx.run_id,
+                                             "url": url})
+            base.write_raw(raw, content)
+        except Exception as e:  # noqa: BLE001 - the spine reads the newest file held; the holdings go on
+            ctx.notes.append(f"tickerinside {key}.json unread: {type(e).__name__}: {e}"[:200])
+    ours = set(TI_FUNDS)
+    try:
+        kept = [r for r in ti.kept_previous(get(ti.status_url())) if str(r["ticker"]).upper() in ours]
+        if kept:
+            ctx.issue("source_stale", "tickerinside-kept_previous",
+                      f"{len(kept)} funds TickerInside serves from an older issuer file: "
+                      + ", ".join(f"{r['ticker']} since {r.get('since')} (holdings {r.get('holdings_as_of')})"
+                                  for r in kept)[:360])
+    except Exception as e:  # noqa: BLE001 - the stale list is a warning, never the run
+        ctx.notes.append(f"tickerinside status.json unread: {type(e).__name__}: {e}"[:200])
+    try:
+        return ti.fund_hashes(get(ti.manifest_url()), get(ti.sums_url()))
+    except Exception as e:  # noqa: BLE001 - without the list every file is asked, as before
+        ctx.notes.append(f"tickerinside: no file list ({type(e).__name__}: {e}), every fund file fetched"[:200])
+        return {}
+
+
+def tickerinside_meta(as_of: date | None = None) -> tuple[dict[str, dict], dict[str, dict]]:
+    """``(identifiers, funds)``: the newest held :data:`TI_META` files of a day on or before ``as_of``, parsed
+    (``tickerinside.parse_identifiers`` / ``parse_funds``); an empty dict for a file no day holds."""
+    from ....core.providers import tickerinside as ti
+    days = sorted((p for p in raw_dir().iterdir() if p.is_dir() and _is_day(p.name)
+                   and (as_of is None or p.name <= as_of.isoformat())), reverse=True) if raw_dir().exists() else []
+    out = []
+    for key, parse in (("identifiers", ti.parse_identifiers), ("funds", ti.parse_funds)):
+        held = next((d / TI_META[key] for d in days if (d / TI_META[key]).exists()), None)
+        out.append(parse(base.read_raw(held)) if held is not None else {})
+    return out[0], out[1]
 
 
 def served_ticker(line: dict) -> str | None:
@@ -482,6 +572,11 @@ class EtfHoldings:
         out, failed = [], []
         day = raw_dir() / as_of.isoformat()
         names = set(ctx.scope.names)
+        # A TickerInside file whose sha256 is that of the bytes held from its last day is that file again: it is
+        # copied into this day, not asked. A scoped request asks its names and reads no index.
+        before = sorted((p for p in raw_dir().iterdir() if p.is_dir() and _is_day(p.name)
+                         and p.name < as_of.isoformat()), reverse=True) if raw_dir().exists() else []
+        hashes, same, asked_ti = (None if not names else {}), 0, 0
         for f in FILES:
             if names and f.etf not in names:
                 continue
@@ -493,7 +588,15 @@ class EtfHoldings:
             errors = []
             for src in sources:
                 try:
-                    content = src.download(ctx)
+                    prev = None
+                    if src.provider == "tickerinside":
+                        if hashes is None:
+                            hashes = _ti_index(ctx, day)
+                        prev = next((d / src.raw_name() for d in before if (d / src.raw_name()).exists()), None)
+                        if prev is not None and hashes.get(src.etf) != hashlib.sha256(prev.read_bytes()).hexdigest():
+                            prev = None
+                        asked_ti += 1
+                    content = prev.read_bytes() if prev is not None else src.download(ctx)
                     # Refuse a file of the wrong shape, and an answer with no holding in it, before keeping it: the
                     # raw file is the resume marker, so a kept empty answer would be the fund's whole day.
                     if not src.parse(content):
@@ -502,9 +605,12 @@ class EtfHoldings:
                     errors.append(f"{src.raw_name()}: {type(e).__name__}: {e}"[:200])
                     continue
                 raw = day / src.raw_name()
-                base.write_raw_json(_meta(raw), {"as_of": as_of.isoformat(), "fetched_at": time.time(),
-                                                 "run_id": ctx.run_id, "etf": src.etf, "provider": src.provider,
-                                                 "url": src.url().split("?")[0]})
+                meta = {"as_of": as_of.isoformat(), "fetched_at": time.time(), "run_id": ctx.run_id,
+                        "etf": src.etf, "provider": src.provider, "url": src.url().split("?")[0]}
+                if prev is not None:
+                    meta["same_as"] = prev.parent.name      # the day whose file this is, unchanged by sha256
+                    same += 1
+                base.write_raw_json(_meta(raw), meta)
                 out.append(base.write_raw(raw, content))
                 if src is not f:
                     ctx.notes.append(f"fallback: {f.etf} served by {src.raw_name()} ({errors[0][:140]})")
@@ -512,6 +618,9 @@ class EtfHoldings:
             else:
                 failed.append(f.raw_name())
                 ctx.issue("source_failed", f.raw_name(), " | ".join(errors)[:400])
+        if asked_ti and hashes:
+            ctx.notes.append(f"tickerinside: {same} of {asked_ti} fund files unchanged by sha256, kept from their "
+                             "last day")
         if failed:
             ctx.notes.append("failed files: " + ", ".join(failed))
             if not out:
@@ -730,10 +839,11 @@ class EtfHoldings:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         files = [f for _, f in stage.partitions(parquet_dir(), "date")]
-        cols = ", ".join(f'"{c}"' for c, _ in SERVED)
         con.execute("CREATE TABLE {} ({})".format(TABLE, ", ".join(f'"{c}" {t}' for c, t in SERVED)))
         if files:
             src = f"read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)"
+            held = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM {src}").fetchall()}
+            cols = ", ".join(f'NULL::TEXT AS "{c}"' if c in LATER and c not in held else f'"{c}"' for c, _ in SERVED)
             # A line whose ticker does not parse is no holding of a stock. In the SPDR files of 30 Oct 2026 those
             # are two or three lines a fund, each with a made-up identifier: the money-market fund (924QSGII3),
             # the dollar (999USDZ92), the CVRs of past deals (CONTRA METSERA, 592CVR013) and earnout rights

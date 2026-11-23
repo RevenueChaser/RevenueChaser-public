@@ -33,8 +33,8 @@ def test_a_card_per_spine_dataset_with_its_cadence_and_the_attended_ones_marked(
     data = newdata.collect(NOW)
     assert set(SPINE) <= {c["dataset"] for c in data["datasets"]}
     assert {d: _card(data, d)["cadence"] for d in SPINE} == {
-        "sec/company_tickers_exchange": "weekly", "wrds/sec_idhist": "monthly", "wrds/co_hgic": "monthly",
-        "wrds/idxcst_his": "monthly", "openfigi/map": "weekly", "funds/index_holdings": "daily",
+        "sec/company_tickers_exchange": "weekly", "wrds/sec_idhist": "weekly", "wrds/co_hgic": "weekly",
+        "wrds/idxcst_his": "weekly", "openfigi/map": "weekly", "funds/index_holdings": "daily",
         "spine/security": "daily"}
     # #1361: the spine's WRDS datasets follow their cadence now, so no spine card is attended.
     assert [d for d in SPINE if _card(data, d)["attended"]] == []

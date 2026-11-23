@@ -25,6 +25,8 @@ ticker and a weight in percent, so a row from here carries ``cusip`` None and ``
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import os
 import re
@@ -68,6 +70,54 @@ def fund_url(ticker: str) -> str:
 def funds_url() -> str:
     """Every covered fund with its layer, report date and position count, in one file."""
     return BASE + check_path("/funds.json")
+
+
+def manifest_url() -> str:
+    """The night's build: ``files.list_sha256`` checks the list of every file's sha256."""
+    return BASE + check_path("/manifest.json")
+
+
+def sums_url() -> str:
+    """Every published file's sha256, one ``<sha256>  <path from the site's root>`` line each, gzipped."""
+    return BASE + check_path("/sha256sums.txt.gz")
+
+
+def status_url() -> str:
+    """The night's run: ``run.fetch_holdings.kept_previous`` names the funds served from an older issuer file."""
+    return BASE + check_path("/status.json")
+
+
+def fund_hashes(manifest: bytes, sums: bytes) -> dict[str, str]:
+    """Each ``fund/<ticker>.json``'s sha256 by upper-case ticker, from ``sha256sums.txt.gz``.
+
+    The list is trusted only when its sha256 is the manifest's ``files.list_sha256``, which is the hash of the
+    *uncompressed* list (measured 22 Nov 2026): a list of another night would call a changed file unchanged. A body
+    an HTTP layer already unzipped is read the same. Raises ``ValueError`` on any other shape."""
+    try:
+        want = json.loads(manifest)["files"]["list_sha256"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"tickerinside: manifest.json has no files.list_sha256 ({type(e).__name__})") from e
+    text = gzip.decompress(sums) if sums[:2] == b"\x1f\x8b" else sums
+    if hashlib.sha256(text).hexdigest() != want:
+        raise ValueError("tickerinside: sha256sums.txt.gz is not the list manifest.json's list_sha256 names")
+    out = {}
+    for line in text.decode("utf-8", errors="replace").splitlines():
+        sha, _, path = line.partition("  ")
+        if path.startswith("api/v1/fund/") and path.endswith(".json"):
+            out[path[len("api/v1/fund/"):-len(".json")].upper()] = sha
+    return out
+
+
+def kept_previous(status: bytes) -> list[dict]:
+    """``status.json``'s ``run.fetch_holdings.kept_previous``: the funds whose issuer file the site could not
+    refresh, each ``{ticker, issuer, since, holdings_as_of}``. Raises ``ValueError`` when the list is missing."""
+    try:
+        rows = json.loads(status)["run"]["fetch_holdings"]["kept_previous"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"tickerinside: status.json has no kept_previous ({type(e).__name__})") from e
+    if not isinstance(rows, list):
+        raise ValueError("tickerinside: kept_previous is not a list")
+    return [r for r in rows if isinstance(r, dict) and r.get("ticker")]
 
 
 def served_ticker(key: str) -> str | None:
@@ -128,3 +178,70 @@ def parse_fund(data: bytes, ticker: str) -> dict:
             "layer": str(doc.get("source_layer") or "") or None,
             "positions": doc.get("positions"),
             "cite_as": str(doc.get("cite_as") or "") or None}
+
+
+def identifiers_url() -> str:
+    """Every covered fund's and stock's composite and share-class FIGI, SEC CIK and (a fund) series and class id."""
+    return BASE + check_path("/identifiers.json")
+
+
+#: The ``identifiers.json`` columns the spine reads (plan v4 step 7, #1334 K-A): no CUSIP and no gvkey are served.
+ID_COLUMNS = ("asset_type", "composite_figi", "share_class_figi", "cik", "series_id", "class_id")
+
+
+def _sec_cik(value) -> str | None:
+    """A CIK as the SEC ticker file writes it (``0001090872`` -> ``1090872``); None when it is no number."""
+    text = str(value or "").strip()
+    return str(int(text)) if text.isdigit() else None
+
+
+def parse_identifiers(data: bytes) -> dict[str, dict]:
+    """``identifiers.json`` as ``{ticker: {asset_type, composite_figi, share_class_figi, cik, series_id, class_id}}``.
+
+    The file names its columns in ``fields`` and gives one list per security in ``securities`` (live shape of
+    20 Nov 2026), so the columns are read by name. Its tickers keep a class's dot (``BRK.B``), ours the dash. The
+    file itself says a ticker can pass to another security, which is why the spine checks the CIK before it takes
+    anything from a row. Raises ``ValueError`` on any other shape."""
+    try:
+        doc = json.loads(data)
+        fields, rows = list(doc["fields"]), doc["securities"]
+        at = {f: fields.index(f) for f in ("ticker",) + ID_COLUMNS}
+    except (ValueError, KeyError, TypeError) as e:
+        raise ValueError(f"tickerinside: identifiers.json is not the fields/securities shape ({type(e).__name__})") from e
+    out = {}
+    for row in rows:
+        if not isinstance(row, list) or len(row) < len(fields):
+            continue
+        t = str(row[at["ticker"]] or "").strip().upper().replace(".", "-")
+        if not t:
+            continue
+        rec = {c: (str(row[at[c]]).strip() or None) if row[at[c]] is not None else None for c in ID_COLUMNS}
+        rec["cik"] = _sec_cik(rec["cik"])
+        out[t] = rec
+    return out
+
+
+def parse_funds(data: bytes) -> dict[str, dict]:
+    """``funds.json`` as ``{ticker: {expense_ratio, category, layer}}``: every fund of every layer list (``funds``,
+    ``sec_funds``, ``trust_funds``, ...; each fund an object with ``t``), its ``er`` (percent; None where the file
+    has none) and its ``cat_id`` (TickerInside's category id, which "never changes meaning"). Raises ``ValueError``
+    when the file holds no fund list at all."""
+    try:
+        doc = json.loads(data)
+        lists = {k: v for k, v in doc.items() if isinstance(v, list) and v and isinstance(v[0], dict) and "t" in v[0]}
+    except (ValueError, AttributeError) as e:
+        raise ValueError(f"tickerinside: funds.json is not JSON of fund lists ({type(e).__name__})") from e
+    if not lists:
+        raise ValueError("tickerinside: funds.json holds no fund list")
+    out = {}
+    for layer, funds in lists.items():
+        for f in funds:
+            t = str((f or {}).get("t") or "").strip().upper().replace(".", "-")
+            if not t or t in out:
+                continue
+            try:
+                er = float(f.get("er")) if f.get("er") is not None else None
+            except (TypeError, ValueError):
+                er = None
+            out[t] = {"expense_ratio": er, "category": (str(f.get("cat_id") or "").strip() or None), "layer": layer}
+    return out

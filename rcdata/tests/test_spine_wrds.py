@@ -185,3 +185,32 @@ def test_a_value_the_schema_cannot_type_is_a_build_issue_not_a_silent_null():
     got = sorted((r["kind"], r["key"], r["detail"]) for r in rows)
     assert got == [("value_untyped", "security.dldtei", "1 row(s) of 3 nulled (as DATE)"),
                    ("value_untyped", "security.exchg", "1 row(s) of 3 nulled (as INTEGER)")]
+
+
+def test_the_spine_sources_run_weekly_with_a_monthly_full_snapshot():
+    """avo, 22 Nov 2026: every spine source on one weekly rhythm with the SEC files. A weekly run of
+    ``wrds/sec_idhist`` asks only the SEC file's new CIKs until ``SNAPSHOT_DAYS`` have passed, then a full snapshot."""
+    from revenuechaser.rcdata.build.spine import wrds
+    assert {ds.cadence for ds in (wrds.SEC_IDHIST, wrds.CO_HGIC, wrds.IDXCST_HIS)} == {"weekly"}
+    assert wrds.SNAPSHOT_DAYS == 30
+
+
+def test_a_full_request_takes_a_whole_snapshot_before_snapshot_days(fake):
+    """``{"full": true}`` (plan v4 X6): the fresh sequential fetch of 23 Nov 2026 must be a whole ``snapshot=``
+    partition, so the ticker link and the delisted rule arm, whatever ``SNAPSHOT_DAYS`` says. Only an explicit
+    ``true`` does it."""
+    conn, _ = fake
+    _run(sec_tickers.NAME)
+    _run(wrds.SEC_IDHIST.name, mode="backfill")
+    conn.with_new = True
+    conn.queries.clear()
+    base.run_request({"dataset": wrds.SEC_IDHIST.name, "requested_by": "cli",
+                      "params": {"as_of": "2026-11-03", "full": "yes"}})
+    assert "cik IN" in conn.queries[0], "anything but true is the weekly new-names run"
+    conn.queries.clear()
+    base.run_request({"dataset": wrds.SEC_IDHIST.name, "requested_by": "cli",
+                      "params": {"as_of": "2026-11-04", "full": True}})
+    assert [q.split(" FROM ")[1].split()[0] for q in conn.queries] == [
+        "comp.company", "comp.security", "comp.sec_idhist"]
+    assert not [q for q in conn.queries if " IN (" in q]
+    assert wrds._snapshots(wrds.SEC_IDHIST.name)[-1] == "2026-11-04"

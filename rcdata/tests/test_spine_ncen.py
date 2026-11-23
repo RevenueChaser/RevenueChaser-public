@@ -131,7 +131,7 @@ def test_an_answer_that_is_not_the_data_set_fails_and_is_not_served(env, body):
     assert not (ncen.parquet_dir() / "quarter=2026q3").exists()
 
 
-def test_it_is_a_monthly_keyless_spine_dataset_that_starts_by_hand():
+def test_it_is_a_weekly_keyless_spine_dataset_that_starts_by_hand():
     from revenuechaser.rcdata.build import DATASETS
     ds = DATASETS[ncen.NAME]
-    assert ds.kind == "spine" and ds.cadence == "monthly" and ds.starts_by_hand and ds.providers == ("sec",)
+    assert ds.kind == "spine" and ds.cadence == "weekly" and ds.starts_by_hand and ds.providers == ("sec",)
