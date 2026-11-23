@@ -4,9 +4,11 @@ The RC page stays the library (what data exists, settings, complex presses); the
 moves to Grafana (avo, 6 Nov 2026: "health ve fetch takibi, datanin sagligi grafana da olur"). Prometheus scrapes
 this every 60 s, so it reads only what is cheap:
 
-- the ops store (``rcdata/ops.py``: checks, schedules, queue, runs, switches, provider calls), never the serving
+- the ops store (``rcdata/ops.py``: checks, schedules, queue, runs, switches, provider calls), no other serving
   DuckDB files: no ``newdata.collect``, no ``_serving_facts``, no store session (``app/dashboard.py`` skips it for
   this route);
+- the live spine file for one count (Tier A rows of type ``unknown``), opened read-only once per spine build and
+  served from that reading until the file is swapped (``_SpineCount``);
 - the backup manifests (small JSON), the IBKR login check's own record (no socket), ``/proc`` for running jobs;
 - the builder timer (``systemctl show``, up to 10 s), which is read in the background at most once a minute and
   served from the last reading, so a scrape never waits on systemd.
@@ -44,7 +46,7 @@ _FEED_NAME = re.compile(r"[A-Za-z0-9_.-]{1,16}")
 _NEED_NAME = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 #: The parts ``collect`` reads one by one; each starts its error counter at 0 so a first failure is an increase.
 PARTS = ("queue", "providers", "needs", "datasets", "builder", "timer", "backups", "switches", "ibkr", "news",
-         "news_lanes")
+         "news_lanes", "spine")
 TIMER_EVERY_S = 60.0
 
 HELP = {
@@ -66,6 +68,10 @@ HELP = {
     "rc_dataset_paused": ("gauge", "1 when the dataset's schedule is paused."),
     "rc_dataset_mode": ("gauge", "1 for the mode the hourly pass runs the dataset in (off, raw, parquet, full)."),
     "rc_dataset_open_issues": ("gauge", "Open build issues of the dataset."),
+    "rc_dataset_coverage": ("gauge", "The share the dataset's newest check that built reported (spine/security: Tier "
+                            "A with a CUSIP); absent when it reported none."),
+    "rc_spine_tier_a_unknown_type": ("gauge", "Tier A rows of security type unknown in the live spine (absent: no "
+                                     "spine file yet)."),
     "rc_builder_last_run_timestamp_seconds": ("gauge", "When the builder last started a run, epoch seconds."),
     "rc_builder_timer_on": ("gauge", "1 when the hourly builder timer is on, 0 when off (absent: not known)."),
     "rc_backup_newest_timestamp_seconds": ("gauge", "The newest backup of a kind, epoch seconds."),
@@ -137,6 +143,32 @@ class _Timer:
 TIMER = _Timer()
 
 
+class _SpineCount:
+    """The live spine's Tier A rows of type ``unknown``, read once per spine file: the count changes only when the
+    builder swaps a new build in, which changes the file's mark (``serving._file_mark``), so a scrape a minute does
+    not open the file a minute."""
+
+    def __init__(self):
+        self._mark, self._value = None, None
+
+    def get(self) -> int | None:
+        from revenuechaser.rcdata import serving
+        mark = serving._file_mark(serving.live_path("spine"))
+        if mark is None:
+            return None                                     # no spine yet: no line, and no error
+        if mark != self._mark:
+            try:
+                got = serving.read_live("spine", lambda con: con.execute(
+                    "SELECT count(*) FROM security WHERE tier = 'A' AND security_type = 'unknown'").fetchone()[0])
+            except serving.ServingFileMissing:
+                return None
+            self._mark, self._value = mark, int(got)
+        return self._value
+
+
+SPINE_COUNT = _SpineCount()
+
+
 def _who(words: str) -> str:
     if words.startswith("systemd"):
         return "systemd"
@@ -191,7 +223,8 @@ def _news_tape(now: datetime) -> dict:
 def collect(now: datetime | None = None, *, datasets: dict | None = None, timer: dict | None = None,
             ibkr: Callable[[], dict | None] | None = None, cgroup=None, alive=None,
             news: Callable[[], dict | None] | None = None,
-            lanes: Callable[[], dict | None] | None = None) -> dict[str, list]:
+            lanes: Callable[[], dict | None] | None = None,
+            spine: Callable[[], int | None] | None = None) -> dict[str, list]:
     """``{family: [(labels, value), ...]}``. Each part is read on its own; a part that fails is left empty and
     counted, and a dataset that fails is left out of the dataset families and counted under ``datasets``.
     ``timer`` is the builder timer's reading (default: ``TIMER.get()``)."""
@@ -254,7 +287,7 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
     def one_dataset(name, ds, out) -> None:
         """One dataset's rows into ``out`` (its own dict, merged only when the whole dataset read)."""
         for family in ("rc_dataset_state", "rc_dataset_last_check_result", "rc_dataset_checked_timestamp_seconds",
-                       "rc_dataset_paused", "rc_dataset_mode", "rc_dataset_open_issues"):
+                       "rc_dataset_paused", "rc_dataset_mode", "rc_dataset_open_issues", "rc_dataset_coverage"):
             out[family] = []
         label = {"dataset": name, "kind": str(getattr(ds, "kind", "") or "")}
         recent = ops.recent_checks(name, limit=1)
@@ -277,6 +310,9 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
         for m in ops.KIND_MODES:
             out["rc_dataset_mode"].append(({**label, "mode": m}, 1 if m == mode else 0))
         out["rc_dataset_open_issues"].append((label, ops.open_issues(name, limit=0)[0]))
+        built = ops.latest_good_check(name)             # a later skipped run reports no share and must not blank it
+        if built is not None and built.get("coverage") is not None:
+            out["rc_dataset_coverage"].append((label, float(built["coverage"])))
 
     def builder() -> None:
         run = ops.last_builder_run()
@@ -353,15 +389,25 @@ def collect(now: datetime | None = None, *, datasets: dict | None = None, timer:
                 if at is not None:
                     out[family].append(({"lane": str(name)}, float(at)))
 
+    def spine_count() -> None:
+        got = spine() if spine is not None else SPINE_COUNT.get()
+        if got is not None:
+            out["rc_spine_tier_a_unknown_type"].append(({}, int(got)))
+
     parts = {"queue": queue, "providers": providers, "needs": needs, "datasets": dataset_states, "builder": builder,
              "timer": timer_part, "backups": backups, "switches": switches, "ibkr": gateway, "news": news_feeds,
-             "news_lanes": news_lanes}
+             "news_lanes": news_lanes, "spine": spine_count}
     for name in PARTS:
         part(name, parts[name])
     for key, value in (("run_alert_share", control.RUN_ALERT), ("cap_alert_share", control.CAP_ALERT),
                        ("builder_silent_minutes", control.BUILDER_SILENT_MINUTES),
                        ("backup_alert_days", control.BACKUP_ALERT_DAYS),
-                       ("claude_session_limit_seconds", control.CLAUDE_SESSION_LIMIT_S)):
+                       ("claude_session_limit_seconds", control.CLAUDE_SESSION_LIMIT_S),
+                       ("spine_coverage_min", newdata.COVERAGE_TARGET.get("spine/security")),
+                       ("spine_tier_a_unknown_max", control.SPINE_UNKNOWN_ALERT),
+                       ("spine_issues_rise_share", control.SPINE_ISSUES_RISE_ALERT)):
+        if value is None:                               # a target the screen dropped is no line, never a 0
+            continue
         out["rc_threshold"].append(({"name": key}, value))
     with _errors_lock:
         out["rc_metrics_read_errors_total"] = [({"part": p}, n) for p, n in sorted(_errors.items())]

@@ -668,6 +668,11 @@ CLAUDE_UNITS = ("life-claude-remote-control-a.service", "life-claude-remote-cont
                 "life-claude-rc-a.service", "life-claude-rc-b.service")
 #: A running request past this share of its limit is a card.
 RUN_ALERT = 0.8
+#: Spine health (avo, 23 Nov 2026), exported as ``rc_threshold`` for home-server's alerts: Tier A rows of security
+#: type ``unknown`` above this (#1334 K-B's acceptance: under 30) ...
+SPINE_UNKNOWN_ALERT = 30
+#: ... and the open spine/security build issues rising by more than this share within a day.
+SPINE_ISSUES_RISE_ALERT = 0.2
 
 
 def _read_runs_now() -> list[dict]:
