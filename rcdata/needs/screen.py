@@ -121,9 +121,14 @@ DATASETS: dict[str, DatasetCard] = {
     'uw/spot_expiry_strike': DatasetCard('SPX expiry-strike (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
     # shortcut: the hourly dataset's card (#643) says daily, so the screen reads it late after a day without a run,
     # not an hour; an "hourly" card cadence needs newdata's CYCLE_DAYS to learn it first.
-    'uw/economic_calendar': DatasetCard('Economic calendar, this week and next (Unusual Whales)', step=11, role='only source'),
-    'uw/fda_calendar': DatasetCard('FDA calendar: PDUFA dates, advisory meetings and decisions (Unusual Whales)',
-                                   step=11, role='only source'),
+    'uw/economic_calendar': DatasetCard('Economic calendar, this week and next (Unusual Whales; builds the table)',
+                                        step=11, role='build'),
+    'public/economic_calendar': DatasetCard('Economic calendar: US releases (TradingView) and Fed speeches, FOMC and '
+                                            'the Beige Book (Fed)', step=11, role='first'),
+    'uw/fda_calendar': DatasetCard('FDA calendar: PDUFA dates, advisory meetings and decisions (Unusual Whales; '
+                                   'builds the table)', step=11, role='build'),
+    'public/fda_calendar': DatasetCard("FDA calendar: PDUFA dates from the companies' 8-Ks (SEC) and advisory "
+                                       'committee meetings (Federal Register)', step=11, role='first'),
     'uw/institutions': DatasetCard('Every 13F institution, its tags and its successions (Unusual Whales)',
                                   cadence='quarterly', step=10, role='only source'),
     'uw/greek_expiry_strike': DatasetCard('SPX greek exposure by expiry and strike, whole chain (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
@@ -328,6 +333,8 @@ NO_TIER_DATASET_WORDS: dict[str, str] = {
     "alphavantage/earnings_calendar": "one call brings the whole calendar, every name at once.",
     "sec/fsds": "one file a quarter holds every filer at once.",
     "uw/economic_calendar": "one call brings the whole calendar, no names.",
+    "public/economic_calendar": "two calls bring both calendars, no names.",
+    "public/fda_calendar": "one full-text search brings every 8-K that names a PDUFA date, no names asked.",
     "uw/fda_calendar": "one call brings the whole calendar, no names.",
     "sec/ncen": "one file a quarter holds every fund at once.",
 }
@@ -437,7 +444,11 @@ PROVIDERS: dict[str, ProviderWords] = {
     "evren": ProviderWords("EVREN", "the SEC reader tool's answers (no fee)", "1 request at a time"),
     "deepseek": ProviderWords("DeepSeek API", "the SEC reader tool's answers (Flash only, off-peak)",
                               "8 requests at a time", paid=True),
-    "fed": ProviderWords("Fed", "policy rates"),
+    "fed": ProviderWords("Fed", "policy rates, the FOMC dates and the Board's calendar"),
+    "federalregister": ProviderWords("Federal Register", "FDA advisory committee meeting notices",
+                                     "one request a run", "none published"),
+    "tradingview": ProviderWords("TradingView", "the US economic calendar", "one request a run",
+                                 "no key and no quota published (a public page's own endpoint)"),
     "bls": ProviderWords("BLS", "CPI and jobs"),
 }
 

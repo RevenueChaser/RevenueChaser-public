@@ -9,15 +9,17 @@ The ownership store's datasets (PR 16) are their own block, added after the spin
 from __future__ import annotations
 
 from .. import serving
-from . import market_series, uw_economic_calendar, uw_fda_calendar, uw_greek_expiry_strike, uw_spot_expiry_strike
+from . import econ_calendar_sources, fda_calendar_sources, market_series, uw_economic_calendar, uw_fda_calendar, uw_greek_expiry_strike
+from . import uw_spot_expiry_strike
 from .ownership import finra, form4, ftd, ibkr, nport, regsho, sched13dg, sec13f, sec13f_list, sec13f_listing
 from .ownership import uw_institutions
 from .ownership import serve as ownership_serve
 from .spine import av_listing, etf_holdings as spine_etf_holdings, funds, ncen, openfigi_map, sec_tickers, sec_tickers_mf, security, wrds
 
 DATASETS = {d.name: d for d in (uw_spot_expiry_strike.DATASET, uw_greek_expiry_strike.DATASET,
-                                market_series.DATASET, uw_economic_calendar.DATASET,
-                                uw_fda_calendar.DATASET,
+                                market_series.DATASET, econ_calendar_sources.DATASET,
+                                uw_economic_calendar.DATASET,
+                                fda_calendar_sources.DATASET, uw_fda_calendar.DATASET,
                                 sec_tickers.DATASET,
                                 sec_tickers_mf.DATASET, wrds.SEC_IDHIST, wrds.CO_HGIC, wrds.IDXCST_HIS, openfigi_map.DATASET, funds.DATASET,
                                 spine_etf_holdings.DATASET, av_listing.DATASET, ncen.DATASET, security.DATASET)}

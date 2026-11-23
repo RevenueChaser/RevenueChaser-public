@@ -1068,7 +1068,7 @@ it; the ownership store, `ownership` (serving schema version `7`), under "The ow
 fundamentals layer, `fundamentals` (serving schema version `7`), under "Fundamentals" after it; and the options
 data, `options` (serving schema version `3`), under "The options data" after it; and the SEC form reader, `sec_forms` (serving schema version `1`), under "The SEC form reader"; and the SEC reader tool, `sec_reads` (serving schema version `3`), under "The SEC reader tool" last. The nine numbers live in `rcdata/serving_versions.py`, outside the builder's rules fingerprint
 (`rcdata/build/dirty.py`), so a bump makes only its own kind's next build whole (#649). The market data,
-`market` (serving schema version `5`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
+`market` (serving schema version `6`): `serving_schema_version` (one row: kind, version, build time, build id, build mode),
 `spx_gamma_expiry_strike` (key session date, expiry, strike; every numeric field UW serves, typed DOUBLE; provenance
 `source`, `source_as_of`, `fetched_at`, `run_id`, `observed`), `spx_greek_expiry_strike` (the same key, the four
 greeks per side from `greek-exposure/strike-expiry` for every expiry of the chain, same provenance; where two
@@ -1076,10 +1076,18 @@ option series share an expiry date — SPX and SPXW on a third Friday — UW's t
 into one, because its answer has no field to tell the series apart; its `dte` is
 UW's **calendar**-day count, while `spx_gamma_expiry_strike.dte` counts NYSE sessions, so the two columns are
 different measures of different endpoints and are never substituted) and `market_series` (key series id, observation date,
-source; `value`, OHLC for the index files, `frequency`, `session_date`, provenance), `economic_event` (UW's economic
-calendar, hourly: key snapshot day, event time as epoch seconds, event, type; `forecast`, `prev` and
-`reported_period` as text; each day is the newest fetch of that New York day, so a same-day revision is kept) and
-`fda_event` (UW's FDA calendar, hourly, market 5 / #807: key snapshot day, target date, ticker, drug; `catalyst`
+source; `value`, OHLC for the index files, `frequency`, `session_date`, provenance), `economic_event` (the economic
+calendar, hourly: key snapshot day, event time as epoch seconds, event, type and, since market 6 (#1433), `source`;
+`forecast`, `prev` and `reported_period` as text; each day is the newest fetch of that New York day, so a same-day
+revision is kept; `uw/economic_calendar` builds it from UW's Parquet and from the keyless
+`public/economic_calendar` (TradingView and the Fed in one run, `rcdata/build/econ_calendar_sources.py`), and
+`rcdata.read` serves a day's TradingView and Fed rows instead of UW's when that day has them) and
+`fda_event` (the FDA calendar, hourly, market 5 / #807: key snapshot day, target date, ticker, drug and, since
+market 6 (#1433), `source`; built by `uw/fda_calendar` from UW's Parquet and from `public/fda_calendar`
+(`rcdata/build/fda_calendar_sources.py`: PDUFA dates read by fixed patterns from the companies' 8-Ks found by EDGAR
+full-text search, and FDA advisory committee meetings from the Federal Register, whose rows have an empty `ticker`
+and the committee as `drug`), and `rcdata.read` serves a day's SEC and Federal Register rows instead of UW's when
+that day has them; `catalyst`
 (PDUFA Date, Advisory Committee Meeting, ...), `application_status` (UW's own `status`, renamed because
 `rcdata.read` stamps a `status` of its own on every row), `indication`, `description`, `notes`, `outcome`,
 `outcome_brief`, `source_link`, `has_options`, `marketcap`, and the target date twice — `target_text` as UW served
