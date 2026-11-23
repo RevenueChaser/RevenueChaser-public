@@ -1391,9 +1391,11 @@ def _silent_minutes(last_run: dict | None, now: datetime) -> int | None:
 
 def recent_checks(rows: list[dict], n: int = 3) -> list[dict]:
     """The newest ``n`` of ``ops.recent_checks``' rows (newest first) as the Health table and the Jobs board show
-    them (design v28)."""
-    return [{k: r.get(k) for k in ("checked_on", "result", "source_as_of", "rows", "added", "removed", "calls",
-                                   "coverage", "note")} for r in rows[:n]]
+    them (design v28). ``at`` is when the check's run started (ISO, UTC), None for a check with no run: a check row
+    keeps only its day, and the Jobs board's History names the time (avo, 23 Nov 2026)."""
+    return [{**{k: r.get(k) for k in ("checked_on", "result", "source_as_of", "rows", "added", "removed", "calls",
+                                      "coverage", "note")},
+             "at": _iso_utc(ops.run_started_at(r["run_id"])) if r.get("run_id") else None} for r in rows[:n]]
 
 
 def _card(dataset: str, ds, facts: dict, now: datetime, used_today: dict[str, int] | None = None) -> dict:

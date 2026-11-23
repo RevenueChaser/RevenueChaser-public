@@ -467,19 +467,27 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
     ``took_s`` (the own seconds of its last run that was not skipped, ``base.own_seconds``: the time a pass spent
     on the other members' fetches and builds left out; None before step times were recorded), ``rows``,
     ``coverage`` and ``coverage_target`` (that run's), ``checks`` and ``recent`` (Settings' checks list and last
-    three checks), ``label`` (its short name on the board, ``DatasetCard.short``, else its card's label) and
+    three checks, each with ``at``, its run's start), ``label`` (its short name on the board, ``DatasetCard.short``,
+    else its card's label) and
     ``issue_kinds``: its open build issues by kind, the most first, each ``{kind, count, rows, issues_url}`` with the
-    newest ``ISSUE_ROWS`` as ``{key, detail, found_on}`` and the route of the kind's whole list (``issue_list``)."""
+    newest ``ISSUE_ROWS`` as ``{key, detail, found_on}`` and the route of the kind's whole list (``issue_list``).
+    And what Settings' card shows beside them (avo, 23 Nov 2026 18:14): ``wrds`` (the WRDS difference of a check
+    dataset, ``_wrds_difference``; None for the rest), ``attended_command``, ``backfill`` (``BACKFILL``'s view) and
+    ``cost`` (``_cost``, against the calls the providers already made today)."""
     from revenuechaser.module_settings import newdata
     from revenuechaser.rcdata import ops
     now = now or datetime.now(timezone.utc)
     datasets = datasets if datasets is not None else newdata._datasets()
     timer = timer if timer is not None else (TIMER.get() or {})
+    spend = None
     if providers is None:
         try:
-            providers = control._providers({"spend": newdata._spend(now)})
+            spend = newdata._spend(now)
+            providers = control._providers({"spend": spend})
         except Exception:  # noqa: BLE001 - a badge without its colour still names its provider
             providers = []
+    # each dataset's cost line, from the spend already read, as Settings' collect does
+    used_today = {str(p["provider"]): int(p["today"] or 0) for p in (spend or {}).get("providers", [])}
     colour = {p["id"]: control.SOURCE_COLORS[i % len(control.SOURCE_COLORS)] for i, p in enumerate(providers)}
     names = {p["id"]: p["name"] for p in providers}
     from revenuechaser.rcdata.build import base
@@ -512,7 +520,13 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
             n_issues = ops.open_issues(name, limit=0)[0]
             missed = newdata._missed(cadence, base_check, now, name) if base_check else None
             ran = base_check or {}
+            backfill = newdata.BACKFILL[name](now) if name in newdata.BACKFILL else None
             row.update({
+                # Settings' card's parts (``newdata._card``), from its own functions
+                "wrds": newdata._wrds_difference(name) if name in newdata.WRDS_DIFFERENCE else None,
+                "attended_command": (newdata.ATTENDED_COMMANDS.get(name) or newdata.attended_command(ds.kind))
+                                    if getattr(ds, "attended", False) else None,
+                "backfill": backfill, "cost": newdata._cost(name, backfill, used_today),
                 "group": "build" if card and card.role == "build" else cadence,
                 "took_s": base.own_seconds(ops.run_steps(ran["run_id"])) if ran.get("run_id") else None,
                 "rows": ran.get("rows"), "coverage": ran.get("coverage"),
