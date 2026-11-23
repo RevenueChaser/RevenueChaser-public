@@ -389,7 +389,7 @@ def universe(tiers: Iterable[str] = ("A",)) -> list[dict]:
 
 def my_universe(kinds: Iterable[str] = ()) -> list[dict]:
     """The names we keep (``my_universe``, ``build/spine/my_universe.py``), by ticker; ``kinds`` narrows to
-    ``stock`` or ``etf``.
+    ``stock``, ``etf`` or ``trust``.
 
     One row per ticker: what it is to us (``kind``, ``security_type``), the rule that let it in (``rule``,
     ``reason``), the ETF numbers behind that rule (``aum``, ``adv_usd_20d``) and the day it entered
@@ -445,7 +445,8 @@ def my_universe_changes(limit: int = 200) -> list[dict]:
 
 def my_universe_spans(kinds: Iterable[str] = ()) -> list[dict]:
     """The dated universe: ``{ticker, kind, entered_on, left_on}``, one row per stay of a name in avo's list, from
-    ``my_universe_changes``; ``kinds`` narrows to ``stock`` or ``etf``.
+    ``my_universe_changes``; ``kinds`` narrows to ``stock``, ``etf`` or
+    ``trust``.
 
     A name is a member at the end of day ``D`` when ``entered_on <= D`` and ``left_on`` is NULL (still in) or after
     ``D``. Each build applies the rules to that build's own spine, so a span is the rule as it read on those days,

@@ -40,6 +40,11 @@ the list can be swapped by editing one file:
   :data:`MANUAL_FILE` takes it out. A listed ticker the ``etf`` table does not hold is named in one
   ``my_universe_list_unknown`` issue. An unreadable list fails the build (``read.JobListUnreadable``).
 
+**A trust** (avo, 23 Nov 2026, "Bence trust lazım"): an ETF-rule name whose ``etf`` row is a 1933-Act grantor trust
+or commodity pool (``etf.TRUST_SQL``: GLD, SLV, IBIT, ETHA) is kept with ``kind = 'trust'``, on the same rules and
+floors as an ETF. Every reader that means "a fund" reads :data:`FUNDS`. A name that only changes kind (``etf`` to
+``trust``) writes no ``my_universe_changes`` row: the diff is by ticker, as for any kind change.
+
 **Both kinds at once.** A ticker the stock rule and the ETF rule both claim is kept once, as the stock, and
 reported as ``my_universe_both_kinds``. It does not happen in a normal build (an ``etf`` row of the SEC equity
 file is typed ``etp``, so it is Tier B and no stock), which is why it is worth saying out loud when it does.
@@ -88,7 +93,8 @@ CHANGES = "my_universe_changes"
 RULES_FILE = Path(__file__).with_name("my_universe_rules.json")
 MANUAL_FILE = Path(__file__).with_name("my_universe_manual.json")
 
-#: ``kind`` is what the name is to us, ``security_type`` the spine's own word for it (``etf`` for every ETF row).
+#: ``kind`` is what the name is to us (``stock``, ``etf`` or ``trust``), ``security_type`` the spine's own word for
+#: it (``etf`` for every ETF row).
 #: ``rule`` is what let it in: ``stock``, ``etf_aum``, ``etf_adv``, ``job_list`` or ``manual``; ``reason`` carries the number or
 #: avo's words behind that rule. ``source`` names the spine table the row came from, or ``manual``.
 SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("kind", "TEXT"), ("security_type", "TEXT"), ("name", "TEXT"),
@@ -98,7 +104,9 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("kind", "TEXT"), ("security_type", "T
 CHANGES_SCHEMA = [("ticker", "TEXT"), ("kind", "TEXT"), ("change", "TEXT"), ("reason", "TEXT"), ("as_of", "DATE"),
                   ("run_id", "TEXT")]
 
-STOCK, ETF = "stock", "etf"
+STOCK, ETF, TRUST = "stock", "etf", "trust"
+#: The kinds that are funds: a reader that means "a fund" reads both (a trust is no 40-Act fund, still a fund).
+FUNDS = (ETF, TRUST)
 ENTERED, LEFT = "entered", "left"
 #: How many tickers an issue's detail names before it says "and N more".
 MANY = 20
@@ -312,6 +320,11 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
             issues.append(("my_universe_manual_unknown", ticker,
                            "a manual remove naming a ticker neither security nor etf holds"))
 
+    # A trust is an ETF-rule name by its etf row today, whichever path kept it (rule, exit floor, list, hand, hold).
+    trusts = {t for (t,) in con.execute(f"SELECT ticker FROM {etf_mod.TABLE} WHERE {etf_mod.TRUST_SQL}").fetchall()}
+    for r in kept.values():
+        if r["kind"] == ETF and r["ticker"] in trusts:
+            r["kind"] = TRUST
     by_hand = {r["ticker"]: r["reason"] for r in removes if r["ticker"] in removed}
     issues.extend(_undecided_issue(con, undecided, kept, removed))
     issues.extend(_held_issue(held, kept))

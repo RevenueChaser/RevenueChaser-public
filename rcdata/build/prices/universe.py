@@ -105,12 +105,12 @@ def norm(column: str) -> str:
 
 #: ``_universe_etf``: the funds of the universe, ``ticker`` as ``_universe_ticker`` holds it and ``tic`` in
 #: :func:`norm`'s form. A fund is a ticker of the spine's ``etf`` table, or one the ``my_universe`` list holds as
-#: ``kind = 'etf'`` (a fund avo added by hand that the ``etf`` table lacks; review D5 of #420). Both sides compared
-#: in :func:`norm`'s form (NIT 2 of #420).
+#: ``kind`` ``etf`` or ``trust`` (a fund avo added by hand that the ``etf`` table lacks; review D5 of #420). Both
+#: sides compared in :func:`norm`'s form (NIT 2 of #420).
 UNIVERSE_ETF_SQL = f"""
     SELECT DISTINCT t.ticker, {norm('t.ticker')} AS tic FROM _universe_ticker t
     WHERE {norm('t.ticker')} IN (SELECT {norm('ticker')} FROM stg_etf WHERE ticker IS NOT NULL)
-       OR {norm('t.ticker')} IN (SELECT {norm('ticker')} FROM stg_{MY_UNIVERSE_TABLE} WHERE kind = 'etf')"""
+       OR {norm('t.ticker')} IN (SELECT {norm('ticker')} FROM stg_{MY_UNIVERSE_TABLE} WHERE kind IN ('etf', 'trust'))"""
 #: How recent (calendar days before Compustat's newest priced day) a series' newest day must be for its ticker to
 #: name a universe ETF (``_etf_tic_series``): two weeks covers a holiday week and a late Compustat row.
 ETF_TIC_RECENT_DAYS = 14

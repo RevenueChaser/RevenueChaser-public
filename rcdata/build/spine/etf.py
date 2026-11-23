@@ -23,9 +23,11 @@ universe (#357, avo's decision B of 5 Nov 2026).
 
 **The commodity rule.** An ``etp`` row of the spine that is no note, has no N-CEN series, and whose CIK filed no
 N-CEN at all is not a registered investment company: a grantor trust or commodity pool registered under the 1933
-Act only (GLD, SLV, USO, the bitcoin trusts), so ``asset_class='commodity'``. A unit investment trust does file
+Act only (GLD, SLV, USO, the bitcoin trusts), so ``asset_class='commodity'``, or ``crypto`` where its name says
+so (:data:`CRYPTO_NAME`: IBIT, FBTC, GBTC, ETHA; avo, 23 Nov 2026). A unit investment trust does file
 N-CEN (SPY and DIA as S-6 registrants, with no series row), so it is not caught. Until ``sec/ncen`` holds four
 quarters (a fund files once a fiscal year) the rule says nothing: one quarter holds a fraction of the filers.
+Such a row is a **trust** to ``my_universe`` (:data:`TRUST_SQL`), not an ETF.
 
 **A label on a security that is no fund** (avo, 23 Nov 2026). Alpha Vantage labels some operating companies and
 listed notes ``ETF`` (PAM, an ADR; PFX; SPAC units), and the spine's ``etp`` type reaches baby bonds through
@@ -92,6 +94,14 @@ LEV_INVERSE_NAME = re.compile(
     r"\b(?:[2-5]|1\.\d+)\s*x\b|-\s*1\s*x\b|\b1\s*x\s+short\b"
     r"|\bproshares\s+(?:ultra|short\b)|\binverse\b|\bleveraged\b(?!\s+loans?)"
     r"|\bdaily\b.*\b(?:long|short|bull|bear)\b|\b(?:long|short|bull|bear)\b.*\bdaily\b", re.I)
+
+#: A crypto asset by the fund's or trust's name (avo's E, 17 Nov 2026; ``etf_class`` reads it from here).
+CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|"
+                         r"digital assets?)\b", re.IGNORECASE)
+#: An ``etf`` row that is a **trust** (avo, 23 Nov 2026, "Bence trust lazım"): a 1933-Act grantor trust or commodity
+#: pool, no 40-Act fund -- no N-CEN series, no note, no CEF, and a commodity or crypto class. The one definition.
+TRUST_SQL = ("series_id IS NULL AND NOT coalesce(is_etn, FALSE) AND NOT coalesce(is_cef, FALSE) "
+             "AND asset_class IN ('commodity', 'crypto')")
 
 
 #: The ``security_type`` values of a security that is no fund: an operating company, a SPAC, a preferred, a unit or
@@ -429,7 +439,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                                   f"{cik}: nothing taken from TickerInside"))
         ti = ti if ti is not None and (not raw_cik or ti["cik"] == cik) else None
         fund = ti_funds.get(t) if ti is not None else None
-        asset_class = "commodity" if commodity else None
+        asset_class = (("crypto" if any(CRYPTO_NAME.search(n) for n in names if n) else "commodity")
+                       if commodity else None)
         if asset_class is None and fund and fund["category"]:
             asset_class = CATEGORY_ASSET_CLASS.get(fund["category"])
             if asset_class is None:

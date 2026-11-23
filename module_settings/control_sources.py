@@ -197,7 +197,7 @@ def funnel(nd: dict, *, rules_path: Path | None = None) -> dict:
         {"step": etf_rule, "n": counted(by_rule, "etf_aum", "etf_adv"),
          "drops": f"a known AUM under {_usd(rules.etf_aum_floor)}, or no AUM and a volume under "
                   f"{_usd(rules.etf_adv_floor)}"},
-        {"step": "on the list, plus the names added by rule", "n": counted(kinds, "etf"),
+        {"step": "on the list, plus the names added by rule", "n": counted(kinds, "etf", "trust"),
          "drops": "removed by hand; added by hand join here"},
     ]
     return {"stocks": stocks, "etfs": etfs, "added": _n(by_rule.get("manual")) if built else None}

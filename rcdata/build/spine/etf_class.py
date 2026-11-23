@@ -117,9 +117,8 @@ BENCHMARKS = ("IVV", "VOO", "SPLG")
 #: Places of incorporation, not of business (CQQQ read "KY 61 %"): left out of the geography test.
 OFFSHORE = frozenset({"KY", "VG", "BM"})
 UNCLASSIFIED = "unclassified"
-#: The fund's registered name says it holds a crypto asset (avo's E, 17 Nov 2026).
-CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|"
-                         r"digital assets?)\b", re.IGNORECASE)
+#: The fund's registered name says it holds a crypto asset (avo's E, 17 Nov 2026); one rule with ``etf``'s.
+CRYPTO_NAME = etf_mod.CRYPTO_NAME
 _FUND_NAME = r"\bETF\b|ISHARES TRUST|SELECT SECTOR SPDR"
 #: A holding line's bucket by its N-PORT asset category (``h`` is the holdings row), before a held fund is told
 #: apart. A company's share the report files under OTHER (a Thai NVDR, a Brazilian unit) is a corporate issuer with
@@ -333,7 +332,7 @@ def _universe(con: duckdb.DuckDBPyConnection) -> list[dict]:
                coalesce(e.is_option_income, false) AS opt, coalesce(e.is_fund_of_funds, false) AS fof,
                coalesce(e.is_money_market, false) AS mm
         FROM {my_universe.TABLE} m JOIN {etf_mod.TABLE} e USING (ticker)
-        WHERE m.kind = '{my_universe.ETF}' ORDER BY e.ticker""")
+        WHERE m.kind IN {my_universe.FUNDS} ORDER BY e.ticker""")
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
