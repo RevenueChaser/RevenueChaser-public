@@ -166,7 +166,7 @@ def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt:
         return None
     held = {"equity": mix.get("equity", 0.0), "bond": mix.get("debt", 0.0), "commodity": mix.get("commodity", 0.0)}
     k, v = max(sorted({**held, "cash": mix.get("cash", 0.0)}.items()), key=lambda kv: kv[1])
-    cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
+    cls = k if v >= NPORT_SHARE else (
         "multi_asset" if sum(held.values()) >= NPORT_SHARE else None)
     return None if opt and cls != "equity" else cls
 
