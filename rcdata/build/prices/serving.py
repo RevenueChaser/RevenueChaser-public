@@ -573,7 +573,7 @@ ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_d
 SPLIT_TWIN_SQL = f"""DELETE FROM _act w WHERE w.source = '{wrds_history.NAME}'
     AND {ACTION_KIND.format(a='w')} = 'split'{{mine}}
     AND EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.source = '{ALPACA_ACTIONS}'
-                AND {ACTION_KIND.format(a='p')} = 'split'
+                AND {ACTION_KIND.format(a='p')} = 'split' AND p.action_type <> 'stock_dividend'
                 AND abs(date_diff('day', p.ex_date, w.ex_date)) <= {SPLIT_SAME_DAYS})"""
 # The Alpaca stock dividend ``SPLIT_TWIN_SQL`` lets Compustat's split-kind row stand beside: one share-basis step,
 # Compustat's, is applied, never both (#1413 P-D). Over ``_act`` and an alias ``a`` of the action.
