@@ -138,7 +138,7 @@ from ....core.gics_map import UNCLASSIFIED
 from ... import ops, serving
 from .. import base, dirty
 from ..spine import openfigi_map, wrds
-from . import KIND, common, sec13f, sec13f_list, sec13f_listing, uw_institutions
+from . import KIND, common, sec13f, sec13f_extras, sec13f_list, sec13f_listing, uw_institutions
 
 NAME = "ownership/serve"
 SPINE = "spine"
@@ -219,7 +219,7 @@ STARTED, STOPPED = "started", "stopped"
 SCHEMAS = {"sec13f_cusip_map": MAP, "sec13f_filer_period": FILER, "sec13f_ticker_period": TICKER,
            "sec13f_periods": PERIODS, "sec13f_filer_breaks": BREAKS, "sec13f_type_holdings": TYPES,
            "sec13f_type_sector": TYPE_SECTOR, "sec13f_type_flow": TYPE_FLOW, "sec13f_filer_style": STYLE,
-           "sec13f_filer_holdings": FILER_HOLDINGS}
+           "sec13f_filer_holdings": FILER_HOLDINGS, **sec13f_extras.SCHEMAS}
 TABLES = tuple(SCHEMAS)
 # The old sec13f_totals entry's keys, in its order (module_sec_13f/engine.py compute_period_metrics).
 METRICS = ("shares", "value", "holders", "top10_pct", "hhi", "new_holders", "exited_holders", "buy_flow",
@@ -365,14 +365,14 @@ def _factor_sql() -> str:
     return "CASE " + " ".join(arms) + " ELSE 1.0 END"
 
 
-def _pad_cusips(con: duckdb.DuckDBPyConnection) -> None:
+def _pad_cusips(con: duckdb.DuckDBPyConnection, table: str = "_long") -> None:
     """#937: an all-digit CUSIP of eight characters that lost its leading zero (``37833100``, AAPL's ``037833100``)
     gets it back when the zero makes its check digit right; any other short CUSIP stays as filed, unmapped."""
-    short = [r[0] for r in con.execute("SELECT DISTINCT cusip FROM _long WHERE regexp_full_match(cusip, '[0-9]{8}')")
-             .fetchall()]
+    short = [r[0] for r in con.execute(f"SELECT DISTINCT cusip FROM {table} "
+                                       "WHERE regexp_full_match(cusip, '[0-9]{8}')").fetchall()]
     fixed = [c for c in short if luhn_digit(("0" + c)[:8]) == int(c[-1])]
     if fixed:
-        con.execute("UPDATE _long SET cusip = '0' || cusip WHERE cusip IN (SELECT unnest(?::TEXT[]))", (fixed,))
+        con.execute(f"UPDATE {table} SET cusip = '0' || cusip WHERE cusip IN (SELECT unnest(?::TEXT[]))", (fixed,))
 
 
 def _root_word(name: str | None) -> str | None:
@@ -643,7 +643,7 @@ TEMPS = ("_closed", "_sets", "_sp_security", "_sp_hist", "_sp_sp500", "_sp_secto
          "_pxfix", "_fac", "_rowfix", "_held", "_succ",
          "_cp", "_m_hist", "_m_cur", "_m_owner", "_m_figi", "_filers", "_filed", "_deadline", "_tot", "_pos", "_shape",
          "_family",
-         "_pairs", "_flow", "_tag")
+         "_pairs", "_flow", "_tag", *sec13f_extras.TEMPS)
 
 
 class OwnershipServe:
@@ -756,6 +756,7 @@ class OwnershipServe:
             counts["sec13f_type_flow"] = self._type_flow(con, snap)
             counts["sec13f_filer_style"] = self._style(con, ctx.as_of or self.default_as_of())
             counts["sec13f_filer_holdings"] = self._filer_holdings(con)
+            counts.update(sec13f_extras.build(con, _pad_cusips))
             found += self._issues(con, ctx.as_of or self.default_as_of())
             summary["rescaled"] = common.count(con, "sec13f_filer_period", "value_factor <> 1")
             summary["px_fixed"] = common.count(con, "_pxfix")
