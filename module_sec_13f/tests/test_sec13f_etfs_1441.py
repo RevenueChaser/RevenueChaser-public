@@ -32,6 +32,17 @@ def test_the_view_gives_the_change_in_shares_new_holdings_and_what_was_sold_out(
     assert (v["positions"], v["no_ticker"], v["new"], v["exits"]) == (3, 1, 1, 2)
 
 
+def test_a_new_cusip_under_the_same_name_is_the_same_holding_not_a_sale():
+    """Live VTI, 2026q2 to 2026q3: Honeywell took a new CUSIP and read as sold out and bought new. Matched by its
+    name it is one holding, with no share change given (DuPont's reverse split moved its count without a trade)."""
+    now = [_h("HON", "Honeywell International Inc", 10_058_138, 2.1e9, cusip="438516205", isin="US4385162056")]
+    before = [_h(None, "Honeywell  international inc", 20_184_572, 4.6e9, cusip="438516106", isin="US4385161066",
+                 quarter=Q2)]
+    v = report.etf_holdings_view(now, before)
+    assert [h["change"] for h in v["holdings"]] == ["changed"]
+    assert v["exited"] == [] and (v["new"], v["exits"]) == (0, 0)
+
+
 def test_the_first_quarter_held_has_no_change_and_nothing_sold_out():
     v = report.etf_holdings_view(NOW, None)
     assert {h["change"] for h in v["holdings"]} == {None}

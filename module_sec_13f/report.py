@@ -1032,21 +1032,34 @@ def _holding_key(r: dict) -> str:
 def etf_holdings_view(rows: list[dict], prev_rows: list[dict] | None, exited_top: int = 10) -> dict:
     """The ETFs view's quarter (#1441): ``holdings`` largest first, each with ``ticker`` (None for a foreign or
     private holding, shown by ``name``, ``isin`` and ``country``), ``weight`` (% of net assets), ``value``,
-    ``shares`` and ``change`` (shares against the quarter before: ``"new"`` for a holding that quarter lacked, None
-    when there is no quarter before); ``exited``, the largest holdings of the quarter before that are gone; and the
-    counts ``positions``, ``value``, ``no_ticker``, ``new`` and ``exits`` (None without a quarter before)."""
+    ``shares`` and ``change`` (shares against the quarter before: ``"new"`` for a holding that quarter lacked,
+    ``"changed"`` for one whose CUSIP and ISIN changed while its name stayed, None when there is no quarter before);
+    ``exited``, the largest holdings of the quarter before that are gone; and the counts ``positions``, ``value``,
+    ``no_ticker``, ``new`` and ``exits`` (None without a quarter before).
+
+    A new CUSIP under the same issuer name is the same holding, not a sale and a buy (live VTI, 2026q2 to 2026q3:
+    Honeywell and DuPont took new CUSIPs and read as sold out). Its share change is not given: a reverse split or a
+    spin-off moves the count without a trade (DuPont 12.97M to 4.34M shares)."""
     prev = None if prev_rows is None else {_holding_key(r): r for r in prev_rows}
+    keys = {_holding_key(r) for r in rows}
+    by_name = {} if prev is None else {_name_key(r): k for k, r in prev.items() if k not in keys and _name_key(r)}
+    renamed: set[str] = set()
     holdings = []
     for r in sorted(rows, key=lambda r: -(r.get("value") or 0)):
         p = None if prev is None else prev.get(_holding_key(r))
         sh = r.get("shares")
-        change = None if prev is None else ("new" if p is None else
-                                           (sh or 0) - (p.get("shares") or 0) if sh is not None else None)
+        if prev is None:
+            change = None
+        elif p is None:
+            was = by_name.pop(_name_key(r), None)
+            change = "new" if was is None else "changed"
+            renamed.update([was] if was else [])
+        else:
+            change = (sh or 0) - (p.get("shares") or 0) if sh is not None else None
         holdings.append({"ticker": r.get("ticker"), "name": r.get("name"), "isin": r.get("isin"),
                          "country": r.get("country"), "weight": r.get("weight"), "value": r.get("value"),
                          "shares": sh, "change": change})
-    keys = {_holding_key(r) for r in rows}
-    gone = [] if prev is None else sorted((r for k, r in prev.items() if k not in keys),
+    gone = [] if prev is None else sorted((r for k, r in prev.items() if k not in keys and k not in renamed),
                                           key=lambda r: -(r.get("value") or 0))
     return {"holdings": holdings,
             "exited": [{"ticker": r.get("ticker"), "name": r.get("name"), "isin": r.get("isin"),
@@ -1055,6 +1068,10 @@ def etf_holdings_view(rows: list[dict], prev_rows: list[dict] | None, exited_top
             "no_ticker": sum(1 for r in rows if not r.get("ticker")),
             "new": None if prev is None else sum(1 for h in holdings if h["change"] == "new"),
             "exits": None if prev is None else len(gone)}
+
+
+def _name_key(r: dict) -> str:
+    return " ".join(str(r.get("name") or "").upper().split())
 
 
 SECTOR_COLS = 3          # small multiples per row; 11 GICS sectors and Unclassified fill four rows
@@ -1698,7 +1715,7 @@ ETFS_JS = r"""<script>
       w.appendChild(bar); w.appendChild(document.createTextNode(h.weight === null || h.weight === undefined ? '—' : h.weight.toFixed(2) + '%'));
       tr.appendChild(w); tr.appendChild(num('Value', money(h.value))); tr.appendChild(num('Shares', count(h.shares)));
       var c = h.change;
-      tr.appendChild(c === 'new' ? num('Change in shares', 'new', 'pos') : c === null || c === undefined ? num('Change in shares', '—', 'zero')
+      tr.appendChild(c === 'new' ? num('Change in shares', 'new', 'pos') : c === 'changed' ? num('Change in shares', 'new CUSIP', 'zero') : c === null || c === undefined ? num('Change in shares', '—', 'zero')
         : num('Change in shares', (c > 0 ? '+' : c < 0 ? '−' : '') + count(Math.abs(c)), c > 0 ? 'pos' : c < 0 ? 'neg' : 'zero'));
       tb.appendChild(tr);
     });
@@ -1735,7 +1752,12 @@ ETFS_JS = r"""<script>
   window.rcEtfsOpen = function(){ if(LOADED){ return; } LOADED = true; var e = DEFAULT_ETF; try { e = localStorage.getItem(KEY) || e; } catch(x) {} load(e); };
   document.addEventListener('DOMContentLoaded', function(){
     var wait = null;
-    $('etf-q').addEventListener('input', function(e){ clearTimeout(wait); wait = setTimeout(function(){ find(e.target.value); }, 250); });
+    $('etf-q').addEventListener('input', function(e){ var text = e.target.value; clearTimeout(wait); wait = setTimeout(function(){ find(text); }, 250); });
+    $('etf-q').addEventListener('keydown', function(e){
+      if(e.key !== 'Enter'){ return; }
+      var first = $('etf-hits').querySelector('button');
+      if(first && !$('etf-hits').hidden){ e.preventDefault(); first.click(); }
+    });
     $('etf-q').addEventListener('focus', function(e){ e.target.select(); });
     $('etf-quarter').addEventListener('change', function(){ if(ETF){ load(ETF, this.value); } });
     $('etf-more').addEventListener('click', function(){
