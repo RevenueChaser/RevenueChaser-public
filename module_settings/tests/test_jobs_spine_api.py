@@ -36,7 +36,7 @@ MOCK = {
     "openfigi/map": "CUSIP to FIGI and security type (stock, ETF, preferred).",
     "alphavantage/listing_status": "Active and delisted US names.",
     "sec/ncen": "Funds' annual reports: ETF facts.",
-    "funds/index_holdings": "Membership of every index the fund files carry (S&P, Russell, Dow, Nasdaq).",
+    "funds/index_holdings": "Membership of the indexes the fund files carry (S&P, Russell, Dow).",
     "funds/etf_holdings": "What each ETF holds, read daily.",
     "spine/security": "Link, type, tier, index vote, ETF identity, my_universe.",
 }

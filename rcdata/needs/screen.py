@@ -64,7 +64,7 @@ DATASETS: dict[str, DatasetCard] = {
                                        lag_need='ownership.short_interest'),
     'fundamentals/tables': DatasetCard('Fundamentals (served tables, peers, build issues)', step=9, role='build'),
     'funds/index_holdings': DatasetCard('Index membership (ETF holdings files)', step=6, role='first',
-                                        about='Membership of every index the fund files carry (S&P, Russell, Dow, Nasdaq).',
+                                        about='Membership of the indexes the fund files carry (S&P, Russell, Dow).',
                                         short='Index fund files'),
     'funds/etf_holdings': DatasetCard('ETF holdings, whole: 59 funds daily (SPDR, iShares, Unusual Whales), every other ETF '
                                       'every 30 days (Unusual Whales)', step=6,
