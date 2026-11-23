@@ -12,7 +12,7 @@ import pytest
 from revenuechaser.core.providers import sec_edgar
 from revenuechaser.rcdata import serving
 from revenuechaser.rcdata.build import base
-from revenuechaser.rcdata.build.spine import av_listing, etf, ncen, sec_tickers, security
+from revenuechaser.rcdata.build.spine import av_listing, etf, ncen, sec_tickers, sec_tickers_mf, security
 
 from . import spine_fixture as fx
 
@@ -245,14 +245,15 @@ def test_a_cef_that_av_calls_an_etf_is_flagged_kept_and_not_counted():
     stage.create(con, av_listing.STAGING, av_listing.SCHEMA)
     stage.create(con, ncen.STAGING, ncen.SCHEMA)
     stage.create(con, ncen.FILERS, ncen.FILER)
+    stage.create(con, "stg_sec_mf", sec_tickers_mf.SCHEMA)
     con.executemany(f"INSERT INTO {av_listing.STAGING} (ticker, symbol, name, asset_type, status) "
                     "VALUES (?, ?, ?, ?, ?)",
                     [("DHY", "DHY", "Credit Suisse High Yield Bond Fund", "ETF", "Active"),
                      ("XLK", "XLK", "TECHNOLOGY SELECT SECTOR SPDR FUND", "ETF", "Active")])
-    con.execute("CREATE TABLE security (ticker TEXT, cik TEXT, name TEXT, security_type TEXT, source_as_of DATE, "
-                "fetched_at DOUBLE)")
+    con.execute("CREATE TABLE security (ticker TEXT, cik TEXT, name TEXT, security_type TEXT, type_source TEXT, "
+                "source_as_of DATE, fetched_at DOUBLE)")
     con.execute("INSERT INTO security VALUES ('DHY', '1061630', 'CREDIT SUISSE HIGH YIELD BOND FUND', 'cef', "
-                "NULL, NULL), ('MSFT', '789019', 'MICROSOFT CORP', 'common', NULL, NULL)")
+                "'openfigi', NULL, NULL), ('MSFT', '789019', 'MICROSOFT CORP', 'common', 'openfigi', NULL, NULL)")
     ctx = base.RunContext(run_id="r", dataset=security.NAME)
     rows = {r["ticker"]: r for r in etf.rows(ctx, con)}
     assert set(rows) == {"DHY", "XLK"}
@@ -261,6 +262,62 @@ def test_a_cef_that_av_calls_an_etf_is_flagged_kept_and_not_counted():
     assert ("2 in etf: 1 ETFs, 0 ETNs flagged, 1 CEFs flagged; "
             "0 with a 20-session dollar volume" in ctx.notes)
 
+
+
+def test_a_label_on_a_security_the_spine_knows_is_no_fund_gives_no_etf_row_and_one_issue_each():
+    """avo, 23 Nov 2026: Alpha Vantage labels some operating companies and listed notes ``ETF`` (PAM, an ADR, at
+    84 bn; PFX; SPAC units), and the spine's ``etp`` type reaches notes and baby bonds through Compustat's ``tpci``
+    ``R`` and the note name rule (OXLCG, ECCU). Where the spine types the ticker a non-fund and the SEC holds no fund
+    record for it (no ``sec/company_tickers_mf`` row, no N-CEN series), the label is ignored: no ``etf`` row, one
+    ``etf_label_not_a_fund`` issue. A plain fund ``etp`` (SPY, GLD), a CEF, an ETN by its issuer and a ticker the
+    SEC's fund file or N-CEN holds all stay."""
+    import duckdb
+    from revenuechaser.rcdata.build.spine import stage
+    con = duckdb.connect()
+    stage.create(con, av_listing.STAGING, av_listing.SCHEMA)
+    stage.create(con, ncen.STAGING, ncen.SCHEMA)
+    stage.create(con, ncen.FILERS, ncen.FILER)
+    stage.create(con, "stg_sec_mf", sec_tickers_mf.SCHEMA)
+    con.executemany(f"INSERT INTO {av_listing.STAGING} (ticker, symbol, name, asset_type, status) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    [(t, t, n, "ETF", "Active") for t, n in (
+                        ("PAM", "Pampa Energia SA"), ("PFX", "PhenixFIN Corp"),
+                        ("CRAQU", "Cal Redwood Acquisition Corp. Units"), ("SPY", "SPDR S&P 500 ETF Trust"),
+                        ("GLD", "SPDR Gold Shares ETF"), ("DHY", "Credit Suisse High Yield Bond Fund"),
+                        ("XLK", "TECHNOLOGY SELECT SECTOR SPDR FUND"), ("MFCO", "Example Fund Co ETF"),
+                        ("NCCO", "Example N-CEN Co ETF"))])
+    con.execute("CREATE TABLE security (ticker TEXT, cik TEXT, name TEXT, security_type TEXT, type_source TEXT, "
+                "source_as_of DATE, fetched_at DOUBLE)")
+    con.executemany("INSERT INTO security VALUES (?, ?, ?, ?, ?, NULL, NULL)", [
+        ("PAM", "1469395", "Pampa Energy Inc.", "adr", "openfigi"),
+        ("PFX", "1490349", "PhenixFIN Corp", "common", "openfigi"),
+        ("CRAQU", "2058359", "Cal Redwood Acquisition Corp.", "spac", "name_rule(Acquisition/Merger Corp)"),
+        ("OXLCG", "1495222", "Oxford Lane Capital Corp.", "etp", "compustat_tpci(R)"),
+        ("ABXL", "1814287", "Abacus Global Management Inc. 9.875% Senior Notes due 2028", "etp", "name_rule(note)"),
+        ("SPY", "884394", "SPDR S&P 500 ETF TRUST", "etp", "name_rule(ETF/ETN)"),
+        ("GLD", "1222333", "SPDR GOLD TRUST", "etp", "name_rule(commodity, currency or crypto pool)"),
+        ("FNGU", "927971", "BANK OF MONTREAL /CAN/", "etp", "name_rule(ETN issuer)"),
+        ("DHY", "1061630", "CREDIT SUISSE HIGH YIELD BOND FUND", "cef", "openfigi"),
+        # a common-typed ticker the SEC's fund file or N-CEN holds is a fund: the SEC's word wins
+        ("MFCO", "3000010", "EXAMPLE FUND CO", "common", "openfigi"),
+        ("NCCO", "3000011", "EXAMPLE N-CEN CO", "common", "openfigi")])
+    con.execute("INSERT INTO stg_sec_mf (ticker, cik, series_id, class_id) "
+                "VALUES ('MFCO', '3000010', 'S000000010', 'C000000010')")
+    con.execute(f"INSERT INTO {ncen.STAGING} (ticker, cik, series_id, fund_name, is_etf) "
+                "VALUES ('NCCO', '3000011', 'S000000011', 'Example N-CEN Co Fund', false)")
+    ctx = base.RunContext(run_id="r", dataset=security.NAME)
+    issues: list = []
+    rows = {r["ticker"]: r for r in etf.rows(ctx, con, issues)}
+    gone = {"PAM", "PFX", "CRAQU", "OXLCG", "ABXL"}
+    assert not gone & set(rows)
+    assert {"SPY", "GLD", "FNGU", "DHY", "XLK", "MFCO", "NCCO"} <= set(rows)
+    assert sorted(k for kind, k, _ in issues if kind == "etf_label_not_a_fund") == sorted(gone)
+    pam = next(d for kind, k, d in issues if kind == "etf_label_not_a_fund" and k == "PAM")
+    assert "adr" in pam and "openfigi" in pam
+
+
+def test_the_not_a_fund_issue_kind_is_registered():
+    assert "etf_label_not_a_fund" in security.ISSUE_KINDS
 
 # ── ETF identity in the spine (#1334 K-A, SP1, SP7; plan v4 step 7, spine 11) ───────────────────────────────
 

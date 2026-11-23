@@ -183,6 +183,9 @@ ISSUE_KINDS = {
                                  "the etf table does not hold: one issue naming them (key: etf)"),
     "etf_cik_conflict": ("an etf row whose CIK TickerInside's identifiers.json gives another one: nothing is "
                          "taken from TickerInside for it (key: the ticker)"),
+    "etf_label_not_a_fund": ("a ticker Alpha Vantage lists as an ETF, or the spine types etp as a listed note, that "
+                             "security types a non-fund (etf.NOT_A_FUND_TYPES, or etp by etf.NOTE_TYPE_SOURCES) and "
+                             "the SEC holds no fund record for: no etf row (key: the ticker)"),
     "etf_category_unmapped": ("a TickerInside category with no asset class in etf.CATEGORY_ASSET_CLASS: the funds "
                               "of it keep asset_class NULL (key: the category id)"),
     "etf_class_manual_unknown": ("a line of the manual ETF class file naming a ticker that is no ETF of "

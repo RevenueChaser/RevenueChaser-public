@@ -26,6 +26,13 @@ N-CEN at all is not a registered investment company: a grantor trust or commodit
 Act only (GLD, SLV, USO, the bitcoin trusts), so ``asset_class='commodity'``. A unit investment trust does file
 N-CEN (SPY and DIA as S-6 registrants, with no series row), so it is not caught. Until ``sec/ncen`` holds four
 quarters (a fund files once a fiscal year) the rule says nothing: one quarter holds a fraction of the filers.
+
+**A label on a security that is no fund** (avo, 23 Nov 2026). Alpha Vantage labels some operating companies and
+listed notes ``ETF`` (PAM, an ADR; PFX; SPAC units), and the spine's ``etp`` type reaches baby bonds through
+Compustat's ``tpci`` ``R`` and the note name rule (OXLCG, ECCU). A ticker ``security`` types
+:data:`NOT_A_FUND_TYPES`, or ``etp`` by :data:`NOTE_TYPE_SOURCES`, for which the SEC holds no fund record (no
+``sec/company_tickers_mf`` row, no N-CEN series with the ticker) gets no row here, and one ``etf_label_not_a_fund``
+issue. A CEF, an ETN by its issuer and a plain fund ``etp`` (SPY, GLD) are untouched.
 """
 from __future__ import annotations
 
@@ -35,6 +42,7 @@ from pathlib import Path
 
 import duckdb
 
+from ....core.identity.types import EXCLUDED_TYPES, OPERATING_TYPES
 from .. import base, secd
 from .av_listing import STAGING as AV
 from . import ncen, stage
@@ -84,6 +92,13 @@ LEV_INVERSE_NAME = re.compile(
     r"\b(?:[2-5]|1\.\d+)\s*x\b|-\s*1\s*x\b|\b1\s*x\s+short\b"
     r"|\bproshares\s+(?:ultra|short\b)|\binverse\b|\bleveraged\b(?!\s+loans?)"
     r"|\bdaily\b.*\b(?:long|short|bull|bear)\b|\b(?:long|short|bull|bear)\b.*\bdaily\b", re.I)
+
+
+#: The ``security_type`` values of a security that is no fund: an operating company, a SPAC, a preferred, a unit or
+#: a warrant. ``cef`` and ``etp`` are fund types; an ``etp`` is no fund only by :data:`NOTE_TYPE_SOURCES`.
+NOT_A_FUND_TYPES = tuple(sorted(OPERATING_TYPES | (EXCLUDED_TYPES - {"cef", "etp"})))
+#: The ``type_source`` of an ``etp`` that is a listed note or baby bond (``tier.TPCI_TYPES`` ``R``, the note rule).
+NOTE_TYPE_SOURCES = ("compustat_tpci(R)", "name_rule(note)")
 
 
 def is_etn(*names) -> bool:
@@ -360,8 +375,15 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                     QUALIFY row_number() OVER (PARTITION BY ticker
                                                ORDER BY filing_date DESC NULLS LAST, accession DESC, series_id) = 1),
              etp AS (SELECT ticker, cik, name, source_as_of, fetched_at FROM security WHERE security_type = 'etp'),
-             cef AS (SELECT ticker FROM security WHERE security_type = 'cef')
-        SELECT t.ticker, av.ticker IS NOT NULL AS in_av, nc.ticker IS NOT NULL AS in_nc,
+             cef AS (SELECT ticker FROM security WHERE security_type = 'cef'),
+             not_fund AS (SELECT ticker, security_type, type_source FROM security
+                          WHERE (security_type IN ({", ".join(f"'{t}'" for t in NOT_A_FUND_TYPES)})
+                                 OR (security_type = 'etp'
+                                     AND type_source IN ({", ".join(f"'{t}'" for t in NOTE_TYPE_SOURCES)})))
+                            AND ticker NOT IN (SELECT ticker FROM stg_sec_mf WHERE ticker IS NOT NULL)
+                            AND ticker NOT IN (SELECT ticker FROM {NCEN} WHERE ticker IS NOT NULL))
+        SELECT t.ticker, nf.security_type AS nf_type, nf.type_source AS nf_source,
+               av.ticker IS NOT NULL AS in_av, nc.ticker IS NOT NULL AS in_nc,
                etp.ticker IS NOT NULL AS in_etp, cef.ticker IS NOT NULL AS is_cef,
                av.name AS av_name, av.ipo_date, nc.fund_name, nc.series_id, nc.cik AS nc_cik, nc.is_index,
                nc.is_multi_inverse_index, nc.is_money_market, nc.is_fund_of_fund, nc.daily_avg_net_assets,
@@ -371,9 +393,17 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
         FROM (SELECT ticker FROM av UNION SELECT ticker FROM nc UNION SELECT ticker FROM etp) t
         LEFT JOIN av ON av.ticker = t.ticker LEFT JOIN nc ON nc.ticker = t.ticker
         LEFT JOIN etp ON etp.ticker = t.ticker LEFT JOIN cef ON cef.ticker = t.ticker
+        LEFT JOIN not_fund nf ON nf.ticker = t.ticker
         ORDER BY t.ticker""")
     cols = [d[0] for d in cur.description]
     found = [dict(zip(cols, x)) for x in cur.fetchall()]      # before the next execute replaces the result
+    issues = [] if issues is None else issues
+    issues += [("etf_label_not_a_fund", r["ticker"],
+                f"{'Alpha Vantage lists' if r['in_av'] else 'the spine types'} {r['ticker']} "
+                f"({r['av_name'] or r['etp_name']}) as an ETF, but security types it {r['nf_type']} by "
+                f"{r['nf_source']} and the SEC holds no fund record for it: no etf row")
+               for r in found if r["nf_type"]]
+    found = [r for r in found if not r["nf_type"]]
     filers = {r[0] for r in con.execute(f"SELECT DISTINCT cik FROM {FILERS}").fetchall()}
     # Fewer quarters hold a fraction of the filers: "files no N-CEN" is only known over a full year (review M1).
     year_held = ncen.quarters_held() >= ncen.BACKFILL_QUARTERS
@@ -381,7 +411,6 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     own = shares_x_close([r["ticker"] for r in found], ctx.as_of)
     ids_of = etf_series([r["ticker"] for r in found], ctx.as_of)
     ti_ids, ti_funds = tickerinside_meta(ctx.as_of)
-    issues = [] if issues is None else issues
     unmapped: dict[str, list[str]] = {}
     out = []
     for r in found:
