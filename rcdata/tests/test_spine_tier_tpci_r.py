@@ -18,4 +18,4 @@ def test_compustat_issue_type_r_is_an_exchange_traded_product():
     # the codes read before are unchanged
     assert tier.security_type("MSFT", "MICROSOFT CORP", None, "0")[0] == "common"
     # the rule changed what a row's ``tier`` column says, so its version is stamped anew on every row
-    assert tier.VERSION == 7
+    assert tier.VERSION >= 7

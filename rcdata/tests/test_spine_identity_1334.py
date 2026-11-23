@@ -216,4 +216,4 @@ def test_a_ticker_hit_whose_compustat_cik_differs_is_refused(built, monkeypatch)
 
 def test_the_rule_is_version_6_and_every_row_says_so(built):
     """K-B, K-C and K-G change what a row's ``tier`` says, so its version is stamped anew on every row."""
-    assert tier.VERSION == 7 and _sec("MSFT")["tier_rule"] == 7
+    assert tier.VERSION == 8 and _sec("MSFT")["tier_rule"] == 8
