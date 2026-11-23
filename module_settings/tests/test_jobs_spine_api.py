@@ -136,6 +136,35 @@ def test_the_detail_route_serves_the_new_fields(client):
             "coverage_target"} <= set(one)
 
 
+#: The mock's job names, in its row order.
+LABELS = ["SEC tickers + exchange", "SEC fund file", "Compustat securities", "Compustat companies",
+          "S&P constituents history", "OpenFIGI map", "Alpha Vantage listing", "SEC N-CEN", "Index fund files",
+          "ETF holdings", "Spine build"]
+
+
+def test_every_row_has_a_short_label_and_the_spine_ones_are_the_mock_s():
+    rows = _detail()
+    spine = sorted((r for r in rows.values() if r["kind"] == "spine"), key=lambda r: r["order"])
+    assert [r["label"] for r in spine] == LABELS
+    assert rows["market_series"]["label"] == "Market series", "without a short name: Settings' card label"
+
+
+def test_a_kind_s_whole_open_issue_list_has_a_route_the_row_links_to(client):
+    ds = "spine/security"
+    for i in range(25):
+        ops.record_issue(ds, "tier_a_no_figi", f"T{i:02d}", "absent")
+    ops.record_issue(ds, "member_not_in_sec", "sp500:HOLX", "ishares IVV holds HOLOGIC INC")
+    [k] = [k for k in _detail()[ds]["issue_kinds"] if k["kind"] == "tier_a_no_figi"]
+    assert k["issues_url"] == "/api/build/issues/spine/security?kind=tier_a_no_figi"
+    body = client.get(k["issues_url"]).get_json()
+    assert body["ok"] is True and body["dataset"] == ds and body["kind"] == "tier_a_no_figi"
+    assert body["count"] == 25 and len(body["issues"]) == 25 and body["issues"][0]["key"] == "T24"
+    assert set(body["issues"][0]) == {"kind", "key", "detail", "found_on"}
+    every = client.get("/api/build/issues/spine/security").get_json()
+    assert every["count"] == 26 and len(every["issues"]) == 26 and every["kind"] is None
+    assert client.get("/api/build/issues/no/such").status_code == 404
+
+
 # --- /api/build/served/<kind> -----------------------------------------------------------------------------------
 
 
