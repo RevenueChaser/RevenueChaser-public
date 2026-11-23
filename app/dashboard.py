@@ -2243,7 +2243,9 @@ def api_sec13f(ticker: str):
     if not _valid_ticker(t):
         return jsonify({"ok": False, "error": "bad ticker"}), 400
     from revenuechaser.module_sec_13f import store as sec13f_store
-    periods = sec13f_store.read_ticker(t)              # one ticker's rows, not the whole board file (#732)
+    from revenuechaser.module_sec_13f import engine as sec13f_engine
+    periods = {q: v for q, v in sec13f_store.read_ticker(t).items()     # one ticker's rows, not the board file (#732)
+               if q >= sec13f_engine.START_QUARTER}                     # #1442: the store reaches 2013, the board 2019
     if not periods:
         return jsonify({"ok": False, "error": "no series", "ticker": t}), 404
     enrich = load_inputs({t: periods}).get(t, {})       # the board's inputs (#375 F2): D01 closes, store only
@@ -2301,6 +2303,35 @@ def api_sec13f_filer(cik: str):
     period, holdings = filer_holdings_view(data["holdings"], arriving)
     return jsonify({"ok": True, "cik": c, "name": name, "fig": fig, "note": note, "period": period,
                     "holdings": holdings, "style": data["style"], "tags": data["tags"]})
+
+
+@app.route("/api/sec_13f/etfs")
+def api_sec13f_etfs():
+    """The 13F ETFs view's picker (#1441): spine ETFs that file N-PORT whose ticker or name holds ``q``, at most 20."""
+    from revenuechaser.core import ownership
+    q = (request.args.get("q") or "").strip()[:80]
+    rows = ownership.nport_etf_search(q) if q else []
+    return jsonify({"ok": True, "etfs": [{"ticker": r["ticker"], "name": r.get("name"), "aum": r.get("aum")}
+                                         for r in rows]})
+
+
+@app.route("/api/sec_13f/etfs/<etf>")
+def api_sec13f_etf(etf: str):
+    """One ETF for the 13F ETFs view (#1441): its held N-PORT quarters and, for ``quarter`` (else the newest), its
+    stock holdings with the change against the quarter before and what it sold out of. 400 for a ticker
+    ``_valid_ticker`` refuses, 404 for an ETF with no N-PORT quarter stored."""
+    from revenuechaser.core import ownership
+    from revenuechaser.module_sec_13f.report import etf_holdings_view
+    e = (etf or "").strip().upper()
+    if not _valid_ticker(e):
+        return jsonify({"ok": False, "error": "bad ticker"}), 400
+    data = ownership.nport_etf(e, (request.args.get("quarter") or "").strip().lower() or None)
+    if not data["quarters"]:
+        return jsonify({"ok": False, "error": "no N-PORT holdings", "etf": e}), 404
+    hit = next((r for r in ownership.nport_etf_search(e, limit=1) if r["ticker"] == e), None)
+    return jsonify({"ok": True, "etf": e, "name": (hit or {}).get("name"), "quarters": data["quarters"],
+                    "quarter": data["quarter"], "prev_quarter": data.get("prev_quarter"),
+                    "view": etf_holdings_view(data["rows"], data["prev_rows"] if data.get("prev_quarter") else None)})
 
 
 @app.route("/api/watchlist/<kind>/toggle/<ticker>", methods=["POST"])

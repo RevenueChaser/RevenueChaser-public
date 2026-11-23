@@ -587,6 +587,22 @@ def _history_rows(e: str, qs: list[str], marks: str, *, with_map: bool) -> list[
         raise
 
 
+def etf_search(query: str, limit: int = 20) -> list[dict]:
+    """The spine ETFs that file N-PORT (a ``series_id``, no ETN) whose ticker or name holds ``query``, for the 13F
+    board's ETF picker (#1441): ``ticker``, ``name``, ``aum``. The exact ticker first, then ticker prefixes, then
+    name matches, each by AUM. Fewer than one character, or no spine file, is no rows."""
+    q = str(query or "").strip().upper()
+    if not q:
+        return []
+    like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    sql = ("SELECT ticker, name, aum FROM etf WHERE series_id IS NOT NULL AND NOT coalesce(is_etn, false) "
+           "AND (upper(ticker) LIKE ? ESCAPE '\\' OR upper(name) LIKE ? ESCAPE '\\') "
+           "ORDER BY CASE WHEN upper(ticker) = ? THEN 0 WHEN upper(ticker) LIKE ? ESCAPE '\\' THEN 1 ELSE 2 END, "
+           "aum DESC NULLS LAST, ticker LIMIT ?")
+    prefix = like[1:]
+    return _rows("etf", sql, [like, like, q, prefix, int(limit)])
+
+
 def etf_holding_tickers(etfs: Iterable[str]) -> dict[str, set[str]]:
     """The holding tickers of each of ``etfs`` (upper-cased) on that fund's own newest day of ``etf_holdings``, the
     whole lists ``funds/etf_holdings`` serves. A fund with no line, or no spine file at all, is an empty set; a line

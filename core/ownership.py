@@ -172,6 +172,41 @@ def sec13f_filer(cik: str) -> dict:
     return out
 
 
+def nport_etf_search(query: str, limit: int = 20) -> list[dict]:
+    """The ETFs the 13F board's ETFs view can open (#1441): spine ETFs that file N-PORT whose ticker or name holds
+    ``query``. ``[]`` and a warning when the store cannot be read."""
+    from revenuechaser.rcdata import read as rcread
+
+    try:
+        return rcread.etf_search(query, limit=limit)
+    except Exception as exc:                      # noqa: BLE001 - no matches, never a failed board
+        logger.warning("N-PORT ETF search unreadable: %s", exc)
+        return []
+
+
+def nport_etf(etf: str, quarter: str | None = None) -> dict:
+    """One ETF for the 13F board's ETFs view (#1441): ``quarters`` (its held N-PORT quarters, newest first),
+    ``quarter`` (the one asked, else the newest), ``rows`` (that quarter's holdings) and ``prev_rows`` (the quarter
+    before's, for the change), dates as ISO strings. Empty parts and a warning when the store cannot be read."""
+    from revenuechaser.rcdata import read as rcread
+
+    out: dict = {"quarters": [], "quarter": None, "rows": [], "prev_rows": []}
+    try:
+        qs = [_iso_row(r) for r in rcread.etf_nport_quarters(etf)]
+        names = [q["quarter"] for q in qs]
+        if not names:
+            return out
+        now = quarter if quarter in names else names[0]
+        i = names.index(now)
+        before = names[i + 1] if i + 1 < len(names) else None
+        rows = [_iso_row(r) for r in rcread.etf_holdings_history(etf, [now] + ([before] if before else []))]
+        out.update(quarters=qs, quarter=now, rows=[r for r in rows if r["quarter"] == now],
+                   prev_rows=[r for r in rows if before and r["quarter"] == before], prev_quarter=before)
+    except Exception as exc:                      # noqa: BLE001 - an empty view, never a failed board
+        logger.warning("N-PORT ETF %s unreadable: %s", etf, exc)
+    return out
+
+
 def sec13f_open_periods() -> set[str]:
     """The 13F report periods still arriving (their filing deadline not passed, nor their data set published), as
     ISO dates; ``set()`` when the store cannot be read."""

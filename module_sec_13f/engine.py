@@ -16,8 +16,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Quarters at or after this date are considered "complete" (older periods are stray amendments).
-START_QUARTER = "2025-03-31"
+# The first quarter the board and its chart show (avo, 22 Nov 2026, #1442: "2019'a kadar"). The store holds 13F
+# back to 2013q2; before this the closes and split factors are not read, so a chart reaching further would draw
+# shares on a pre-split basis (NVDA's 10-for-1 of 2024 as a ten-fold jump).
+START_QUARTER = "2019-03-31"
 
 FILING_LAG_DAYS = 45  # 13F filings are due 45 days after quarter-end
 

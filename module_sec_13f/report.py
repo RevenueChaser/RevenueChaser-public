@@ -1024,6 +1024,56 @@ def filer_holdings_view(rows: list[dict], still_arriving=frozenset()) -> tuple[s
     return now, out
 
 
+def _holding_key(r: dict) -> str:
+    """One security across an ETF's quarters: its CUSIP, else its ISIN, else its name (as the history table keys it)."""
+    return r.get("cusip") or r.get("isin") or str(r.get("name") or "").strip().upper()
+
+
+def etf_holdings_view(rows: list[dict], prev_rows: list[dict] | None, exited_top: int = 10) -> dict:
+    """The ETFs view's quarter (#1441): ``holdings`` largest first, each with ``ticker`` (None for a foreign or
+    private holding, shown by ``name``, ``isin`` and ``country``), ``weight`` (% of net assets), ``value``,
+    ``shares`` and ``change`` (shares against the quarter before: ``"new"`` for a holding that quarter lacked,
+    ``"changed"`` for one whose CUSIP and ISIN changed while its name stayed, None when there is no quarter before);
+    ``exited``, the largest holdings of the quarter before that are gone; and the counts ``positions``, ``value``,
+    ``no_ticker``, ``new`` and ``exits`` (None without a quarter before).
+
+    A new CUSIP under the same issuer name is the same holding, not a sale and a buy (live VTI, 2026q2 to 2026q3:
+    Honeywell and DuPont took new CUSIPs and read as sold out). Its share change is not given: a reverse split or a
+    spin-off moves the count without a trade (DuPont 12.97M to 4.34M shares)."""
+    prev = None if prev_rows is None else {_holding_key(r): r for r in prev_rows}
+    keys = {_holding_key(r) for r in rows}
+    by_name = {} if prev is None else {_name_key(r): k for k, r in prev.items() if k not in keys and _name_key(r)}
+    renamed: set[str] = set()
+    holdings = []
+    for r in sorted(rows, key=lambda r: -(r.get("value") or 0)):
+        p = None if prev is None else prev.get(_holding_key(r))
+        sh = r.get("shares")
+        if prev is None:
+            change = None
+        elif p is None:
+            was = by_name.pop(_name_key(r), None)
+            change = "new" if was is None else "changed"
+            renamed.update([was] if was else [])
+        else:
+            change = (sh or 0) - (p.get("shares") or 0) if sh is not None else None
+        holdings.append({"ticker": r.get("ticker"), "name": r.get("name"), "isin": r.get("isin"),
+                         "country": r.get("country"), "weight": r.get("weight"), "value": r.get("value"),
+                         "shares": sh, "change": change})
+    gone = [] if prev is None else sorted((r for k, r in prev.items() if k not in keys and k not in renamed),
+                                          key=lambda r: -(r.get("value") or 0))
+    return {"holdings": holdings,
+            "exited": [{"ticker": r.get("ticker"), "name": r.get("name"), "isin": r.get("isin"),
+                        "country": r.get("country"), "value": r.get("value")} for r in gone[:exited_top]],
+            "positions": len(rows), "value": sum(r.get("value") or 0 for r in rows),
+            "no_ticker": sum(1 for r in rows if not r.get("ticker")),
+            "new": None if prev is None else sum(1 for h in holdings if h["change"] == "new"),
+            "exits": None if prev is None else len(gone)}
+
+
+def _name_key(r: dict) -> str:
+    return " ".join(str(r.get("name") or "").upper().split())
+
+
 SECTOR_COLS = 3          # small multiples per row; 11 GICS sectors and Unclassified fill four rows
 
 
@@ -1474,6 +1524,8 @@ INVESTORS_JS = r"""<script>
   function tab(name){
     document.querySelectorAll('.tabs button').forEach(function(b){ b.setAttribute('aria-selected', String(b.dataset.tab === name)); });
     $('pane-tickers').hidden = name !== 'tickers'; $('pane-investors').hidden = name !== 'investors';
+    $('pane-etfs').hidden = name !== 'etfs';
+    if(name === 'etfs' && typeof window.rcEtfsOpen === 'function'){ window.rcEtfsOpen(); }
     if(name === 'investors' && !LOADED){ LOADED = true; var c = DEFAULT_FILER; try { c = localStorage.getItem(KEY) || c; } catch(e) {} load(c); }
   }
   function mode(m){
@@ -1566,6 +1618,153 @@ INVESTORS_JS = r"""<script>
     });
     document.addEventListener('click', function(e){ if(!e.target.closest('#inv-find')){ $('inv-hits').hidden = true; } });
     if(location.hash === '#investors'){ tab('investors'); }
+    if(location.hash === '#etfs'){ tab('etfs'); }
+  });
+})();
+</script>"""
+
+
+# The ETFs tab (#1441; mock approved by avo 22 Nov 2026 21:34 Amsterdam): one ETF's stock holdings from its Form N-PORT
+# report of a chosen quarter (2019q4 on), the change in shares against the quarter before, and what it sold out of.
+DEFAULT_ETF = "VTI"
+ETFS_CSS = """<style>
+.etf-table{width:100%;border-collapse:collapse;font-size:var(--fs-sm)}
+.etf-table th{text-align:left;color:var(--muted);font-weight:600;font-size:var(--fs-xs);padding:6px 8px;border-bottom:1px solid var(--border)}
+.etf-table td{padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+.etf-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.etf-table .tk{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.etf-table .tk b{color:var(--bright);font-size:var(--fs-md)}
+.etf-table .nm{display:block;color:var(--muted);font-size:var(--fs-xs)}
+.etf-tag{display:inline-block;padding:1px 6px;border-radius:var(--r-pill);background:var(--amber-soft);color:var(--amber);
+  font-size:10px;font-weight:600}
+.etf-table tr.more{display:none}.etf-table.all tr.more{display:table-row}
+#etf-more{width:100%;min-height:var(--touch);margin-top:var(--sp-3);border:1px solid var(--input-border);
+  border-radius:var(--r-sm);background:var(--input-bg);color:var(--fg);font:600 var(--fs-sm) var(--font-sans);cursor:pointer}
+#etf-hits{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px 0;list-style:none;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--elev-2);max-height:60vh;overflow-y:auto}
+#etf-hits[hidden]{display:none}
+#etf-hits button{display:flex;justify-content:space-between;gap:var(--sp-3);width:100%;min-height:var(--touch);
+  padding:0 var(--sp-3);border:0;background:none;color:var(--fg);font:inherit;text-align:left;cursor:pointer}
+#etf-hits button:hover,#etf-hits button:focus-visible{background:var(--hover);outline:none}
+#etf-hits small{color:var(--muted);white-space:nowrap}
+#pane-etfs .inv-card{margin-bottom:var(--sp-4)}
+@media (max-width: 900px){
+  .etf-table thead{display:none}
+  .etf-table,.etf-table tbody,.etf-table tr,.etf-table td{display:block}
+  .etf-table tr{border:1px solid var(--border);border-radius:var(--r-md);padding:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-2)}
+  .etf-table.all tr.more{display:block}
+  .etf-table td{border:0;padding:2px 0}
+  .etf-table td.num{display:flex;justify-content:space-between;text-align:left}
+  .etf-table td.num::before{content:attr(data-l);color:var(--muted)}
+}
+</style>"""
+ETFS_HTML = ('<div id="pane-etfs" hidden>'
+             '<div class="inv-pick"><div class="inv-find" id="etf-find"><input type="search" id="etf-q" '
+             'placeholder="Find an ETF by ticker or name" autocomplete="off" spellcheck="false" aria-label="ETF" '
+             'aria-controls="etf-hits"><ul id="etf-hits" hidden></ul></div>'
+             '<select id="etf-quarter" aria-label="Quarter"></select></div>'
+             '<div id="etf-status" class="inv-cap" aria-live="polite"></div>'
+             '<div class="inv-kpis" id="etf-kpis"></div>'
+             '<section class="inv-card"><h2 id="etf-title">Holdings</h2><p class="inv-cap" id="etf-cap"></p>'
+             '<table class="etf-table" id="etf-holdings"><thead><tr><th>Holding</th><th class="num">Weight</th>'
+             '<th class="num">Value</th><th class="num">Shares</th><th class="num">Change in shares</th></tr></thead>'
+             '<tbody></tbody></table><button type="button" id="etf-more" hidden></button>'
+             '<p class="inv-cap" style="margin-top:var(--sp-3)">From the fund\'s quarterly SEC Form N-PORT report: long '
+             'stock positions only, the lines of one security added up. The ticker is the one 13F uses for the CUSIP '
+             'in that quarter; a holding with no US ticker (a foreign or private share) shows its name, ISIN and '
+             'country. Value is the whole fund series (every share class); weight is the share of its net assets. '
+             'SPY, QQQ, DIA and MDY are unit trusts and file no N-PORT.</p></section>'
+             '<section class="inv-card"><h2>Sold out this quarter</h2>'
+             '<p class="inv-cap">The largest holdings of the quarter before that are gone.</p>'
+             '<table class="etf-table" id="etf-exited"><tbody></tbody></table></section></div>')
+ETFS_JS = r"""<script>
+(function(){
+  var KEY = 'rc.sec13f.etf', SEQ = 0, ETF = null, LOADED = false, SHOWN = 40;
+  function $(id){ return document.getElementById(id); }
+  function node(tag, cls, text){ var x = document.createElement(tag); if(cls){ x.className = cls; } if(text !== undefined){ x.textContent = text; } return x; }
+  function money(v){ if(v === null || v === undefined){ return '—'; } var a = Math.abs(v);
+    return a >= 1e12 ? '$' + (v / 1e12).toFixed(2) + 'T' : a >= 1e9 ? '$' + (v / 1e9).toFixed(1) + 'B' : a >= 1e6 ? '$' + (v / 1e6).toFixed(0) + 'M' : '$' + Math.round(v / 1e3) + 'K'; }
+  function count(v){ return (v === null || v === undefined) ? '—' : Math.round(v).toLocaleString('en-US'); }
+  function kpi(label, value){ var d = node('div', 'inv-kpi'); d.appendChild(node('span', '', label)); d.appendChild(node('b', '', value)); return d; }
+  function cellHolding(h){
+    var td = node('td', 'tk');
+    if(h.ticker){ td.insertAdjacentHTML('beforeend', rcWatchButtons(h.ticker)); td.appendChild(node('b', '', h.ticker)); }
+    else { td.appendChild(node('b', '', h.name || h.isin || '—')); td.appendChild(node('span', 'etf-tag', 'no ticker')); }
+    td.appendChild(node('span', 'nm', h.ticker ? (h.name || '') : [h.isin, h.country].filter(Boolean).join(' · ')));
+    return td;
+  }
+  function num(label, text, cls){ var td = node('td', 'num' + (cls ? ' ' + cls : ''), text); td.setAttribute('data-l', label); return td; }
+  function render(d){
+    var v = d.view, kp = $('etf-kpis'); kp.innerHTML = '';
+    $('etf-q').value = d.etf + (d.name ? ' — ' + d.name : '');
+    var sel = $('etf-quarter'); sel.innerHTML = '';
+    d.quarters.forEach(function(q){ var o = node('option', '', q.quarter + ' (' + q.report_date + ')'); o.value = q.quarter; o.selected = q.quarter === d.quarter; sel.appendChild(o); });
+    var rd = (d.quarters.filter(function(q){ return q.quarter === d.quarter; })[0] || {}).report_date || '—';
+    kp.appendChild(kpi('Report date', rd));
+    kp.appendChild(kpi('Stock positions', count(v.positions)));
+    kp.appendChild(kpi('Stock value', money(v.value)));
+    kp.appendChild(kpi('New / sold out vs ' + (d.prev_quarter || 'quarter before'), v.new === null ? '—' : '+' + v.new + ' / −' + v.exits));
+    $('etf-title').textContent = 'Holdings, ' + d.quarter;
+    $('etf-cap').textContent = count(v.positions) + ' stock positions; ' + count(v.no_ticker) + ' with no US ticker.';
+    var t = $('etf-holdings'), tb = t.querySelector('tbody'); tb.innerHTML = ''; t.classList.remove('all');
+    var top = (v.holdings[0] && v.holdings[0].weight) || 1;
+    v.holdings.forEach(function(h, i){
+      var tr = node('tr', i >= SHOWN ? 'more' : ''); tr.appendChild(cellHolding(h));
+      var w = num('Weight', ''), bar = node('span', 'inv-bar'), fill = node('i');
+      fill.style.width = Math.max(2, Math.round(100 * (h.weight || 0) / top)) + '%'; bar.appendChild(fill);
+      w.appendChild(bar); w.appendChild(document.createTextNode(h.weight === null || h.weight === undefined ? '—' : h.weight.toFixed(2) + '%'));
+      tr.appendChild(w); tr.appendChild(num('Value', money(h.value))); tr.appendChild(num('Shares', count(h.shares)));
+      var c = h.change;
+      tr.appendChild(c === 'new' ? num('Change in shares', 'new', 'pos') : c === 'changed' ? num('Change in shares', 'new CUSIP', 'zero') : c === null || c === undefined ? num('Change in shares', '—', 'zero')
+        : num('Change in shares', (c > 0 ? '+' : c < 0 ? '−' : '') + count(Math.abs(c)), c > 0 ? 'pos' : c < 0 ? 'neg' : 'zero'));
+      tb.appendChild(tr);
+    });
+    if(typeof rcWatchSync === 'function'){ rcWatchSync(tb); }
+    var more = $('etf-more'); more.hidden = v.holdings.length <= SHOWN; more.textContent = 'Show all ' + v.holdings.length;
+    var ex = $('etf-exited').querySelector('tbody'); ex.innerHTML = '';
+    if(!v.exited.length){ var tr = node('tr'), td = node('td', 'nm', v.new === null ? 'The first quarter held: nothing to compare.' : 'None.'); tr.appendChild(td); ex.appendChild(tr); }
+    v.exited.forEach(function(h){ var tr = node('tr'); tr.appendChild(cellHolding(h)); tr.appendChild(num('Value before', money(h.value))); ex.appendChild(tr); });
+  }
+  function load(etf, quarter){
+    var seq = ++SEQ; ETF = etf;
+    try { localStorage.setItem(KEY, etf); } catch(e) {}
+    $('etf-status').textContent = 'Loading…';
+    fetch('/api/sec_13f/etfs/' + encodeURIComponent(etf) + (quarter ? '?quarter=' + encodeURIComponent(quarter) : ''))
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(seq !== SEQ){ return; } $('etf-status').textContent = d.ok ? '' : 'No N-PORT holdings stored for ' + etf + '.'; if(d.ok){ render(d); } })
+      .catch(function(){ if(seq === SEQ){ $('etf-status').textContent = 'The ETF could not be loaded.'; } });
+  }
+  function find(text){
+    var hits = $('etf-hits');
+    if(!text.trim()){ hits.hidden = true; return; }
+    fetch('/api/sec_13f/etfs?q=' + encodeURIComponent(text.trim())).then(function(r){ return r.json(); }).then(function(d){
+      hits.innerHTML = '';
+      (d.etfs || []).forEach(function(f){
+        var li = node('li'), b = node('button'); b.type = 'button';
+        b.appendChild(node('span', '', f.ticker + (f.name ? ' — ' + f.name : ''))); b.appendChild(node('small', '', money(f.aum)));
+        b.addEventListener('click', function(){ hits.hidden = true; load(f.ticker); });
+        li.appendChild(b); hits.appendChild(li);
+      });
+      if(!hits.children.length){ hits.appendChild(node('li', 'inv-cap', 'No ETF found.')); }
+      hits.hidden = false;
+    }).catch(function(){ hits.hidden = true; });
+  }
+  window.rcEtfsOpen = function(){ if(LOADED){ return; } LOADED = true; var e = DEFAULT_ETF; try { e = localStorage.getItem(KEY) || e; } catch(x) {} load(e); };
+  document.addEventListener('DOMContentLoaded', function(){
+    var wait = null;
+    $('etf-q').addEventListener('input', function(e){ var text = e.target.value; clearTimeout(wait); wait = setTimeout(function(){ find(text); }, 250); });
+    $('etf-q').addEventListener('keydown', function(e){
+      if(e.key !== 'Enter'){ return; }
+      var first = $('etf-hits').querySelector('button');
+      if(first && !$('etf-hits').hidden){ e.preventDefault(); first.click(); }
+    });
+    $('etf-q').addEventListener('focus', function(e){ e.target.select(); });
+    $('etf-quarter').addEventListener('change', function(){ if(ETF){ load(ETF, this.value); } });
+    $('etf-more').addEventListener('click', function(){
+      var t = $('etf-holdings'); t.classList.toggle('all');
+      this.textContent = t.classList.contains('all') ? 'Show top ' + SHOWN : 'Show all ' + t.querySelectorAll('tbody tr').length;
+    });
+    document.addEventListener('click', function(e){ if(!e.target.closest('#etf-find')){ $('etf-hits').hidden = true; } });
   });
 })();
 </script>"""
@@ -1680,14 +1879,14 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <title>RevenueChaser — SEC 13F Ownership</title>
 <script>{THEME_JS}</script><style>{THEME_CSS}</style>
 <script>var PLOTLY_URL = {script_json(PLOTLY_CDN_URL)};</script>
-{CSS}{FILTERS_CSS}{INVESTORS_CSS}</head><body>
+{CSS}{FILTERS_CSS}{INVESTORS_CSS}{ETFS_CSS}</head><body>
 <div class="header"><h1>SEC 13F — Total Institutional Ownership</h1>
 <div class="meta">{len(entries)} tickers · all 13F filers (incl. BlackRock/Vanguard/State Street) · quarterly · click a row for the chart</div>
 {status_html}</div>
 {provider_health_html(provider_health)}{notice_html(notice)}{notice_html(kit_notice)}{notice_html(INSIDER_OFF)}
 {help_block}
 
-<div class="tabs" role="tablist"><button type="button" role="tab" data-tab="tickers" aria-selected="true">Tickers</button><button type="button" role="tab" data-tab="investors" aria-selected="false">Investors</button></div>
+<div class="tabs" role="tablist"><button type="button" role="tab" data-tab="tickers" aria-selected="true">Tickers</button><button type="button" role="tab" data-tab="investors" aria-selected="false">Investors</button><button type="button" role="tab" data-tab="etfs" aria-selected="false">ETFs</button></div>
 <div id="pane-tickers">
 {filters_bar_html("rc-filters")}
 <div class="kit-count" id="kit-count" aria-live="polite"></div>
@@ -1697,7 +1896,7 @@ def _render_page(quarters: list, entries: list, fields: list, kit_notice: str | 
 <div class="legend-note">
 <b>Total ownership</b> = shares held by every 13F filer, on <b>today's share basis</b>: a quarter's count is divided
 by the split factor of its quarter end, so a split is not read as buying (hover a cell for the count as filed).
-The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every stored one.
+The board shows the last {WINDOW_QUARTERS} settled quarters; the chart shows every quarter from 2019.
 <b>Δ% vs prior</b> = QoQ change in the shares of the filers that reported in both quarters, shown small under each
 quarter's count (click Δ% in the header to sort by it); the counts above it are every filer's.
 <b>Value</b> = $ market value held. <b>% Out</b> = shares ÷ shares outstanding (newest SEC cover count; ≈ = market cap ÷ price for one-class common; † = over 100%, 13F can count a block twice; — over 150% or no usable count).
@@ -1721,6 +1920,7 @@ does not change.
 </div>
 </div>
 {investors_html(types_html)}
+{ETFS_HTML}
 <div id="breaks" role="dialog" aria-modal="true" aria-labelledby="breaks-title"><div id="breaks-card">
 <div id="breaks-head"><span id="breaks-title"></span><button type="button" id="breaks-close" aria-label="Close">×</button></div>
 <div id="breaks-note">These filers are left out of the flow. Newest first; shares on today's basis.</div>
@@ -1731,7 +1931,7 @@ does not change.
 <div id="chart"></div>
 </div></div>
 <footer>RevenueChaser — SEC 13F · SEC EDGAR bulk data · {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</footer>
-{payload_js}{meta_js}<script>{FILTERS_JS}</script>{watchlist_html("sec_13f")}{js}<script>var DEFAULT_FILER = {script_json(DEFAULT_FILER)};</script>{INVESTORS_JS}</body></html>"""
+{payload_js}{meta_js}<script>{FILTERS_JS}</script>{watchlist_html("sec_13f")}{js}<script>var DEFAULT_FILER = {script_json(DEFAULT_FILER)}; var DEFAULT_ETF = {script_json(DEFAULT_ETF)};</script>{INVESTORS_JS}{ETFS_JS}</body></html>"""
 
 
 def _pct(cur, prev):

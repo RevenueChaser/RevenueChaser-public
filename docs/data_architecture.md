@@ -1974,7 +1974,8 @@ never writes it. Nothing here writes `raw.duckdb`: the old 13F, short and inside
 deploy calls no source before the server thread's first runs (after a backup).
 
 **The 13F first fill** (avo, 28 Oct 2026): `python -m revenuechaser.rcdata.build backfill sec/13f --from
-2025-01-01`. The backfill reads the SEC's Form 13F data-set page (`RC_FORM13F_INDEX_URL`), downloads each set whose
+2025-01-01`; the live store has since been filled from the sets back to 2013q2 (measured 23 Nov 2026: 54 quarters),
+and the board shows 2019q1 on (`module_sec_13f/engine.py` `START_QUARTER`, avo 22 Nov 2026, #1442). The backfill reads the SEC's Form 13F data-set page (`RC_FORM13F_INDEX_URL`), downloads each set whose
 filing window meets the range (one zip of about 100 MB per three months, kept under `raw/sec/13f_sets/`, downloaded
 once and asked again on a later backfill with `If-Modified-Since`), and types its 13F-HR and 13F-HR/A into the same
 day partitions the EDGAR walk writes, marking those days done up to the set's newest filing; the walk then reads the
