@@ -195,18 +195,26 @@ COMPUSTAT_SECD, TICKERINSIDE = "compustat_secd", "tickerinside"
 #: ``series_id``), read as ``etf_class`` buckets its lines (:data:`etf_class.BUCKET`; a held fund is ``fund``).
 #: :data:`NPORT_SHARE` and :data:`NPORT_DERIVATIVE` are ``etf_class``'s own cuts (``Cuts.share``, ``Cuts.derivative``).
 NPORT_SHARE, NPORT_DERIVATIVE, NPORT_QUARTERS = 60.0, 10.0, 4
+#: The class of a synthetic or leveraged fund from the N-PORT ``asset_cat`` of the contracts it holds most (``d:<cat>``
+#: keys of the mix; avo, 23 Nov 2026, "opsiyon 1"): buffer funds' SPY options, 2x single-stock swaps. ``DO`` is unread.
+DERIVATIVE_CLASS = {"DE": "equity", "DIR": "bond", "DCR": "bond", "DCO": "commodity", "DFE": "currency"}
 
 
-def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt: bool = False) -> str | None:
+def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt: bool = False,
+                crypto: bool = False) -> str | None:
     """The asset class of one N-PORT mix (``etf_class`` bucket to percent of net assets), or None where the report
     does not say it. Leveraged, inverse or 10 % in derivatives: the exposure is in the contracts, not the lines. One
     of equity, bond (``debt``), commodity at 60 % is the class; cash at 60 % only for an N-CEN money market fund
     (elsewhere it is the collateral of futures or swaps); else equity, bond and commodity together at 60 % are
     ``multi_asset``, and a mix mostly of held funds or unbucketed lines stays None. An option-income fund
     (:data:`OPTION_INCOME_NAME`) is read only as ``equity``, where it holds the shares it writes on: a buffer or
-    put-write fund's Treasuries are collateral (Innovator's Premium Income funds, 100 % bills, 23 Nov 2026)."""
+    put-write fund's Treasuries are collateral (Innovator's Premium Income funds, 100 % bills, 23 Nov 2026).
+    Leveraged, inverse or synthetic, it is the class of its largest contract type (:data:`DERIVATIVE_CLASS`); FX
+    contracts of a fund whose name says crypto (``crypto``) are its crypto futures."""
     if lev or mix.get("derivative", 0.0) >= NPORT_DERIVATIVE:
-        return None
+        held = sorted((v, k[2:]) for k, v in mix.items() if k.startswith("d:"))
+        cls = DERIVATIVE_CLASS.get(held[-1][1]) if held else None
+        return "crypto" if crypto and cls == "currency" else cls
     held = {"equity": mix.get("equity", 0.0), "bond": mix.get("debt", 0.0), "commodity": mix.get("commodity", 0.0)}
     k, v = max(sorted({**held, "cash": mix.get("cash", 0.0)}.items()), key=lambda kv: kv[1])
     cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
@@ -234,14 +242,17 @@ def nport_mix(series_ids: list[str]) -> dict[str, dict[str, float]]:
                        WHERE series_id IN ({', '.join('?' * len(wanted))})
                        QUALIFY row_number() OVER (PARTITION BY series_id ORDER BY report_date DESC NULLS LAST,
                                                   filed DESC NULLS LAST, accession DESC) = 1),
-                 l AS (SELECT r.series_id, h.pct_of_net_assets AS pct, {BUCKET} AS bucket,
+                 l AS (SELECT r.series_id, h.pct_of_net_assets AS pct, {BUCKET} AS bucket, h.asset_cat,
                               coalesce(h.issuer_type = 'RF', false) AS is_rf,
                               regexp_matches(upper(coalesce(h.issuer_name, '')), '{_FUND_NAME}') AS fund_name
                        FROM r JOIN {src('holdings.parquet')} h ON h.accession = r.accession)
             -- a held fund is ``fund`` as ``etf_class`` says it: a registered fund always, a fund's name on equity
             SELECT series_id, CASE WHEN is_rf OR (bucket = 'equity' AND fund_name) THEN 'fund' ELSE bucket END AS b,
                    sum(CASE WHEN bucket = 'derivative' THEN abs(pct) ELSE pct END)
-            FROM l GROUP BY 1, 2""", wanted).fetchall()
+            FROM l GROUP BY 1, 2
+            UNION ALL   -- each contract type on its own, for :data:`DERIVATIVE_CLASS`
+            SELECT series_id, 'd:' || asset_cat, sum(abs(pct)) FROM l WHERE bucket = 'derivative' GROUP BY 1, 2""",
+            wanted).fetchall()
     finally:
         con.close()
     out: dict[str, dict[str, float]] = {}
@@ -487,7 +498,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     for r in out:
         if r["asset_class"] is None and r["series_id"] in mixes:
             r["asset_class"] = nport_class(mixes[r["series_id"]], lev=bool(r["is_lev_inverse"]),
-                                           mm=bool(r["is_money_market"]), opt=r["is_option_income"])
+                                           mm=bool(r["is_money_market"]), opt=r["is_option_income"],
+                                           crypto=bool(CRYPTO_NAME.search(r["name"] or "")))
             from_nport += r["asset_class"] is not None
     ctx.notes.append(f"etf asset_class: {from_nport} from N-PORT ({len(mixes)} reports read), "
                      f"{sum(1 for r in out if r['asset_class'] is None)} still NULL")
