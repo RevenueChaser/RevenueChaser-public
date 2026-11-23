@@ -473,23 +473,29 @@ def test_without_tickerinside_files_the_identity_columns_stay_null_but_compustat
     ({"fund": 100.0}, False, False, None),                  # a fund of funds: its funds' class is not read here
     ({"equity": 85.0, "derivative": 12.0}, False, False, None),   # synthetic: options or swaps carry the exposure
     ({"equity": 100.0}, True, False, None),                 # leveraged or inverse: never read off the collateral
-    # avo, 23 Nov 2026 ("opsiyon 1"): a synthetic or leveraged fund takes the class of the contracts it holds most
-    ({"debt": 90.0, "derivative": 40.0, "d:DE": 40.0}, False, False, "equity"),    # a buffer fund's SPY options
-    ({"cash": 60.0, "derivative": 200.0, "d:DE": 200.0}, True, False, "equity"),   # a 2x single-stock swap
-    ({"cash": 90.0, "derivative": 30.0, "d:DIR": 25.0, "d:DE": 5.0}, False, False, "bond"),
-    ({"cash": 90.0, "derivative": 50.0, "d:DCO": 50.0}, True, False, "commodity"),
-    ({"cash": 90.0, "derivative": 50.0, "d:DFE": 50.0}, False, False, "currency"),
-    ({"cash": 90.0, "derivative": 50.0, "d:DO": 50.0}, False, False, None),         # "other": unread
     ({"equity": 60.0, "debt": 40.0}, False, False, "equity"),     # the cut is inclusive
 ])
 def test_the_nport_mix_rule(mix, lev, mm, cls):
     assert etf.nport_class(mix, lev=lev, mm=mm) == cls
 
 
+@pytest.mark.parametrize("mix, lev, cls", [
+    ({"debt": 90.0, "derivative": 40.0, "d:DE": 40.0}, False, "equity"),    # a buffer fund's SPY options
+    ({"cash": 60.0, "derivative": 200.0, "d:DE": 200.0}, True, "equity"),   # a 2x single-stock swap
+    ({"cash": 90.0, "derivative": 30.0, "d:DIR": 25.0, "d:DE": 5.0}, False, "bond"),
+    ({"cash": 90.0, "derivative": 50.0, "d:DCO": 50.0}, True, "commodity"),
+    ({"cash": 90.0, "derivative": 50.0, "d:DFE": 50.0}, False, "currency"),
+])
+def test_a_synthetic_or_leveraged_fund_takes_the_class_of_its_largest_contracts(mix, lev, cls):
+    """avo, 23 Nov 2026 ("opsiyon 1"): the N-PORT asset_cat of the contracts it holds most."""
+    assert etf.nport_class(mix, lev=lev) == cls
+
+
 def test_a_crypto_fund_on_fx_contracts_is_crypto():
     """SOLT and XRPT: N-PORT files their crypto futures as foreign exchange (DFE); the name says crypto."""
     assert etf.nport_class({"cash": 90.0, "derivative": 200.0, "d:DFE": 200.0}, lev=True, crypto=True) == "crypto"
     assert etf.nport_class({"equity": 95.0}, crypto=True) == "equity"     # a crypto-miners stock fund holds shares
+    assert etf.nport_class({"cash": 90.0, "derivative": 50.0, "d:DO": 50.0}, crypto=True) is None   # "other": unread
 
 
 @pytest.mark.parametrize("mix, cls", [
