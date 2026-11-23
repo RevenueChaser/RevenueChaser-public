@@ -1,8 +1,9 @@
-"""The float: Yahoo's ``floatShares`` (``yfinance/float``) and Unusual Whales' ``total_float`` (``uw/total_float``).
+"""The float: TradingView's ``float_shares_outstanding`` (``tradingview/float``) and Yahoo's ``floatShares``
+(``yfinance/float``, the check).
 
-**``yfinance/float``** asks Yahoo (the ``yfinance`` library, one ``Ticker.get_info`` per name) for ``SLICE`` Tier A
-names a run: the names never asked first (by ticker), then the longest ago. The lookups are ``INTERVAL_S`` apart
-(politeness, not a provider limit) and inside the ``yfinance`` window of 2,000 an hour (``caps.WINDOWS``, owner-marked); a
+**``yfinance/float``** asks Yahoo (the ``yfinance`` library, one ``Ticker.get_info`` per name) for every Tier A
+name a run, with no pause and no window of ours (avo 23 Nov 2026, #1473): the names never asked first (by ticker),
+then the longest ago, so a run cut short goes on where the last one stopped. A
 401 or a 429 (Yahoo's refusal, or its rate limit) stops the run's lookups at once, and what was read before it is
 kept: the next run goes on from there. ``yfinance`` (1.7.0, measured 28 Oct 2026) raises nothing for a refusal: it logs
 the 401 or 429 on its ``yfinance`` logger and answers an empty info, so ``_lookup`` listens to that logger and raises
@@ -11,9 +12,10 @@ the refusal it logged when the answer is empty; an empty answer with no refusal 
 a name a file of the day holds is not asked again that day. Parquet: ``parquet/yfinance/float/date=<as_of>/
 part-0.parquet`` keyed on the ticker. ``_lookup`` is the one function that talks to Yahoo (the tests replace it).
 
-**``uw/total_float``** asks UW's ``/short_screener`` for every Tier A name, 100 a request (the UW client's batching;
-every request counted against UW's day cap): the daily check of the float. Raw: ``raw/uw/total_float/<as_of>.json.gz``.
-Parquet: ``parquet/uw/total_float/date=<as_of>/part-0.parquet`` keyed on the ticker.
+**``tradingview/float``** asks TradingView's public stock scanner (``TV_URL``, no key) once a run for every US listing
+and keeps the asked names (``asked``): the main float. It replaced Unusual Whales' ``total_float`` (#1473, avo 23 Nov
+2026). A ticker on two venues keeps the row that is not OTC. Raw: ``raw/tradingview/float/<as_of>.json.gz``. Parquet:
+``parquet/tradingview/float/date=<as_of>/part-0.parquet`` keyed on the ticker.
 """
 from __future__ import annotations
 
@@ -27,13 +29,14 @@ import duckdb
 
 from ....core import calendar
 from .. import base
-from . import KIND, Spacer, scope, sec_ticker, stage
+from . import KIND, scope, sec_ticker, stage
 
 YAHOO = "yfinance/float"
-UW = "uw/total_float"
-SLICE = 400
+TV = "tradingview/float"
+TV_URL = "https://scanner.tradingview.com/america/scan"
+TV_COLUMNS = ("name", "float_shares_outstanding", "total_shares_outstanding", "exchange", "type")
+TV_RANGE = 25_000                 # every US listing in one answer (20,390 rows on 23 Nov 2026)
 BATCH = 50
-INTERVAL_S = 1.5
 FIELDS = ("floatShares", "sharesOutstanding", "impliedSharesOutstanding", "quoteType", "currency", "exchange")
 STOP = re.compile(r"\b(401|429)\b|rate.?limit|too many requests|unauthori[sz]ed|invalid crumb", re.I)
 EMPTY_ANSWER = "empty answer: Yahoo returned none of the fields"
@@ -41,7 +44,8 @@ YAHOO_SCHEMA = [("ticker", "TEXT"), ("cik", "TEXT"), ("security_id", "TEXT"), ("
                 ("shares_outstanding", "DOUBLE"), ("implied_shares", "DOUBLE"), ("quote_type", "TEXT"),
                 ("currency", "TEXT"), ("error", "TEXT"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"),
                 ("run_id", "TEXT")]
-UW_SCHEMA = [("ticker", "TEXT"), ("cik", "TEXT"), ("security_id", "TEXT"), ("total_float", "DOUBLE"),
+TV_SCHEMA = [("ticker", "TEXT"), ("cik", "TEXT"), ("security_id", "TEXT"), ("tv_symbol", "TEXT"),
+             ("float_shares", "DOUBLE"), ("total_shares", "DOUBLE"), ("exchange", "TEXT"), ("type", "TEXT"),
              ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 
@@ -148,8 +152,8 @@ class YahooFloat:
         folder = self.raw_dir(as_of)
         have = sorted(folder.glob("batch-*.json.gz")) if folder.is_dir() else []
         done = {t for p in have for t in base.read_raw_json(p)["rows"]}
-        todo = [n for n in self._order(names) if n["ticker"] not in done][:max(0, SLICE - len(done))]
-        spacer, out, batch, seq = Spacer(INTERVAL_S, ctx.clock, ctx.sleep), list(have), {}, len(have)
+        todo = [n for n in self._order(names) if n["ticker"] not in done]
+        out, batch, seq = list(have), {}, len(have)
 
         def flush():
             nonlocal batch, seq
@@ -160,8 +164,6 @@ class YahooFloat:
                 seq, batch = seq + 1, {}
         for n in todo:
             ctx.check_cap("yfinance")
-            spacer.wait()
-            base.run_pacer(ctx, "yfinance").wait()
             ctx.count("yfinance", calls=1)
             entry = {"cik": n.get("cik"), "security_id": n["security_id"]}
             try:
@@ -211,10 +213,10 @@ class YahooFloat:
         return _float_check(ctx, con, YAHOO, "stg_yahoo_float", "float_shares", self.default_as_of())
 
 
-class UWFloat:
-    name = UW
+class TradingViewFloat:
+    name = TV
     kind = KIND
-    providers = ("uw",)
+    providers = ("tradingview",)
     tables = ("shares_class",)
     feeds = ("market_cap_daily",)                  # a class count times the close is the cap
     cadence = "daily"
@@ -239,7 +241,7 @@ class UWFloat:
             # to the other (review D1 of #294).
             key = "\n".join([*scope.tiers, "|", *scope.names, "|", *scope.include])
             stem += "-" + hashlib.sha1(key.encode()).hexdigest()[:8]
-        return base.raw_root() / "uw" / "total_float" / f"{stem}.json.gz"
+        return base.raw_root() / "tradingview" / "float" / f"{stem}.json.gz"
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
         path = self.raw_path(as_of, ctx.scope)
@@ -248,18 +250,21 @@ class UWFloat:
         names = {n["ticker"]: {"cik": n.get("cik"), "security_id": n["security_id"]} for n in asked(ctx.scope)}
         if not names:
             raise _nothing_to_ask(ctx)
-        ctx.check_cap("uw")
-        res = ctx.uw_client().short_screener_result(sorted(names))
-        if res.status == "failed":
-            raise base.SourceError(f"uw /short_screener failed: {res.error}")
-        if res.status == "partial":
-            ctx.notes.append(f"uw /short_screener partial: {res.error}")
+        body = {"markets": ["america"], "symbols": {"query": {"types": []}, "tickers": []},
+                "options": {"lang": "en"}, "columns": list(TV_COLUMNS), "range": [0, TV_RANGE]}
+        answer = base.http_post(ctx, "tradingview", TV_URL, json=body).json()
         rows = {}
-        for symbol, item in (res.data or {}).items():
-            t = sec_ticker(symbol)
-            if t in names and isinstance(item, dict):
-                rows[t] = {**names[t], "total_float": item.get("total_float")}
-        return [base.write_raw_json(path, {"as_of": as_of.isoformat(), "rows": rows, "status": res.status,
+        for item in answer.get("data") or []:
+            d = dict(zip(TV_COLUMNS, item.get("d") or []))
+            t = sec_ticker(d.get("name") or "")
+            if t not in names or (t in rows and d.get("exchange") == "OTC"):
+                continue
+            rows[t] = {**names[t], "tv_symbol": item.get("s"), "float_shares": d.get("float_shares_outstanding"),
+                       "total_shares": d.get("total_shares_outstanding"), "exchange": d.get("exchange"),
+                       "type": d.get("type")}
+        if not rows:
+            raise base.SourceError(f"tradingview scan answered none of the {len(names)} names asked")
+        return [base.write_raw_json(path, {"as_of": as_of.isoformat(), "rows": rows, "status": "ok",
                                            "fetched_at": calendar._now().timestamp(), "run_id": ctx.run_id})]
 
     def backfill(self, ctx: base.RunContext, start, end: date) -> None:
@@ -273,18 +278,21 @@ class UWFloat:
         for raw in raws:
             p = base.read_raw_json(raw)
             rows = [{"ticker": t, "cik": e.get("cik"), "security_id": e.get("security_id"),
-                     "total_float": _num(e.get("total_float")), "source_as_of": date.fromisoformat(p["as_of"]),
+                     "tv_symbol": e.get("tv_symbol"),
+                     "float_shares": _num(e.get("float_shares")), "total_shares": _num(e.get("total_shares")),
+                     "exchange": e.get("exchange"), "type": e.get("type"),
+                     "source_as_of": date.fromisoformat(p["as_of"]),
                      "fetched_at": p["fetched_at"], "run_id": p["run_id"]} for t, e in sorted(p["rows"].items())]
-            out.append(base.upsert_partition(rows, UW_SCHEMA, ["ticker"], base.parquet_root() / "uw" / "total_float"
+            out.append(base.upsert_partition(rows, TV_SCHEMA, ["ticker"], base.parquet_root() / "tradingview" / "float"
                                              / f"date={p['as_of']}" / "part-0.parquet"))
         return out
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
-        stage.create(con, "stg_uw_float", UW_SCHEMA, _partitions("uw", "total_float"))
+        stage.create(con, "stg_tv_float", TV_SCHEMA, _partitions("tradingview", "float"))
         return {}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
-        return _float_check(ctx, con, UW, "stg_uw_float", "total_float", self.default_as_of())
+        return _float_check(ctx, con, TV, "stg_tv_float", "float_shares", self.default_as_of())
 
 
 def _float_check(ctx, con, name: str, staging: str, column: str, default: date) -> dict:
@@ -301,4 +309,4 @@ def _float_check(ctx, con, name: str, staging: str, column: str, default: date) 
 
 
 YAHOO_FLOAT = YahooFloat()
-UW_FLOAT = UWFloat()
+TV_FLOAT = TradingViewFloat()

@@ -73,7 +73,7 @@ VIEWS = ("security_symbol_now", "price_bars_daily", "price_actions", "index_leve
 TABLES = ("price_bar_daily", "corporate_action", "adj_factor", "shares_class", "security_symbol",
           "market_cap_daily", "price_revision", "wrds_price_diff")
 ALPACA_BARS, ALPACA_ACTIONS = "alpaca/bars", "alpaca/corporate_actions"
-COVER, YAHOO, UW = "sec/cover_shares", "yfinance/float", "uw/total_float"
+COVER, YAHOO, TV = "sec/cover_shares", "yfinance/float", "tradingview/float"
 # The oldest a company facts count may be on the session it gives a cap to: a year and a filing's lag.
 DEI_MAX_AGE_DAYS = 400
 INDEX_SOURCE = "market_series/cboe"
@@ -219,7 +219,8 @@ ISSUE_KINDS = {
     "cover_adr_ordinary": ("an ADR's issuer's cover count: ordinary shares, not ADSs, so kept under class: and no "
                            "market cap from it (key: the ADR's security id)"),
     "float_above_outstanding": "the newest float is above FLOAT_OVER times the shares outstanding (key: the security id)",
-    "float_sources_disagree": "Yahoo's and UW's newest float differ by more than FLOAT_DISAGREE (key: the security id)",
+    "float_sources_disagree": ("TradingView's and Yahoo's newest float differ by more than FLOAT_DISAGREE (key: the "
+                               "security id)"),
     "shares_disagree_yahoo": ("the cover shares behind a market cap and Yahoo's newest sharesOutstanding differ by more "
                               "than SHARES_DISAGREE, on the newest cover-sourced cap up to Yahoo's answer (key: the "
                               "security id)"),
@@ -652,7 +653,7 @@ class PricesServing:
         found: list[tuple[str, str, str]] = []
         have = {ALPACA_BARS: stage.count(con, "stg_alpaca_bars"), ALPACA_ACTIONS: stage.count(con, "stg_alpaca_actions"),
                 COVER: stage.count(con, "stg_sec_cover"), YAHOO: stage.count(con, "stg_yahoo_float"),
-                UW: stage.count(con, "stg_uw_float")}
+                TV: stage.count(con, "stg_tv_float")}
         for ds, n in have.items():
             if not n:
                 found.append(("source_never_run", ds, f"{ds} has no rows in this build"))
@@ -1101,10 +1102,10 @@ class PricesServing:
             FROM stg_yahoo_float y LEFT JOIN stg_spine s ON s.ticker = y.ticker AND s.cik IS NOT DISTINCT FROM y.cik
             WHERE y.float_shares IS NOT NULL
             UNION ALL
-            SELECT coalesce(s.security_id, u.security_id), 'float', u.source_as_of, u.total_float, u.ticker, u.cik,
-                   NULL, '{UW}', NULL, NULL, u.source_as_of, u.fetched_at, u.run_id
-            FROM stg_uw_float u LEFT JOIN stg_spine s ON s.ticker = u.ticker AND s.cik IS NOT DISTINCT FROM u.cik
-            WHERE u.total_float IS NOT NULL""", live)
+            SELECT coalesce(s.security_id, t.security_id), 'float', t.source_as_of, t.float_shares, t.ticker, t.cik,
+                   NULL, '{TV}', NULL, NULL, t.source_as_of, t.fetched_at, t.run_id
+            FROM stg_tv_float t LEFT JOIN stg_spine s ON s.ticker = t.ticker AND s.cik IS NOT DISTINCT FROM t.cik
+            WHERE t.float_shares IS NOT NULL""", live)
         for cik, symbol in con.execute(
                 "SELECT DISTINCT cik, symbol FROM _cover WHERE symbol IS NOT NULL AND by_symbol IS NULL").fetchall():
             found.append(("cover_class_unmapped", f"{cik}:{symbol}", "no spine ticker of the CIK is this symbol"))
@@ -1253,7 +1254,7 @@ class PricesServing:
         newest_of = ("SELECT security_id, value FROM shares_class WHERE measure = '{m}' AND source = '{s}' "
                      "QUALIFY row_number() OVER (PARTITION BY security_id ORDER BY as_of DESC, fetched_at DESC) = 1")
         for sid, fl, out in con.execute(f"""
-                WITH f AS ({newest_of.format(m='float', s=YAHOO)} UNION ALL {newest_of.format(m='float', s=UW)}),
+                WITH f AS ({newest_of.format(m='float', s=YAHOO)} UNION ALL {newest_of.format(m='float', s=TV)}),
                      o AS (SELECT o.security_id, o.value * coalesce(a2.split_factor, 1)
                                   / coalesce(a1.split_factor, 1) AS value
                            FROM (SELECT * FROM shares_class WHERE measure = 'outstanding'
@@ -1266,10 +1267,10 @@ class PricesServing:
                 GROUP BY f.security_id HAVING max(f.value) > {FLOAT_OVER} * any_value(o.value) ORDER BY 1""").fetchall():
             found.append(("float_above_outstanding", sid, f"float {fl:,.0f} over outstanding {out:,.0f}"))
         for sid, y, u in con.execute(f"""
-                SELECT y.security_id, y.value, u.value FROM ({newest_of.format(m='float', s=YAHOO)}) y
-                JOIN ({newest_of.format(m='float', s=UW)}) u USING (security_id)
-                WHERE abs(y.value - u.value) > {FLOAT_DISAGREE} * greatest(y.value, u.value) ORDER BY 1""").fetchall():
-            found.append(("float_sources_disagree", sid, f"yahoo {y:,.0f}, uw {u:,.0f}"))
+                SELECT y.security_id, y.value, t.value FROM ({newest_of.format(m='float', s=YAHOO)}) y
+                JOIN ({newest_of.format(m='float', s=TV)}) t USING (security_id)
+                WHERE abs(y.value - t.value) > {FLOAT_DISAGREE} * greatest(y.value, t.value) ORDER BY 1""").fetchall():
+            found.append(("float_sources_disagree", sid, f"yahoo {y:,.0f}, tradingview {u:,.0f}"))
         # shortcut: flagged only, the cap stays; if avo wants it, withhold a cover cap beyond a factor of two from
         # Yahoo (the universe then falls back as for a name with no shares).
         for sid, cover, as_of, yahoo, day in con.execute(f"""
