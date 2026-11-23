@@ -221,11 +221,13 @@ def daily_index(rows) -> bytes:
 
 
 def quarter_index(rows) -> bytes:
-    """``full-index/<YYYY>/QTR<q>/master.idx``: the quarter's own index. The same header and columns as the daily
-    one, its own preamble, and ``Date Filed`` written ``YYYY-MM-DD`` as the real file writes it."""
-    head = ["Description:           Master Index of EDGAR Dissemination Feed by Company Name",
+    """``full-index/<YYYY>/QTR<q>/master.idx``: the quarter's own index. The daily one's columns under its own
+    preamble, its header's last column spelled ``Filename`` and ``Date Filed`` written ``YYYY-MM-DD``, as the real
+    file writes them (an exact copy of the daily header here hid that every gap day failed, 23 Nov 2026)."""
+    head = ["Description:           Master Index of EDGAR Dissemination Feed",
             "Last Data Received:    June 30, 2014", "Comments:              webmaster@sec.gov",
-            "Anonymous FTP:         ftp://ftp.sec.gov/edgar/", "", "", "", "", INDEX_HEADER, "-" * 80]
+            "Anonymous FTP:         ftp://ftp.sec.gov/edgar/", "", "", "", "",
+            "CIK|Company Name|Form Type|Date Filed|Filename", "-" * 80]
     dashed = [(cik, name, form, f"{d[:4]}-{d[4:6]}-{d[6:]}" if "-" not in str(d) else d, path)
               for cik, name, form, d, path in rows]
     return ("\n".join(head + ["|".join(str(c) for c in r) for r in dashed]) + "\n").encode("latin-1")
