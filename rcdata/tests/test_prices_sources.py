@@ -266,7 +266,7 @@ class YahooStop(Exception):
     pass
 
 
-def test_yahoo_float_paced_one_and_a_half_seconds_and_stopped_on_429(monkeypatch):
+def test_yahoo_float_not_paced_and_stopped_on_429(monkeypatch):
     asked = []
 
     def lookup(ticker):
@@ -280,37 +280,33 @@ def test_yahoo_float_paced_one_and_a_half_seconds_and_stopped_on_429(monkeypatch
     ctx = _ctx(floats.YAHOO, sleeps=sleeps)
     out = floats.YAHOO_FLOAT.to_parquet_all(ctx, floats.YAHOO_FLOAT.fetch(ctx, TUE))
     assert asked == ["AAPL", "BRK-B", "FLG"]                              # stopped at the 429: GAPX never asked
-    assert sleeps and min(sleeps) >= 1.5 - 1e-9 and len(sleeps) == 2
+    assert sleeps == []                                                   # no pause of ours (avo, 23 Nov 2026)
     rows = {r["ticker"]: r for p in out for r in stage.read_rows(p)}
     assert set(rows) == {"AAPL", "BRK-B"} and rows["AAPL"]["float_shares"] == 1000.0
     assert rows["BRK-B"]["security_id"] == "072726:02" and rows["AAPL"]["source_as_of"] == TUE
     assert any("429" in n for n in ctx.notes) and ctx.calls["yfinance"][2] == 1
 
 
-def test_each_yahoo_float_lookup_waits_for_the_yfinance_window(monkeypatch):
-    waits, real = [], base.run_pacer
-
-    def run_pacer(ctx, provider):
-        p = real(ctx, provider)
-        monkeypatch.setattr(p, "wait", lambda: waits.append(provider))
-        return p
-    monkeypatch.setattr(base, "run_pacer", run_pacer)
-    monkeypatch.setattr(floats, "_lookup", lambda t: {"floatShares": 5.0})
-    ctx = _ctx(floats.YAHOO)
-    floats.YAHOO_FLOAT.fetch(ctx, TUE)
-    assert waits and waits == ["yfinance"] * ctx.calls["yfinance"][0]
+def test_yahoo_float_asks_every_tier_a_name_in_one_run(monkeypatch):
+    asked = []
+    monkeypatch.setattr(floats, "_lookup", lambda t: asked.append(t) or {"floatShares": 5.0})
+    floats.YAHOO_FLOAT.fetch(_ctx(floats.YAHOO), TUE)
+    assert sorted(asked) == sorted(n["ticker"] for n in floats.asked())         # no slice: the whole Tier A
 
 
 def test_yahoo_float_asks_the_never_asked_first(monkeypatch):
-    monkeypatch.setattr(floats, "_lookup", lambda t: {"floatShares": 5.0})
-    monkeypatch.setattr(floats, "SLICE", 2)
+    def first(ticker):
+        if ticker == "FLG":
+            raise YahooStop("Too Many Requests. Rate limited. HTTP 429")     # the first run stops here
+        return {"floatShares": 5.0}
+    monkeypatch.setattr(floats, "_lookup", first)
     ctx = _ctx(floats.YAHOO)
     floats.YAHOO_FLOAT.to_parquet_all(ctx, floats.YAHOO_FLOAT.fetch(ctx, date(2026, 10, 26)))
     asked = []
     monkeypatch.setattr(floats, "_lookup", lambda t: asked.append(t) or {"floatShares": 6.0})
     ctx2 = _ctx(floats.YAHOO, "r2")
     floats.YAHOO_FLOAT.to_parquet_all(ctx2, floats.YAHOO_FLOAT.fetch(ctx2, TUE))
-    assert asked == ["FLG", "GAPX"]                                        # by ticker among the never asked
+    assert asked[:2] == ["FLG", "GAPX"]                                    # by ticker among the never asked
 
 
 class FakeYahoo:

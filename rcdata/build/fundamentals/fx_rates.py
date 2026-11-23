@@ -6,7 +6,7 @@ at these rates, and dropped only where they do not reach its period. Measured on
 US-GAAP statements are in CAD or JPY (#105). One request per currency in
 ``CURRENCIES`` (``core/providers/yfinance.get_fx_history``: Yahoo's daily close of ``<CUR>USD=X``, USD per unit): the
 whole history the first time, else from ``OVERLAP_DAYS`` before the newest stored day, so a late correction by
-Yahoo is read again. Counted under ``yfinance`` and paced at its window. A failed currency is an issue and is asked
+Yahoo is read again. Counted under ``yfinance``, not paced (avo 23 Nov 2026, #1473). A failed currency is an issue and is asked
 again by the next run; a run where every request failed is a failed run.
 
 Raw: ``raw/yfinance/fx/<as-of>/<CUR>.json.gz`` (``{day: rate}``, the resume marker). Parquet:
@@ -172,7 +172,6 @@ class FxRates:
         for cur in CURRENCIES:
             start = (newest[cur] - timedelta(days=OVERLAP_DAYS)).isoformat() if cur in newest else None
             ctx.check_cap(PROVIDER)
-            base.run_pacer(ctx, PROVIDER).wait()
             ctx.count(PROVIDER, calls=1)
             # This dataset's own book is the one that reaches the day's ledger: the provider module would count
             # the same read a second time into the same row (#1277).

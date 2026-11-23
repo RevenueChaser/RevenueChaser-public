@@ -1319,8 +1319,8 @@ its source): alphavantage 25 (its free tier, shared by the earnings calendar and
 `alphavantage/listing_status`, #346); UW has none (owner-removed avo 2026-11-10). **Request windows**
 (`caps.WINDOWS`, enforced by `base.Pacer`, one pacer per provider and run through `base.run_pacer`): sec 10 a second,
 alpaca 200 a minute (Basic plan, historical), openfigi 250 a minute (keyed `/v3/mapping`; `/v3/search` 20 a minute,
-no caller yet), finra 1,200 a minute (synchronous, per IP), yfinance 2,000 an hour (per IP, owner-marked avo
-2026-11-02; Yahoo publishes none). A provider with no published limit (FRED, WRDS, SSGA, iShares, Nasdaq,
+no caller yet), finra 1,200 a minute (synchronous, per IP); yfinance none (Yahoo publishes none and the owner removed ours,
+avo 2026-11-23). A provider with no published limit (FRED, WRDS, SSGA, iShares, Nasdaq,
 Invesco, ARK, Nasdaq Trader, the NYSE threshold file, IBKR's short-stock file and its gateway's 1-day bars) has no
 number here; a pacer it keeps is politeness, not a provider limit. Neither table is the provider's own meter: UW's
 `x-uw-*` headers are (`uw_remaining`).
@@ -1640,7 +1640,7 @@ only through `rcdata.read`.
 | `alpaca/bars` | daily | **the tester, never served** (2 Nov 2026 master plan, item 3): Alpaca `/v2/stocks/bars`, `timeframe=1Day`, feed `sip`, `adjustment` `raw` and `all`, 100 symbols a request, the last 5 complete sessions re-read (the `all` window one session earlier); the daily run asks only the names `prices.tester` finds at risk (a split or `ajexdi` change, an empty `trfd`, a dividend or spin-off going ex, an open `price_gap_no_action`, an exchange move, a close under $5, over the last 10 days); a named request asks what it names | `stg_alpaca_bars`, `stg_alpaca_bar_revisions` |
 | `alpaca/corporate_actions` | daily | Alpaca `/v1/corporate-actions`, every symbol, processed from 14 days back to 90 days ahead (a cash dividend is processed on its payable date, weeks after it goes ex; an action is applied once its ex-date has a session, one with no ratio or amount is an issue at once) | `stg_alpaca_actions` |
 | `sec/cover_shares` | daily | The SEC daily master index (10-K, 10-Q, 20-F, 40-F and their -T forms of the last 7 days), each filer's submissions file, the filing's inline-XBRL instance: `dei:EntityCommonStockSharesOutstanding` per class member; and, with no request, the cover count history of `sec/companyfacts`'s stored raw (`parquet/sec/cover_shares_dei/cik=<CIK>/`) | `stg_sec_cover`, `stg_sec_dei` |
-| `yfinance/float` | daily | Yahoo `floatShares` (`yfinance` `get_info`), 400 Tier A names a run, 1.5 s apart and 2,000 an hour, stopped by a 401 or 429 | `stg_yahoo_float` |
+| `yfinance/float` | daily | Yahoo `floatShares` (`yfinance` `get_info`), every Tier A name a run, not paced, stopped by a 401 or 429; the check of `tradingview/float` | `stg_yahoo_float` |
 | `tradingview/float` | daily | TradingView's public stock scanner (`scanner.tradingview.com/america/scan`, no key), one request a run for every US listing, `float_shares_outstanding` and `total_shares_outstanding` of each Tier A name; a ticker on two venues keeps the row that is not OTC (replaced `uw/total_float`, #1473) | `stg_tv_float` |
 | `wrds/prices` | daily (avo, 3 Nov 2026) | Compustat `comp.secd` from 1983 (its earliest priced day, 1983-12-30) on exchg 11, 12, 14, 17, 21 (NYSE, NYSE American, Nasdaq, NYSE Arca, BATS BZX) with the row's dividend columns, and `comp.sec_divid` per year, CRSP `crsp.dsf_v2` per year to 2025 (stocks and ETFs, from 1983), `comp.sec_split` and `crsp_a_stock.stkdelists` whole; no CCM link (`wrds_history.PERMNO_LINK`) | `stg_wrds_secd`, `stg_wrds_dsf`, `stg_wrds_divid`, `stg_wrds_split`, `stg_wrds_revisions` |
 | `prices/serving` | daily | none: builds the served tables from the staging tables; the history is Compustat's (priority 1), CRSP's only on its fallback days, never Alpaca's | the tables below |

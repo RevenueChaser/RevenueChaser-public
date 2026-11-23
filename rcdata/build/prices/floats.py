@@ -1,9 +1,9 @@
 """The float: TradingView's ``float_shares_outstanding`` (``tradingview/float``) and Yahoo's ``floatShares``
 (``yfinance/float``, the check).
 
-**``yfinance/float``** asks Yahoo (the ``yfinance`` library, one ``Ticker.get_info`` per name) for ``SLICE`` Tier A
-names a run: the names never asked first (by ticker), then the longest ago. The lookups are ``INTERVAL_S`` apart
-(politeness, not a provider limit) and inside the ``yfinance`` window of 2,000 an hour (``caps.WINDOWS``, owner-marked); a
+**``yfinance/float``** asks Yahoo (the ``yfinance`` library, one ``Ticker.get_info`` per name) for every Tier A
+name a run, with no pause and no window of ours (avo 23 Nov 2026, #1473): the names never asked first (by ticker),
+then the longest ago, so a run cut short goes on where the last one stopped. A
 401 or a 429 (Yahoo's refusal, or its rate limit) stops the run's lookups at once, and what was read before it is
 kept: the next run goes on from there. ``yfinance`` (1.7.0, measured 28 Oct 2026) raises nothing for a refusal: it logs
 the 401 or 429 on its ``yfinance`` logger and answers an empty info, so ``_lookup`` listens to that logger and raises
@@ -29,16 +29,14 @@ import duckdb
 
 from ....core import calendar
 from .. import base
-from . import KIND, Spacer, scope, sec_ticker, stage
+from . import KIND, scope, sec_ticker, stage
 
 YAHOO = "yfinance/float"
 TV = "tradingview/float"
 TV_URL = "https://scanner.tradingview.com/america/scan"
 TV_COLUMNS = ("name", "float_shares_outstanding", "total_shares_outstanding", "exchange", "type")
 TV_RANGE = 25_000                 # every US listing in one answer (20,390 rows on 23 Nov 2026)
-SLICE = 400
 BATCH = 50
-INTERVAL_S = 1.5
 FIELDS = ("floatShares", "sharesOutstanding", "impliedSharesOutstanding", "quoteType", "currency", "exchange")
 STOP = re.compile(r"\b(401|429)\b|rate.?limit|too many requests|unauthori[sz]ed|invalid crumb", re.I)
 EMPTY_ANSWER = "empty answer: Yahoo returned none of the fields"
@@ -154,8 +152,8 @@ class YahooFloat:
         folder = self.raw_dir(as_of)
         have = sorted(folder.glob("batch-*.json.gz")) if folder.is_dir() else []
         done = {t for p in have for t in base.read_raw_json(p)["rows"]}
-        todo = [n for n in self._order(names) if n["ticker"] not in done][:max(0, SLICE - len(done))]
-        spacer, out, batch, seq = Spacer(INTERVAL_S, ctx.clock, ctx.sleep), list(have), {}, len(have)
+        todo = [n for n in self._order(names) if n["ticker"] not in done]
+        out, batch, seq = list(have), {}, len(have)
 
         def flush():
             nonlocal batch, seq
@@ -166,8 +164,6 @@ class YahooFloat:
                 seq, batch = seq + 1, {}
         for n in todo:
             ctx.check_cap("yfinance")
-            spacer.wait()
-            base.run_pacer(ctx, "yfinance").wait()
             ctx.count("yfinance", calls=1)
             entry = {"cik": n.get("cik"), "security_id": n["security_id"]}
             try:

@@ -18,6 +18,7 @@ def test_the_alpaca_key_id_and_secret_are_two_declared_names():
     assert "ALPACA_API_KEY_ID" in credentials.missing_message("alpaca")
 
 
-def test_yfinance_and_alpaca_have_a_window_not_a_day_cap():
-    assert caps.cap_for("yfinance") is None and caps.WINDOWS["yfinance"] == (2_000, 3_600.0)
+def test_yfinance_has_no_limit_and_alpaca_a_window_not_a_day_cap():
+    # avo 23 Nov 2026 (#1473): no rate limit of ours on Yahoo
+    assert caps.cap_for("yfinance") is None and "yfinance" not in caps.WINDOWS
     assert caps.cap_for("alpaca") is None and caps.WINDOWS["alpaca"] == (200, 60.0)
