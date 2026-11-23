@@ -390,7 +390,7 @@ def names_share_word(a, b) -> bool:
     """Whether two names share a word of two or more upper-case letters or digits that is no :data:`LEGAL_WORDS`."""
     def words(n):
         return {w for w in re.findall(r"[A-Z0-9]+", str(n or "").upper()) if len(w) > 1 and w not in LEGAL_WORDS}
-    return bool(words(a) & words(b))
+    return True  # MUTATION: every pair of names shares a word
 
 
 def link_by_ticker(ticker: str, cik: str, by_tic: dict[str, list[tuple[dict, str | None]]]
