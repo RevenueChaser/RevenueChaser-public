@@ -269,3 +269,16 @@ def test_a_dataset_with_an_earliest_hour_is_not_due_before_it_in_new_york(clock,
     assert [r["dataset"] for r in _queue()] == [UW]
     clock(datetime(2026, 10, 28, 10, 0, tzinfo=timezone.utc))       # 06:00 New York
     assert due.is_due(DATASETS[MS])[0] is True
+
+
+def test_the_fetch_pass_stages_a_full_source_and_leaves_a_full_request_for_the_build(clock, ran):
+    """avo, 24 Nov 2026: the storage fetch never builds; a person's full Fetch waits for the storage build."""
+    from revenuechaser.rcdata.build import base
+    ops.enqueue(UW, None, by="cli")
+    assert cli.main(["run", "--once", "--fetch-only"]) == 0
+    assert [(r["dataset"], (r.get("params") or {}).get("no_duckdb")) for r in ran] == [(MS, True)]
+    assert [r["dataset"] for r in _queue() if r["status"] == "queued"] == [UW]
+    assert base.FETCH_ONLY_PASS is False                   # the pass's guard does not outlive it
+    assert cli.main(["run", "--once", "--build-only"]) == 0
+    assert [r["dataset"] for r in ran] == [MS, UW]          # the build drains the person's request
+    assert [r for r in _queue() if r["status"] == "queued"] == []

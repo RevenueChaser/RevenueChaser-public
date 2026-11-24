@@ -131,6 +131,9 @@ _WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday")
 # from ``ops.dataset_schedule`` whether anything is due (avo's rule: scheduled jobs run hourly). It writes only the
 # market store and records its own ``ops.job_runs2`` rows, so ``tables_written`` is empty: no old ``job_runs`` row.
 BUILDER_UNIT = "life-rc-builder"
+# avo, 24 Nov 2026: the hourly pass split in two timers. The storage fetch (raw and Parquet, never DuckDB) runs always;
+# the builder above is now the storage build, which avo switches on and off himself (home-server units).
+STORE_FETCH_UNIT = "life-rc-store-fetch"
 # The weekly backup (avo, 8 Nov 2026): one job, every step, onto the HDD, the newest 4 copies kept. Its unit pair is
 # installed from the home-server repository, not from the Settings page (one name, one timer).
 BACKUP_WEEKLY_UNIT = "life-rc-backup-weekly"
@@ -189,14 +192,25 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         # #527: the installed unit's limit (home-server units/life-rc-ibkr-login-check.service: 5min), not 1 h.
         settings=TaskSettings(time_limit_minutes=5)),
     AutomationEntry(
-        name="RC-Build", label="Market-store builder (hourly)",
-        args=("-m", "revenuechaser.rcdata.build", "run", "--once"), time="00:05", hourly=True,
+        name="RC-Store-Fetch", label="Storage fetch (hourly)",
+        args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--fetch-only"), time="00:45", hourly=True,
+        unit_name=STORE_FETCH_UNIT,
+        description="The storage fetch (avo, 24 Nov 2026): every hour at :45, every due source fetched into the raw store "
+                    "and written to Parquet; a source set to build in full is staged as Parquet only. It never "
+                    "builds a serving DuckDB, so it stays on while the build timer is off. Queued Fetch requests "
+                    "that build wait for the storage build. It does not start while a job lock is held or a builder "
+                    "runs (exit 3). Writes raw files, Parquet and ops.sqlite, with its own job_runs2 row per run.",
+        settings=TaskSettings(time_limit_minutes=120)),
+    AutomationEntry(
+        name="RC-Build", label="Storage build (DuckDB)",
+        args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--build-only"), time="00:05", hourly=True,
         unit_name=BUILDER_UNIT,
-        description="One pass of the market-store builder (rcdata): takes the queued build requests in order (Fetch, "
-                    "Backfill from the Settings page, and the datasets the schedule makes due), builds each serving "
-                    "file as a new file and swaps it in. It does not start while a job lock is held or another "
-                    "builder runs (exit 3); a request a dead builder left running is failed at start. Writes only "
-                    "the market store and ops.sqlite, with its own job_runs2 row per run.",
+        description="The storage build (avo, 24 Nov 2026: switched on and off by him): every hour at :05, the "
+                    "sources the storage fetch staged as Parquet are built into their serving DuckDB, a new file "
+                    "swapped in, and the queued Fetch and Backfill requests run. It sends no provider call for "
+                    "what the fetch staged (the raw file is the resume marker). It does not start while a job lock "
+                    "is held or another builder runs (exit 3); a request a dead builder left running is failed at "
+                    "start. Writes only the market store and ops.sqlite, with its own job_runs2 row per run.",
         # 2 h (avo 6 Nov 2026, #527): 166 runs since 20 Oct peaked at 107 min; at 50 min one was killed (2 Nov)
         settings=TaskSettings(time_limit_minutes=120)),
     AutomationEntry(
