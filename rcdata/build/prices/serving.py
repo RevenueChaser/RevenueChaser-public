@@ -843,7 +843,7 @@ class PricesServing:
         # Alpaca or Compustat action of the kind: a Yahoo-only name had no total return at all (review of #1490, 1).
         con.execute(f"""INSERT INTO _act BY NAME SELECT y.* FROM ({yahoo_bars.ACTIONS_SQL}) y
             WHERE EXISTS (SELECT 1 FROM price_bar_daily b WHERE b.security_id = y.security_id
-                          AND b.session_date = y.ex_date){mine.replace('w.', 'y.')}
+                          AND b.session_date = y.ex_date AND b.source = '{yahoo_bars.NAME}'){mine.replace('w.', 'y.')}
               AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = y.security_id AND p.ex_date = y.ex_date
                               AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='y')})""")
         # The split Alpaca and Compustat both know, its day a session or two apart (``SPLIT_TWIN_SQL``, #268); the
