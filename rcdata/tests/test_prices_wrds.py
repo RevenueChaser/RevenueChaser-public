@@ -930,9 +930,14 @@ def test_the_monthly_refresh_keeps_the_values_it_replaces_as_revisions(whole_bui
     revs = _q("SELECT * FROM price_revision WHERE source = ?", [wrds_history.COMPUSTAT])
     assert [(r["security_id"], str(r["session_date"]), r["close"]) for r in revs] == [(AAPL, "2025-06-03", 202.0)]
     assert revs[0]["revised_by"] == ops.latest_check(wrds_history.NAME)["run_id"]
-    report = {r["comparison"]: r for r in _q("SELECT * FROM wrds_price_diff")}
+    report = {r["comparison"]: r for r in _q("SELECT * FROM wrds_price_diff WHERE as_of = '2026-11-27'")}
+    assert set(report) == set(wrds_history.COMPARISONS)
     assert report["crsp_vs_compustat"]["max_close_diff"] == pytest.approx(0.4 / 202.5)
-    assert {str(r["as_of"]) for r in report.values()} == {"2026-11-27"}
+    # The whole build keeps the month before's report beside the new one: the ``as_of`` series (#1413 P-C).
+    kept = {r["comparison"]: r for r in _q("SELECT * FROM wrds_price_diff WHERE as_of = '2026-10-27'")}
+    assert set(kept) == set(wrds_history.COMPARISONS)
+    assert kept["crsp_vs_compustat"]["max_close_diff"] == pytest.approx(0.1 / 202.0)
+    assert _q("SELECT count(*) AS n FROM wrds_price_diff")[0]["n"] == 2 * len(wrds_history.COMPARISONS)
 
 
 def _placeholder(gvkey, iid, day, tic, cusip="037833100", exchg=14):

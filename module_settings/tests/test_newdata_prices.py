@@ -100,3 +100,15 @@ def test_the_bars_card_reads_its_table_and_the_wrds_card_its_difference_report()
     assert "Compustat returns vs the store's: 6 sessions, 2 over 1 bp (max 0.030%)" in text
     assert "CRSP vs Alpaca closes: no common session" in text
     assert _card("alpaca/bars")["wrds"]["text"] == "no WRDS run yet"
+
+
+def test_the_wrds_card_shows_the_newest_report_of_the_kept_series():
+    # #1413 P-C: the table keeps a row per comparison and ``as_of``; an older month's numbers stay off the card.
+    _prices_file(report=[
+        {"comparison": "crsp_vs_compustat", "as_of": date(2026, 9, 27), "securities": 1, "sessions": 4,
+         "close_differs": 3, "max_close_diff": 0.0009},
+        {"comparison": "crsp_vs_compustat", "as_of": date(2026, 10, 27), "securities": 1, "sessions": 5,
+         "close_differs": 1, "max_close_diff": 0.0005}])
+    wrds = _card("wrds/prices")["wrds"]
+    assert wrds["text"] == "as of 2026-10-27: CRSP vs Compustat closes: 5 sessions, 1 over 1 bp (max 0.050%)"
+    assert len(wrds["rows"]) == 1

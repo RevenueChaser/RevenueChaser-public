@@ -31,7 +31,8 @@
   both keep their row with ``market_cap`` and ``shares`` NULL and ``shares_source`` ``zero_count`` or ``adr_no_ratio``;
 - ``price_revision``: the values a later read replaced (Alpaca's re-read of the last sessions, the monthly WRDS
   refresh), with when and by which run;
-- ``wrds_price_diff``: the WRDS difference report (``wrds_history.COMPARISONS``), one row per comparison: the closes
+- ``wrds_price_diff``: the WRDS difference report (``wrds_history.COMPARISONS``), one row per comparison and ``as_of``
+  (a whole build keeps the live file's older reports, ``stage.carry_reports``): the closes
   of CRSP against Compustat and of each against Alpaca on the sessions both have, and each WRDS source's own day
   return against the store's (its closes, the store's factors) on consecutive sessions; a difference over 1 bp
   counts. Shown on the ``wrds/prices`` Settings card.
@@ -760,6 +761,8 @@ class PricesServing:
         else:
             counts["wrds_price_diff"], alpaca = chunked.report()
             chunked.note()
+        if not live:
+            counts["wrds_price_diff"] += stage.carry_reports(con)
         self._views(con)
         found += self._issues(con, have, live, alpaca)
         ctx.pending[NAME] = found

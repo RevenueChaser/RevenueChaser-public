@@ -649,7 +649,9 @@ def _serving_facts(now: datetime | None = None
                 tables["price_bar_daily"]["sessions"] = _cached_sample(
                     "price_bar_daily#sessions", now, lambda name, c=con: _session_counts(c))
             if kind == "prices" and "wrds_price_diff" in names:
-                cur = con.execute("SELECT * FROM wrds_price_diff")
+                # The table keeps every report (one per comparison and ``as_of``); the card shows the newest.
+                cur = con.execute("SELECT * FROM wrds_price_diff "
+                                  "WHERE as_of IS NOT DISTINCT FROM (SELECT max(as_of) FROM wrds_price_diff)")
                 cols = [d[0] for d in cur.description]
                 tables["wrds_price_diff"]["report"] = [
                     {k: (v.isoformat() if isinstance(v, date) else v) for k, v in zip(cols, r)}
