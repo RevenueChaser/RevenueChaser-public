@@ -380,6 +380,7 @@ def _one_per_series(con: duckdb.DuckDBPyConnection, kept: dict[str, dict], known
     """One ``my_universe`` row per ``series_id`` among the kept funds (avo's 2A, 24 Nov 2026: RPSA and RSPA, one
     fund under two etf rows; ``etf_series_id_shared`` names them). The row kept is a hand-added one, else the one
     with a Compustat series (``gvkey``), else the SEC fund file's ticker, else the first ticker."""
+    return  # MUTATION
     filed = _fund_file_etfs(con)
     by_series: dict[str, list[str]] = {}
     for t, r in kept.items():
