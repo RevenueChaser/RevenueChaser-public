@@ -16,9 +16,9 @@ from revenuechaser.module_fundamentals.tests.test_fundamentals_debt_free_737 imp
 from revenuechaser.rcdata import read, sec_debt_note
 
 FLOWS = {"revenue": 1000.0, "gross_profit": 750.0, "ebit": 200.0, "depreciation": 50.0}
-# A borrower whose facts sum no total: a current line only (40) and interest above the floor.
+# A borrower whose facts sum no total: a current line only (40), and interest of 5 % on the note's 800.
 YEAR = {"cash": 600.0, "total_equity": 900.0, "total_assets": 5000.0, "lt_debt_current": 40.0,
-        "interest_expense": 300_000.0}
+        "interest_expense": 40.0}
 
 
 def note(**over) -> dict:
@@ -64,6 +64,15 @@ def test_the_note_wins_over_the_inference():
 def test_a_note_that_fails_a_guard_is_not_used(bad):
     assert debt.note_debt(year()[0], bad) is None
     assert pipeline._quality_metrics(year(), debt_note=bad)["debt_basis"] is None
+
+
+@pytest.mark.parametrize("field", debt.INTEREST_FIELDS)
+def test_a_note_total_its_years_interest_could_not_be_paid_on_is_a_scale_error(field):
+    """IPGP (review plan step 4, 25 Nov 2026): a note in thousands read as dollars gave 1,060 USD of debt for a
+    company paying interest on 17.2 m. Interest above a quarter of the total is not a loan rate; the note is not used."""
+    rec = year(interest_expense=None, **{field: 201.0})[0]
+    assert debt.note_debt(rec, note()) is None
+    assert debt.note_debt(year(interest_expense=None, **{field: 200.0})[0], note()) == 800.0
 
 
 def test_a_52_53_week_year_end_a_few_days_off_still_matches():
