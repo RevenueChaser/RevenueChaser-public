@@ -29,14 +29,13 @@ first full cut rather than after it, so that pass is paid once (#845).
 ``module_value_chain/splitter.VERSION`` and ``filing_item`` stay on ``ours-1``: those tables carry no version
 column, so each board moves on its own change, with the owner's before/after look.
 
-**Which cutter.** :func:`sections_of` is the one seam, and in this change it calls ``rcdata/sec_sections.py``
-only. ``cutter.py`` beside this module (#754) is the edgartools item cutter in its own venv, the owner's decision
-A of 12 Nov 2026, and it is **not** wired in here: the items are being reworked in #755 and #756 at the same time,
-so putting its ``detection_method`` on the row would have this change and those editing one rule from two sides.
-shortcut: items cut by our own rule, so ``method`` is ``header``/``aif``/``uncut`` and never edgartools' own;
-upgrade by routing :func:`sections_of` through ``cutter.Cutter`` (its fallback row is the ``header`` cut we
-already write) once the item work has landed. Nothing else in this layer changes when that happens, because the
-version on every row is what decides who is re-cut.
+**Which cutter.** The edgartools item cutter (``cutter.py``, #754; the owner's decision A of 12 Nov 2026, wired
+on his word of 24 Nov 2026, pin 6.3.0) cuts the business section of a 10-K (Item 1) and of a 20-F (Item 4);
+:mod:`cut` maps its answer file. A document it cannot cut, or whose section it does not find, gets our own
+``ours-2`` cut as before, with ``method`` saying which one it is (``edgartools`` or ``header``). A 40-F and a
+10-KT have no edgartools vocabulary and stay on ``ours-2``. ``RC_SEC_FORMS_CUTTER=header`` is the rollback: no
+worker is started and the rows are labelled ``ours-2`` again. Every row carries :func:`rows_version`, so a
+switch either way re-cuts every company, and the readers that pin the label refuse a half-done re-cut.
 """
 from __future__ import annotations
 
@@ -45,11 +44,11 @@ from pathlib import Path
 
 import duckdb
 
-from ... import sec_notes, sec_sections
+from ... import sec_forms_label, sec_notes, sec_sections
 from .. import base
 from .. import dirty as dirty_set
 from ..fundamentals import common, filings
-from . import KIND
+from . import KIND, cut, cutter
 
 NAME = "sec/forms"
 #: The dataset whose stored documents this cuts. Its path rules are its own: the private helpers below are
@@ -69,11 +68,20 @@ RELEASE = "release"
 #: How a section was found, so a weak method can be withdrawn on its own: the document uncut, the line-start item
 #: header, or a 40-F's Annual Information Form.
 UNCUT, HEADER, AIF = "uncut", "header", "aif"
+#: A business section cut by edgartools (:mod:`cut`).
+EDGARTOOLS = "edgartools"
 SECTIONS = (WHOLE, PROXY, BUSINESS, RELEASE)
 
 #: The cutter version this layer stores sections with, and the note reader's own version. Both ride on every row.
 SECTIONS_VERSION = sec_sections.OURS_2
 NOTES_VERSION = sec_notes.NOTES_VERSION
+
+
+def rows_version() -> str:
+    """The label on every section row this run writes: :data:`sec_sections.FORMS_ROWS_VERSION` with the
+    edgartools cutter on, :data:`SECTIONS_VERSION` on the ``header`` rollback."""
+    cutter.mode()                           # an unknown mode fails the run here, before any row is labelled
+    return sec_forms_label.forms_rows_version()
 
 _STAMPS = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 #: One row per (filing, document, section). ``document`` is in the key because one accession can hold more than
@@ -169,7 +177,7 @@ def _flag(quality: str, text: str, item: str | None, form: str, *, aif: bool = F
 
 
 def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object = None,
-                release: bool = False) -> list[tuple]:
+                release: bool = False, edgartools: tuple[str, str] | None = None) -> list[tuple]:
     """``(section, text, quality, method, start_char, end_char)`` per section of one document.
 
     An exhibit is the business description on its own, so its whole text is the section and the 10-K item cuts do
@@ -178,6 +186,10 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
     say about it. A proxy is one uncut ``proxy`` row; every other form gives
     the uncut ``whole`` row plus the business row its own rule cuts -- empty text and the cutter's label when the
     rule found no section (#843), so ``method`` names the cutter that ran and not a cut that was made.
+
+    ``edgartools`` is edgartools' ``(text, quality)`` for this document's business section (:func:`cut.business`),
+    when it found one; it replaces our own cut of a 10-K or a 20-F, unless it is doubtful and ours is clean. Its text
+    is edgartools' own and not a substring of ``strip_html``'s, so it has no span.
     """
     text = sec_sections.strip_html(html)
     if release:
@@ -205,7 +217,15 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
     # cuts of the 5,131 stored annual reports have an empty body (13 Nov 2026), so they are all of them that
     # reach a reader. The text is "" and not NULL, because ``chars`` is its length and the readers concatenate.
     item = item or ""
-    out.append((BUSINESS, item, _flag(quality, text, item, form), HEADER, *_span(text, item)))
+    ours = _flag(quality, text, item, form)
+    # A doubtful edgartools cut (low confidence or a warning) never replaces a clean cut of our own: the 24 Nov 2026
+    # full pass found confidence-0.5 cuts that were a table of contents or a pointer.
+    # A ``crossref`` cut says "the section is in another document": that is what a reader must see, and edgartools'
+    # text of this one is the pointer (the review of #1492 named MCD, HSBC and VOD among the 42 such documents).
+    if edgartools is not None and not (ours.startswith("crossref") or (cut.SUSPECT in edgartools[1] and ours == "ok")):
+        out.append((BUSINESS, edgartools[0], edgartools[1], EDGARTOOLS, None, None))
+        return out
+    out.append((BUSINESS, item, ours, HEADER, *_span(text, item)))
     return out
 
 
@@ -227,15 +247,20 @@ def held() -> tuple[dict[str, set[tuple[str, str]]], set[str]]:
     """
     docs: dict[str, set[tuple[str, str]]] = {}
     old: set[str] = set()
+    current = rows_version()
+    retry = current == sec_sections.FORMS_ROWS_VERSION
     con = base.scratch_con()
     try:
         src = _glob(SECTIONS_PARQUET)
         if src:
-            for cik, accession, document, version in con.execute(
-                    f"SELECT cik, accession, document, rules_version FROM {src}").fetchall():
+            for cik, accession, document, version, section, method, form in con.execute(
+                    f"SELECT cik, accession, document, rules_version, section, method, form FROM {src}").fetchall():
                 docs.setdefault(str(cik), set()).add((str(accession), str(document)))
-                if str(version) != SECTIONS_VERSION:
+                if str(version) != current:
                     old.add(str(cik))
+                elif (retry and section == BUSINESS and method == HEADER and str(form).upper() in cut.BUSINESS_ITEM
+                      and cutter.pending(str(accession))):
+                    old.add(str(cik))       # the cutter still has attempts at it: our own cut is a stand-in
         src = _glob(NOTES_PARQUET)
         if src:
             for cik, version in con.execute(
@@ -331,6 +356,39 @@ def _counts(by_version: dict[str, int]) -> str:
     return ", ".join(f"{v} {n}" for v, n in by_version.items()) or "none"
 
 
+class _Edgartools:
+    """The edgartools cutter for one ``to_parquet`` call, started on the first document it has a vocabulary for.
+
+    Off (``on`` False, the ``header`` rollback) it answers None for every document and starts nothing. On, a
+    :class:`cutter.CutterUnusable` -- no venv, the wrong pin, five failures in a row -- fails the run, as the cutter
+    is built to: a missing venv must not quietly label every row ``ours-2`` cut as an edgartools one.
+    """
+
+    def __init__(self, on: bool):
+        self.on = on
+        self.cutter: cutter.Cutter | None = None
+        self.fallback = 0         # 10-K / 20-F documents served with our own cut: not cut, or no business section
+
+    def __enter__(self) -> "_Edgartools":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        if self.cutter is not None:
+            self.cutter.close()
+
+    def business(self, accession: str, path: Path, form: str) -> tuple[str, str] | None:
+        if not self.on or str(form).upper() not in cut.BUSINESS_ITEM:
+            return None
+        if self.cutter is None:
+            # The corpus root: ``<documents>/<cik>/<accession>...``, read only to tell a gone mount from one file.
+            self.cutter = cutter.Cutter(corpus_root=path.parents[1])
+        answer = self.cutter.cut(accession, path, form)
+        found = cut.business(answer, form) if answer is not None else None
+        if found is None:
+            self.fallback += 1
+        return found
+
+
 class Forms:
     name = NAME
     kind = KIND
@@ -366,7 +424,7 @@ class Forms:
             out += [p for _, p, _ in found]
             stale += 1
         ctx.notes.append(f"{stale} of {len(companies)} companies to cut, {len(out)} documents "
-                         f"(sections {SECTIONS_VERSION}, notes {NOTES_VERSION})")
+                         f"(sections {rows_version()}, notes {NOTES_VERSION})")
         return out
 
     def backfill(self, ctx: base.RunContext, start: date | None, end: date) -> None:
@@ -390,41 +448,55 @@ class Forms:
         """
         counts: dict = {}
         out: list[Path] = []
-        for cik in sorted({Path(r).parent.name for r in raws}, key=int):
-            ctx.check_pause()
-            sections, notes = [], []
-            for f, path, kind in targets(cik):
-                meta = base.read_raw_json(common.meta_path(path))
-                stamps = {"source_as_of": date.fromisoformat(meta["as_of"]),
-                          "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
-                filed = {"cik": cik, "accession": f["accession"], "document": path.name, "form": f["form"],
-                         "filing_date": f["filing_date"]}
-                html = base.read_raw(path).decode("utf-8", "replace")
-                for section, text, quality, method, start, end in sections_of(
-                        html, f["form"], exhibit=kind == AIF_DOC, by_name=meta.get("by_name"),
-                        release=kind == RELEASE_DOC):
-                    sections.append({**filed, "report_date": f.get("report_date"), "section": section,
-                                     "text": text, "chars": len(text), "quality": quality, "start_char": start,
-                                     "end_char": end, "method": method, "rules_version": SECTIONS_VERSION,
-                                     **stamps})
-                if kind == PRIMARY and f["form"] in filings.ANNUAL_FORMS:
-                    for n in sec_notes.parse(html, counts)[0]:
-                        # ``Note.row`` keys its row by an int CIK; this layer stores TEXT, as ``filing_item`` does,
-                        # so ``filed`` overwrites that one column and adds the form and the filing date.
-                        notes.append({**n.row(cik, f["accession"], path.name), **filed, **stamps})
-            folder = common.parquet_dir(NAME) / f"cik={cik}"
-            con = base.scratch_con()
-            try:
-                base.rows_table(con, "sections", SECTION, sections)
-                out.append(base.write_parquet(con, "SELECT * FROM sections ORDER BY accession, document, section",
-                                              folder / SECTIONS_PARQUET))
-                base.rows_table(con, "notes", NOTE, notes)
-                out.append(base.write_parquet(con, "SELECT * FROM notes ORDER BY accession, document, seq",
-                                              folder / NOTES_PARQUET))
-            finally:
-                con.close()
+        version = rows_version()
+        with _Edgartools(version == sec_sections.FORMS_ROWS_VERSION) as items:
+            for cik in sorted({Path(r).parent.name for r in raws}, key=int):
+                out += self._cut_company(ctx, cik, counts, version, items)
+        if items.cutter is not None:
+            c = items.cutter
+            ctx.notes.append(f"edgartools: {c.cut_now} cut, {c.cached} cached, {c.empty} empty, "
+                             f"{len(c.failed)} failed, {items.fallback} on ours-2")
         if counts:
             ctx.notes.append("note reader: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+        return out
+
+    def _cut_company(self, ctx: base.RunContext, cik: str, counts: dict, version: str,
+                     items: "_Edgartools") -> list[Path]:
+        """One company's two partitions, rewritten whole from its documents on disk."""
+        out: list[Path] = []
+        ctx.check_pause()
+        sections, notes = [], []
+        for f, path, kind in targets(cik):
+            meta = base.read_raw_json(common.meta_path(path))
+            stamps = {"source_as_of": date.fromisoformat(meta["as_of"]),
+                      "fetched_at": float(meta["fetched_at"]), "run_id": meta["run_id"]}
+            filed = {"cik": cik, "accession": f["accession"], "document": path.name, "form": f["form"],
+                     "filing_date": f["filing_date"]}
+            html = base.read_raw(path).decode("utf-8", "replace")
+            et = items.business(f["accession"], path, f["form"]) if kind == PRIMARY else None
+            for section, text, quality, method, start, end in sections_of(
+                    html, f["form"], exhibit=kind == AIF_DOC, by_name=meta.get("by_name"),
+                    release=kind == RELEASE_DOC, edgartools=et):
+                sections.append({**filed, "report_date": f.get("report_date"), "section": section,
+                                 "text": text, "chars": len(text), "quality": quality, "start_char": start,
+                                 "end_char": end, "method": method, "rules_version": version,
+                                 **stamps})
+            if kind == PRIMARY and f["form"] in filings.ANNUAL_FORMS:
+                for n in sec_notes.parse(html, counts)[0]:
+                    # ``Note.row`` keys its row by an int CIK; this layer stores TEXT, as ``filing_item`` does,
+                    # so ``filed`` overwrites that one column and adds the form and the filing date.
+                    notes.append({**n.row(cik, f["accession"], path.name), **filed, **stamps})
+        folder = common.parquet_dir(NAME) / f"cik={cik}"
+        con = base.scratch_con()
+        try:
+            base.rows_table(con, "sections", SECTION, sections)
+            out.append(base.write_parquet(con, "SELECT * FROM sections ORDER BY accession, document, section",
+                                          folder / SECTIONS_PARQUET))
+            base.rows_table(con, "notes", NOTE, notes)
+            out.append(base.write_parquet(con, "SELECT * FROM notes ORDER BY accession, document, seq",
+                                          folder / NOTES_PARQUET))
+        finally:
+            con.close()
         return out
 
     def dirty(self, ctx: base.RunContext):

@@ -2,8 +2,10 @@
 
 **Provenance.** The cutting is done by **edgartools**, https://github.com/dgunning/edgartools, MIT licence,
 Dwight Gunning. Used from it: ``edgar.documents`` -- ``parse_html`` and ``HybridSectionDetector``. Pinned to
-**6.0.0** (``requirements-edgartools.txt``); ``479d350`` was that project's ``main`` on 12 November 2026, the day
-of the measurement. Nothing is copied in, so the licence is satisfied by the pinned dependency.
+**6.3.0** since 24 Nov 2026 (``requirements-edgartools.txt``); first measured at 6.0.0, when ``479d350`` was that
+project's ``main`` (12 November 2026, the day of the measurement). :data:`SWALLOW_SITES` were re-read in the 6.3.0
+wheel on 24 Nov 2026: the same six functions, one logged ``except`` each.
+Nothing is copied in, so the licence is satisfied by the pinned dependency.
 
 **Why it is worth a second interpreter.** Measured on 20 stored annual reports, 12 November 2026
 (``claude-coordinator`` ``notes/revenuechaser/notes/2026-11-12_1100_sec-edgartools-on-20.md``): its detector found

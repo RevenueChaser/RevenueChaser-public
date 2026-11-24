@@ -54,6 +54,13 @@ OURS_2 = "ours-2"
 OURS_3 = "ours-3"
 #: Every version this module can cut with. A new rule is a new entry, never an edit of an old one.
 VERSIONS: tuple[str, ...] = (OURS_1, OURS_2, OURS_3)
+#: The label ``sec/forms`` writes on every section row when the edgartools cutter is on (avo, 24 Nov 2026: "edgarcut'i
+#: alalim", pin 6.3.0): a 10-K's Item 1 and a 20-F's Item 4 come from edgartools, everything else from ``ours-2``.
+#: A label, not a rule: :func:`rule` does not know it; :mod:`.sec_forms_label` says which label a run
+#: writes. The readers that pin the cut they read pin this, and a pin bump moves it
+#: (``rcdata/tests/test_sec_forms_edgartools.py`` holds the two together).
+FORMS_ROWS_VERSION = f"{OURS_2}+edgartools-6.3.0"
+
 #: What a caller gets when it names none. The boards pin this explicitly anyway, so that a later default change
 #: cannot move their text without the change being visible in their own code.
 DEFAULT_VERSION = OURS_1

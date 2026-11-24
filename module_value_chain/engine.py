@@ -24,6 +24,7 @@ from pathlib import Path
 from revenuechaser.core import rawstore
 from revenuechaser.core.providers import sec_edgar
 from revenuechaser.rcdata import opens  # #566: pooled reads count for this run
+from revenuechaser.rcdata import sec_forms_label
 
 from . import aliases
 from . import config
@@ -89,7 +90,8 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
     ``filing_item`` until now, which is a second cut of the same documents by the same rule. ``primary_doc`` is the
     row's ``document``, which for a 40-F can be the AIF exhibit rather than the primary document - the exhibit is
     where that form's business section is, and the newest document of the newest filing is what the reader serves.
-    A row cut with another ``rules_version`` than :data:`splitter.VERSION` is read and logged, not dropped: the
+    A row cut with another ``rules_version`` than ``sec/forms`` writes now (``sec_forms_label.forms_rows_version``) is
+    read and logged, not dropped: the
     board has lived with a version pin ahead of its stored text before (``splitter``'s docstring), and dropping
     rows would empty the corpus instead of showing it.
     """
@@ -105,7 +107,7 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
         batch = []
         for d in read.form_business(ciks[i:i + _LAYER_BATCH], text=text):
             version = str(d.get("rules_version") or "")
-            if version != splitter.VERSION:
+            if version != sec_forms_label.forms_rows_version():
                 off_version[version] = off_version.get(version, 0) + 1
             row = {"cik": read._cik(d["cik"]), "form": d.get("form"), "filed": str(d.get("filing_date") or ""),
                    "accession": d.get("accession"), "primary_doc": d.get("document"),
@@ -121,7 +123,7 @@ def _layer_filings(tickers: list[str] | None = None, text: bool = False):
         logger.warning("value_chain: %s business sections are cut with %s, not %s; the board reads them as they are",
                        sum(off_version.values()),
                        ", ".join(f"{v or 'no version'} ({n})" for v, n in sorted(off_version.items())),
-                       splitter.VERSION)
+                       sec_forms_label.forms_rows_version())
 
 
 def _corpus_batches():
