@@ -196,7 +196,8 @@ ISSUE_KINDS = {
     "etf_series_id_shared": ("two etf rows carry one series id: one fund under two tickers; my_universe keeps one "
                              "of them (key: the series id)"),
     "etf_series_file_disagrees": ("an etf row whose series id (N-CEN's, else TickerInside's) is none the SEC fund "
-                                  "file lists for its ticker as an ETF: not overwritten (key: the ticker)"),
+                                  "file lists for its ticker as an ETF, and that etf._settle_series cannot settle: "
+                                  "kept (key: the ticker)"),
     "etf_class_manual_unknown": ("a line of the manual ETF class file naming a ticker that is no ETF of "
                                  "my_universe (key: the ticker)"),
 }
