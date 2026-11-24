@@ -267,8 +267,8 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                      "haftalik, uygun zamana koy\"): the week's filings are all read by then, the Sunday backups "
                      "and the weekday server jobs are elsewhere, and it still waits for that night's SEC reads to "
                      "exit 0 (their timer starts at 02:35 with a 90-minute limit)."),
-        tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_embeddings",
-                        "relatedness_scores"),
+        # It reads the SEC service's answers where they are and copies none (#894 step 3b).
+        tables_written=("relatedness_embeddings", "relatedness_scores"),
         chain_wait_minutes=60,
         settings=TaskSettings(time_limit_minutes=90)),
     AutomationEntry(
