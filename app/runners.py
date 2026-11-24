@@ -1239,10 +1239,8 @@ def _news_headlines_pass(rid: str) -> dict | None:
     tape = headlines.load_tape(run_id=rid)
     if tape["read"]:
         ledger.add_note(f"News tape: {tape['stored']} market headlines from {tape['read']} new lines")
-    from revenuechaser.module_news import x_check
-    checked = x_check.run(UWClient)
-    if checked["calls"]:
-        ledger.add_note(f"News X: {checked['checked']} option posts checked against UW ({checked['calls']} calls)")
+    # The X option check (``module_news.x_check``) asked Unusual Whales; it stopped with the subscription (6 Dec 2026)
+    # until the options lane has a prints source. Stored checks still render; new posts carry the X id badge.
     from revenuechaser.rcdata import read
     lists, unread = [], []
     for kind in headlines.LISTS:                      # strict: an unreadable list is not an empty one (F6)

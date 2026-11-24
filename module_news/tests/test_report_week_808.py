@@ -89,7 +89,7 @@ def test_a_catalyst_with_no_day_keeps_uw_s_own_words_and_stands_in_its_own_group
     assert "Later, no day yet" in page
     assert '<span class="t na">Q2 2027</span>' in page
     assert '<span class="pchip">no day yet</span>' in page
-    assert "Unusual Whales serves this one as 2027-Q2, not a day" in page
+    assert "The source gives this one as 2027-Q2, not a day" in page
     assert 'data-day="2027-04-01"' not in page, "an undated catalyst never joins a day of the strip"
 
 
