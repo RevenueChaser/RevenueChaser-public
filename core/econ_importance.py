@@ -19,8 +19,10 @@ LOW = 1
 #: Phrases (whole words, lower case) that make an event high importance.
 HIGH_PHRASES = (
     "cpi", "pce", "employment report", "employment situation", "nonfarm", "non farm", "gdp", "retail sales", "ism",
-    "fomc", "fed interest rate", "rate decision",
+    "fomc", "fed interest rate", "rate decision", "unemployment rate", "inflation rate",
 )
+#: Whole names that are high on their own: TradingView calls the FOMC decision just "Interest Rate".
+HIGH_NAMES = (" interest rate ",)
 #: Phrases that make an event medium importance when no high phrase matched.
 MEDIUM_PHRASES = (
     "ppi", "jolts", "jobless claims", "consumer sentiment", "inflation expectations", "housing starts",
@@ -40,7 +42,7 @@ def _has(words: str, phrases) -> bool:
 def importance(event, kind) -> int:
     """The level of one calendar row from its ``event`` name and UW ``type`` (report, fed-speaker, fomc)."""
     words, k = _words(event), str(kind or "").strip().lower()
-    if k == "fomc" or _has(words, HIGH_PHRASES):
+    if k == "fomc" or words in HIGH_NAMES or _has(words, HIGH_PHRASES):
         return HIGH
     if k == "fed-speaker":
         is_chair = " chair " in words and " vice chair " not in words

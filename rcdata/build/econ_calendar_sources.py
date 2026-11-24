@@ -117,7 +117,10 @@ def fed_rows(body) -> tuple[list[dict], int]:
         if ts is None or name is None:
             unkeyed += 1
             continue
-        out.append({"event_ts": ts, "event": name, "type": FED_TYPES[item["type"]],
+        kind = FED_TYPES[item["type"]]
+        if kind == "fomc" and "minutes" in name.lower():
+            kind = "report"          # the minutes come three weeks after the decision: not a rate event (Earnings R6)
+        out.append({"event_ts": ts, "event": name, "type": kind,
                     "event_time": datetime.fromtimestamp(ts, timezone.utc).isoformat(), "forecast": None,
                     "prev": None, "reported_period": _text(item.get("description")), "source": "fed"})
     return out, unkeyed

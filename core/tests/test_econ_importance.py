@@ -27,6 +27,11 @@ from revenuechaser.core import econ_importance as ei
     ("Non Farm Payrolls", "report"),
     ("Speech - Chair Jerome H. Powell", "fed-speaker"),
     ("FOMC Meeting", "fomc"),
+    # TradingView's own high rows (live, 24 Nov 2026): the jobless rate, CPI as "Inflation Rate", the FOMC decision.
+    ("Unemployment Rate", "report"),
+    ("Inflation Rate YoY", "report"),
+    ("Core Inflation Rate MoM", "report"),
+    ("Interest Rate", "report"),
 ])
 def test_high(event, kind):
     assert ei.importance(event, kind) == 3
@@ -49,6 +54,8 @@ def test_medium(event, kind):
 @pytest.mark.parametrize("event, kind", [
     ("Wholesale inventories", "report"),
     ("Baker Hughes rig count", "report"),
+    ("Interest Rate on Reserve Balances", "report"),       # "Interest Rate" is high only as the whole name
+    ("Interest Rate Projection - Current", "report"),
     ("", "report"),
     (None, None),
 ])

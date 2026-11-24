@@ -37,6 +37,7 @@ FED = {"events": [
     {"month": "2026-11", "days": "25", "time": "2:00 p.m.", "title": "Beige Book", "description": None,
      "type": "Beige"},
     {"month": "2026-11", "days": "24", "time": "4:30 p.m.", "title": "H.4.1 Factors", "type": "Stat"},
+    {"month": "2026-12", "days": "30", "time": "2:00 p.m.", "title": "FOMC Minutes", "type": "FOMC"},
     {"month": "2019-03", "days": "20", "time": "2:00 p.m.", "title": "FOMC Meeting", "type": "FOMC"}]}
 UW_PDUFA = {"ticker": "IOVA", "drug": "Lifileucel", "status": "NDA", "catalyst": "PDUFA Date",
             "start_date": "2026-12-04", "end_date": "2026-12-04", "indication": "Advanced Melanoma"}
@@ -92,7 +93,8 @@ def test_both_sources_land_in_economic_event_with_their_source_and_read_back(htt
     got = read.economic_calendar()
     by_event = {r["event"]: r for r in got}
     assert set(by_event) == {"Initial Jobless Claims", "CPI", "Speech - Governor Lisa D. Cook", "FOMC Meeting",
-                             "Beige Book"}, "a Fed statistical release and a 2019 meeting are left out"
+                             "Beige Book", "FOMC Minutes"}, "a Fed statistical release and a 2019 meeting are left out"
+    assert by_event["FOMC Minutes"]["type"] == "report", "the minutes are not a rate decision (Earnings R6)"
     assert by_event["CPI"]["source"] == "tradingview" and by_event["CPI"]["type"] == "report"
     assert by_event["Initial Jobless Claims"]["forecast"] == "222" and by_event["CPI"]["prev"] == "325.1"
     assert by_event["Speech - Governor Lisa D. Cook"]["type"] == "fed-speaker"
@@ -191,6 +193,42 @@ def test_a_filed_document_is_fetched_once(http_mock):
 ])
 def test_a_pdufa_date_is_read_with_its_precision(text, day, precision):
     assert fda.target(text)[:2] == (day, precision)
+
+
+def test_sec_requests_go_through_the_shared_sec_pace(http_mock, monkeypatch):
+    """EDGAR answers an unpaced burst with 429 (measured 23 Nov 2026, after 264 calls): search and documents both
+    take the run's SEC spacing."""
+    from revenuechaser.rcdata.build.fundamentals import common
+    paced = []
+    real = common.sec_spacing
+    monkeypatch.setattr(common, "sec_spacing", lambda ctx: paced.append(1) or real(ctx))
+    _fda_routes(http_mock)
+    _run(fda.NAME)
+    assert len(paced) >= 2, "one search page and one document, both paced"
+
+
+@pytest.mark.parametrize("sentence, file_date, day, want", [
+    # A quarter that has begun is still ahead until it ends.
+    ("The NDA has a PDUFA target action date in the fourth quarter of 2026.", "2026-08-01", date(2026, 11, 23),
+     date(2026, 10, 1)),
+    # A date before the word that is the filing's own day is not a target.
+    ("On November 3, 2026, the FDA accepted the NDA for relutrigine; PDUFA review is underway.", "2026-11-03",
+     date(2026, 11, 3), None),
+    # The same shape with a date after the filing is a target.
+    ("A decision on March 15, 2027 under PDUFA is expected for relutrigine.", "2026-11-03", date(2026, 11, 3),
+     date(2027, 3, 15)),
+])
+def test_which_pdufa_dates_stay_on_the_calendar(sentence, file_date, day, want):
+    hit = {"doc": "d", "file_date": file_date, "url": "u",
+           "display_names": ["Praxis Precision Medicines, Inc.  (PRAX)  (CIK 0001689548)"]}
+    rows, _ = fda.sec_rows([hit], {"d": [sentence]}, day)
+    assert [r["target_date"] for r in rows] == ([want] if want else [])
+
+
+def test_a_sentence_is_not_cut_at_us():
+    doc = "<p>The U.S. Food and Drug Administration accepted the NDA for relutrigine with a PDUFA date of May 1, 2027.</p>"
+    assert fda.pdufa_sentences(doc) == [
+        "The U.S. Food and Drug Administration accepted the NDA for relutrigine with a PDUFA date of May 1, 2027."]
 
 
 @pytest.mark.parametrize("sentence, name", [
