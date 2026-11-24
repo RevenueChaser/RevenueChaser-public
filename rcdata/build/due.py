@@ -184,13 +184,33 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     return False, f"{cadence}: last checked {age} days ago"
 
 
+#: The local hours (the machine's zone, Europe/Amsterdam on homesrv) the storage fetch takes a kind's sources at, for a
+#: kind that is built on a timer of its own (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each just before its
+#: build at 08:25 and 23:25, not hourly). A fetch that failed tries once more the next hour.
+FETCH_HOURS = {"market": (7, 22)}
+
+
+def _fetch_hour(ds) -> str | None:
+    """Why the storage fetch leaves ``ds`` for a later hour, or None."""
+    hours = FETCH_HOURS.get(ds.kind)
+    if not hours:
+        return None
+    hour = calendar._now().astimezone().hour
+    if hour in hours:
+        return None
+    check = ops.latest_check(ds.name)
+    if (hour - 1) % 24 in hours and check is not None and check["result"] == "failed":
+        return None                           # the one retry of a failed fetch
+    return f"{ds.kind} is fetched at " + " and ".join(f"{h:02d}:45" for h in hours)
+
+
 def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
     """``(mode, why not)`` for the split passes (avo, 24 Nov 2026: a storage fetch timer always on, a storage build
     timer he switches). ``fetch``: a ``full`` source is queued as ``parquet``, so the pass never builds DuckDB.
     ``build``: only a ``full`` source whose newest check is a Parquet stage is queued, and as ``full``: the build of
     what the fetch timer staged, at no provider call (the raw file is the resume marker)."""
     if stage == "fetch":
-        return ("parquet" if mode == "full" else mode), None
+        return ("parquet" if mode == "full" else mode), _fetch_hour(ds)
     if stage == "build":
         if mode != "full":
             return mode, f"automation {mode}: the build pass builds only full sources"
@@ -200,17 +220,21 @@ def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
     return mode, None
 
 
-def enqueue_due(datasets: dict | None = None, stage: str | None = None) -> list[tuple[str, str, int | None, bool]]:
+def enqueue_due(datasets: dict | None = None, stage: str | None = None,
+                kinds: tuple[str, ...] = ()) -> list[tuple[str, str, int | None, bool]]:
     """Queue every due dataset once; ``(name, why, request id or None, error)`` per dataset, in registry order.
 
     No id: not due, already queued or running, or an error (``why`` says which). ``error`` is True when the due check
     raised or ``ops.sqlite`` stayed locked past its busy timeout; one dataset's error does not stop the others.
     ``stage`` is the split pass (``run --fetch-only`` / ``--build-only``, ``_pass_mode``); None is the old whole pass.
+    ``kinds``, when given, leaves every other kind's dataset out (``run --build-only --kind market``).
     """
     if datasets is None:
         from . import DATASETS as datasets
     out = []
     for name in datasets:                     # registry order: sources before the kind's derived datasets (PR A)
+        if kinds and datasets[name].kind not in kinds:
+            continue
         try:
             # avo, 10 Nov 2026 ("burada yaptigim her ayarin uygulanabilir oldugundan emin ol"): a dataset the fetch
             # switch or its file's switch holds is not queued at all, so a held file leaves no hourly skipped rows
