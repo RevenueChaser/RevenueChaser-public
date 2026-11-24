@@ -111,6 +111,7 @@ class YahooBars:
     kind = KIND
     providers = ("yfinance",)
     tables = ("price_bar_daily",)
+    feeds = ("market_cap_daily",)                  # a served close is a cap's close
     cadence = "daily"
     starts_by_hand = True
     honours_scope = True              # the request's names, else the scope's names Compustat does not price
