@@ -448,8 +448,10 @@ def test_an_etf_s_compustat_ticker_history_is_in_security_history(request):
     con = duckdb.connect()
     try:
         con.execute("COPY (SELECT '131856' AS gvkey, '01' AS iid, 'TIC' AS item, 'XLKOLD' AS itemvalue, "
-                    "DATE '2010-01-04' AS efffrom, DATE '2020-03-01' AS effthru "
-                    "UNION ALL SELECT '131856', '01', 'TIC', 'XLK', DATE '2020-03-02', NULL) "
+                    "DATE '2010-01-04' AS efffrom, DATE '2020-03-01' AS effthru, DATE '2026-11-01' AS source_as_of, "
+                    "CAST(1.0 AS DOUBLE) AS fetched_at, 'r' AS run_id "
+                    "UNION ALL SELECT '131856', '01', 'TIC', 'XLK', DATE '2020-03-02', NULL, DATE '2026-11-01', 1.0, "
+                    "'r') "
                     f"TO {base.sql_path(folder / 'sec_idhist.parquet')} (FORMAT parquet)")
     finally:
         con.close()
