@@ -11,8 +11,8 @@ a session no Compustat row of the security has.
 names, so the whole history costs no more than a window and a split Yahoo learns later restates every older row in
 the next run. Yahoo's OHLC is **split-adjusted** even with ``auto_adjust=False`` (its ``Adj Close`` is the only
 dividend-adjusted column), so :func:`nominal` rebuilds the prices as traded: each day times the product of the split
-ratios after it, the volume divided by it. The store's own factors then come from Alpaca's actions, as for every
-security. A 401 or 429 stops the run, as in ``yfinance/float``; what was read before it is kept.
+ratios after it, the volume divided by it. The store's factors then come from the served actions, Yahoo's own
+splits and dividends on the days its bar is served (:data:`ACTIONS_SQL`). A 401 or 429 stops the run, as in ``yfinance/float``; what was read before it is kept.
 
 Raw: ``raw/yfinance/bars/<as_of>/<ticker>.json.gz``; a name a file of the day holds is not asked again that day.
 Parquet: ``parquet/yfinance/bars/ticker=<ticker>/part-0.parquet``, the name's whole history from its newest answer,
@@ -49,7 +49,8 @@ SCHEMA = [("ticker", "TEXT"), ("cik", "TEXT"), ("security_id", "TEXT"), ("sessio
           ("split", "DOUBLE"), ("dividend", "DOUBLE"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 #: Yahoo's splits and cash dividends as ``prices/serving`` actions (avo, 24 Nov 2026, D2 "Evet, Yahoo'dan al"),
 #: in the columns of ``wrds_history``'s actions. ``PricesServing._wrds_actions`` takes one only on a day whose served
-#: bar is Yahoo's and that no Alpaca or Compustat action of the kind already holds.
+#: bar is Yahoo's and that no Alpaca or Compustat action of the kind already holds. One of a kind per id and day: two
+#: tickers of one id (a rename's old file beside the new one) would apply a split or dividend twice (review N1).
 ACTIONS_SQL = f"""
     SELECT {ID} AS security_id, 'yahoo:split:' || {ID} || ':' || CAST(y.session_date AS TEXT) AS action_id,
            CASE WHEN y.split < 1 THEN 'reverse_split' ELSE 'forward_split' END AS action_type,
@@ -58,11 +59,13 @@ ACTIONS_SQL = f"""
            CAST(NULL AS DATE) AS record_date, CAST(NULL AS DATE) AS payable_date, '{NAME}' AS source,
            y.source_as_of, y.fetched_at, y.run_id
     FROM {STAGING} y {JOIN} WHERE y.split > 0 AND y.split <> 1 AND {SERVED}
+    QUALIFY row_number() OVER (PARTITION BY {ID}, y.session_date ORDER BY y.fetched_at DESC, y.ticker) = 1
     UNION ALL
     SELECT {ID}, 'yahoo:div:' || {ID} || ':' || CAST(y.session_date AS TEXT), 'cash_dividend', y.session_date,
            y.session_date, NULL, NULL, y.dividend, false, 'USD', NULL, NULL, '{NAME}', y.source_as_of, y.fetched_at,
            y.run_id
-    FROM {STAGING} y {JOIN} WHERE y.dividend > 0 AND {SERVED}"""
+    FROM {STAGING} y {JOIN} WHERE y.dividend > 0 AND {SERVED}
+    QUALIFY row_number() OVER (PARTITION BY {ID}, y.session_date ORDER BY y.fetched_at DESC, y.ticker) = 1"""
 
 
 def _lookup(ticker: str) -> list[dict]:

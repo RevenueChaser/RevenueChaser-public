@@ -771,6 +771,16 @@ def test_the_rule_against_todays_code_on_the_fixture():
     assert dropped == [("B", "1995-06-01"), ("B", "2014-12-31"), ("G", "2005-01-10")]   # 2 securities, 3 rows lost
 
 
+def test_a_move_to_nyse_texas_keeps_the_bars_after_the_move():
+    """Review of the prices day, 24 Nov 2026: DDS moved from NYSE (11) to 24 (NYSE Texas) on 5 Oct 2026 and had no
+    served bar since; nine more Texas names the same. A day on 24 is listed; OTC (19) still is not."""
+    got = _listed([("T", "2026-10-02", 24), ("T", "2026-10-05", 24), ("T", "2026-11-19", 24),
+                   ("O", "2026-11-19", 19)],
+                  [("T", 11, "1998-04-01", "2026-10-04"), ("T", 24, "2026-10-05", None), ("O", 19, "1998-04-01", None)])
+    assert got == {("T", "2026-10-02"): True, ("T", "2026-10-05"): True, ("T", "2026-11-19"): True,
+                   ("O", "2026-11-19"): False}
+
+
 def test_the_secd_pull_reaches_securities_listed_once_whatever_their_code_today():
     sql = wrds_history.year_sql("secd", 2025)
     assert "exchg IN (11, 12, 14, 17, 21) OR (gvkey, iid) IN (SELECT gvkey, iid FROM comp.sec_idhist" in sql
