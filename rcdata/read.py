@@ -209,7 +209,7 @@ def economic_events(fetched_after: float | None = None) -> list[dict]:
 _ECON_PREFERRED = ("(source <> 'uw' OR snapshot_date NOT IN "
                    "(SELECT snapshot_date FROM economic_event WHERE source <> 'uw'))")
 #: The same rule for the FDA calendar: the SEC's and the Federal Register's rows of a day, else UW's.
-_FDA_PREFERRED = "(source <> 'uw' OR snapshot_date NOT IN (SELECT snapshot_date FROM fda_event WHERE source <> 'uw'))"
+_FDA_PREFERRED = "TRUE"  # MUTATION CHECK, reverted in the next commit
 
 
 def fda_calendar(snapshot_date=None) -> list[dict]:
