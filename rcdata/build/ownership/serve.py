@@ -271,8 +271,9 @@ _CLOSED = ", ".join(f"DATE '{d}'" for d in sorted(set().union(
 
 VIEWS = {
     "sec13f_totals": (
-        "SELECT ticker, CAST(json_group_object(strftime(period, '%Y-%m-%d'), json_object("
-        + ", ".join(f"'{m}', {m}" for m in METRICS) + ") ORDER BY period) AS JSON) AS entry "
+        # Keyed in period order however the rows are stored (a per-quarter derive merges them back by period).
+        "SELECT ticker, CAST(to_json(map_from_entries(list(struct_pack(k := strftime(period, '%Y-%m-%d'), "
+        "v := json_object(" + ", ".join(f"'{m}', {m}" for m in METRICS) + ")) ORDER BY period))) AS JSON) AS entry "
         "FROM sec13f_ticker_period GROUP BY ticker"),
     "short_interest": f"""
         WITH f0 AS (
