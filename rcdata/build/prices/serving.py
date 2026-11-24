@@ -466,6 +466,24 @@ REKEYED_SQL = """
     GROUP BY 1 HAVING count(DISTINCT s.security_id) = 1"""
 
 
+# A live id the Yahoo fetch saw (``sym:T``, ``figi:X``) whose Yahoo rows this build serves under another id: Compustat
+# or the spine picked the name up (``yahoo_bars.ID``), Yahoo is not asked for it any more, and the old id would be
+# carried frozen beside the new one (review N2, avo's D1 of 24 Nov 2026 "Yeni id'ye taşı": moved as C3 moves).
+YAHOO_REKEYED_SQL = f"""
+    SELECT y.security_id AS old_id, any_value({yahoo_bars.ID}) AS new_id
+    FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
+    WHERE y.security_id IN (SELECT unnest(?)) AND {yahoo_bars.ID} <> y.security_id AND {yahoo_bars.SERVED}
+      AND {yahoo_bars.ID} IN (SELECT DISTINCT security_id FROM price_bar_daily)
+      AND y.security_id NOT IN (SELECT DISTINCT security_id FROM price_bar_daily)
+    GROUP BY 1 HAVING count(DISTINCT {yahoo_bars.ID}) = 1"""
+
+
+def _has(con: duckdb.DuckDBPyConnection, *names: str) -> bool:
+    """Every one of ``names`` is a table or view of ``con``."""
+    return con.execute("SELECT count(DISTINCT table_name) FROM information_schema.tables WHERE table_name IN "
+                       "(SELECT unnest(?))", [list(names)]).fetchone()[0] == len(set(names))
+
+
 def _move_rekeyed(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, live: dict[str, int]) -> set[str]:
     """C3 option (a), #1413: a re-keyed id is **moved**, not lost and not served twice. The new id takes the old
     id's live bars for every session it has none of (its own bar wins a session both hold), and the old id is not
@@ -473,9 +491,9 @@ def _move_rekeyed(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, live: di
     ``price_bars_daily``. The old id's rows leave the served file with it: avo's word (C3), so the build that first
     does it is a whole build with a backup."""
     old = sorted(sid for sid in live if sid.startswith("cik:"))
-    if not old:
-        return set()
-    pairs = dict(con.execute(REKEYED_SQL, [old]).fetchall())
+    pairs = dict(con.execute(REKEYED_SQL, [old]).fetchall()) if old else {}
+    if _has(con, yahoo_bars.STAGING, "_etf_tic_series", "stg_spine"):
+        pairs |= dict(con.execute(YAHOO_REKEYED_SQL, [sorted(set(live) - set(pairs))]).fetchall())
     if pairs:
         carried = stage.carry_live_as(con, pairs)
         ctx.notes.append(f"{len(pairs)} re-keyed ids moved to their spine id with {carried:,} live bars the new id "

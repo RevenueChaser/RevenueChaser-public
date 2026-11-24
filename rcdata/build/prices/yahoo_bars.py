@@ -71,8 +71,9 @@ ACTIONS_SQL = f"""
 def _lookup(ticker: str) -> list[dict]:
     """Yahoo's daily rows of one ticker as ``{date, open, high, low, close, volume, split, dividend}``, oldest first,
     OHLC, volume and dividend as Yahoo gives them (split-adjusted). ``split`` is the day's ratio (new over old
-    shares), 0 for none; ``dividend`` the cash per share going ex that day, 0 for none. An
-    empty answer after a logged 401 or 429 raises ``YahooRefused``. The one function that talks to Yahoo."""
+    shares), 0 for none; ``dividend`` the cash per share going ex that day, a fund's capital-gains distribution
+    included (review N7), 0 for none. An empty answer after a logged 401 or 429 raises ``YahooRefused``. The one
+    function that talks to Yahoo."""
     import logging
 
     import yfinance as yf
@@ -89,7 +90,7 @@ def _lookup(ticker: str) -> list[dict]:
         return []
     return [{"date": ix.date().isoformat(), "open": r.get("Open"), "high": r.get("High"), "low": r.get("Low"),
              "close": r.get("Close"), "volume": r.get("Volume"), "split": r.get("Stock Splits") or 0,
-             "dividend": r.get("Dividends") or 0}
+             "dividend": (_num(r.get("Dividends")) or 0) + (_num(r.get("Capital Gains")) or 0)}
             for ix, r in frame.iterrows()]
 
 
@@ -111,8 +112,11 @@ def nominal(rows: list[dict]) -> list[dict]:
 def _compustat_recent(as_of: date) -> tuple[date | None, set[str], set[str]]:
     """Compustat's newest priced day up to ``as_of`` (None with no ``wrds/prices`` Parquet), the ``gvkey:iid`` of
     every security it priced in the ``RECENT_DAYS`` before that day, and the tickers (in ``universe.norm``'s
-    spelling) those securities carry on their own newest day there. Counted back from Compustat's day, not from
-    ``as_of``: a WRDS refresh a week late must not make every name look unpriced (review finding 5)."""
+    spelling) those securities carry on their own newest day there. Only a day on an exchange whose days are served
+    (``wrds_history.SERVED_EXCHG``) counts: a name Compustat still files as over-the-counter has no served bar from
+    it, so Yahoo is asked (review N4: CZZL, Nasdaq-listed, priced by Compustat only as OTC ``CZZLF``). Counted back
+    from Compustat's day, not from ``as_of``: a WRDS refresh a week late must not make every name look unpriced
+    (review finding 5)."""
     from . import wrds_history
     files = [p for y in range(as_of.year - 1, as_of.year + 1)
              if (p := wrds_history.partition_path("secd", y)).is_file()]
@@ -123,7 +127,8 @@ def _compustat_recent(as_of: date) -> tuple[date | None, set[str], set[str]]:
         rows = con.execute(f"""
             WITH d AS (SELECT gvkey || ':' || iid AS gid, {universe.norm('tic')} AS tic, CAST(datadate AS DATE) AS day
                        FROM read_parquet([{", ".join(base.sql_path(p) for p in files)}], union_by_name = true)
-                       WHERE {secd.PRICED} AND CAST(datadate AS DATE) <= ?),
+                       WHERE {secd.PRICED} AND exchg IN ({wrds_history._SERVED})
+                         AND CAST(datadate AS DATE) <= ?),
                  n AS (SELECT max(day) AS newest FROM d)
             SELECT n.newest, d.gid, arg_max(d.tic, d.day) FROM d, n
             WHERE d.day > n.newest - INTERVAL {RECENT_DAYS} DAY GROUP BY ALL""", [as_of]).fetchall()

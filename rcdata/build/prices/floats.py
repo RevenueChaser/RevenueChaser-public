@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import re
 from datetime import date
 from pathlib import Path
@@ -82,10 +83,12 @@ def _lookup(ticker: str) -> dict:
 
 
 def _num(value) -> float | None:
+    """``value`` as a finite float, else None: Yahoo answers NaN for a missing price (review N5)."""
     try:
-        return float(value) if value not in (None, "") else None
+        f = float(value) if value not in (None, "") else None
     except (TypeError, ValueError):
         return None
+    return f if f is not None and math.isfinite(f) else None
 
 
 def _tier_a() -> list[dict]:
