@@ -193,9 +193,9 @@ REGISTRY: tuple[AutomationEntry, ...] = (
         settings=TaskSettings(time_limit_minutes=5)),
     AutomationEntry(
         name="RC-Store-Fetch", label="Storage fetch (hourly)",
-        args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--fetch-only"), time="00:35", hourly=True,
+        args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--fetch-only"), time="00:45", hourly=True,
         unit_name=STORE_FETCH_UNIT,
-        description="The storage fetch (avo, 24 Nov 2026): every hour at :35, every due source fetched into the raw store "
+        description="The storage fetch (avo, 24 Nov 2026): every hour at :45, every due source fetched into the raw store "
                     "and written to Parquet; a source set to build in full is staged as Parquet only. It never "
                     "builds a serving DuckDB, so it stays on while the build timer is off. Queued Fetch requests "
                     "that build wait for the storage build. It does not start while a job lock is held or a builder "
