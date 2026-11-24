@@ -852,6 +852,26 @@ def test_an_alpaca_cash_dividend_copying_its_stock_dividends_rate_is_held_back(f
     assert not cash_rows[1.0106]["applied"] and "mislabelled copy" in cash_rows[1.0106]["not_applied_why"]
 
 
+def test_an_alpaca_stock_dividend_alone_is_applied_at_its_rate_not_one_plus_it(fake, http_mock):
+    """#1413, the parquet count of 24 Nov 2026: Alpaca's 8 stock dividends carry the share ratio itself (1.03 to
+    1.08; SCCO's 1.0106 is Compustat's ajexdi step), so ``1 + rate`` halved every close before one Compustat had not
+    recorded yet. A 1.05 stock dividend steps the June close by 1.05."""
+    http_mock.routes[:] = [r for r in http_mock.routes if "/v1/corporate-actions" not in r[0]]
+    http_mock.add("/v1/corporate-actions", {"corporate_actions": {
+        "stock_dividends": [{"id": "sd-1", "symbol": "AAPL", "rate": 1.05, "process_date": "2026-10-26",
+                             "ex_date": "2026-10-26"}]}, "next_page_token": None})
+    assert _backfill()["result"] == "changed"
+    assert base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})["result"] != "failed"
+    row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    assert row["result"] != "failed", row
+    [act] = _q("SELECT ratio, applied FROM corporate_action WHERE security_id = ? AND source = ? "
+               "AND action = 'stock_dividend'", [AAPL, actions.NAME])
+    assert act["applied"] and act["ratio"] == pytest.approx(1.05)
+    view = {str(r["session_date"]): r for r in _q(
+        "SELECT session_date, close FROM price_bars_daily WHERE ticker = 'AAPL'")}
+    assert view["2025-06-03"]["close"] == pytest.approx(202.0 / 2 / 1.05)
+
+
 def test_a_compustat_split_alpaca_has_a_day_off_is_not_applied_a_second_time(fake, http_mock):
     """#268: Compustat's ``datadate`` is the first session on the new basis and Alpaca's ``ex_date`` is not always
     that day, so a same-day check alone let both sources' rows in and the share basis stepped twice. Alpaca goes ex a

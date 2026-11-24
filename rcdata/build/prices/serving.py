@@ -590,7 +590,11 @@ ACTION_KIND = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split', 
 # The ratio and the amount ``corporate_action`` serves of an Alpaca action, over its raw rates.
 ACTION_RATIO = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split') AND {a}.old_rate > 0 "
                 "AND {a}.new_rate > 0 THEN {a}.new_rate / {a}.old_rate "
+                "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 1 THEN {a}.rate "
                 "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 0 THEN 1 + {a}.rate END")
+# Alpaca writes a stock dividend's ``rate`` as the share ratio (new over old): all 8 in the tree on 24 Nov 2026 lie
+# between 1 and 1.5 (SCCO 1.0106 = Compustat's ajexdi step), so ``1 + rate`` doubled every factor (#1413).
+# shortcut: a rate at or below 1 is still read as a fraction (no live example of one), revisit when Alpaca shows one.
 ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_distribution') THEN {a}.rate END"
 # Compustat's split that Alpaca has a day or few off is the same split (#268): Compustat's ``datadate`` is the first
 # session on the new basis and Alpaca's ``ex_date`` is not always that day, so the same-day rule in
