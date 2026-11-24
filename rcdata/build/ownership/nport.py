@@ -33,9 +33,10 @@ Served (C2, avo 16 Nov 2026, Q11 of the 13F plan): ``etf_holdings_nport``, the h
 (``etf.series_id``, ETNs left out), from each series' newest report in the newest typed quarter (report date, then
 filing date, then accession), and only the positions whose CUSIP is one spine ticker's current CUSIP
 (``common.spine_cusips``): bonds, derivatives, cash and unmapped lines stay in Parquet. Built whole, from one quarter,
-whenever this dataset's Parquet changed; kept as it is on the live copy otherwise. Long equity only (``asset_cat``
-``EC``, ``payoff_profile`` ``Long``): a short, a bond, a derivative or cash with a spine CUSIP is not a holding of the
-fund's stock list (#1441, measured 22 Nov 2026: ~3,950 such rows were served).
+whenever this dataset's Parquet changed or the live tables serve an ETF ticker the spine no longer pairs with its
+series (``_stale_etfs``); kept as it is on the live copy otherwise. Long equity only (``asset_cat`` ``EC``,
+``payoff_profile`` ``Long``): a short, a bond, a derivative or cash with a spine CUSIP is not a holding of the fund's
+stock list (#1441, measured 22 Nov 2026: ~3,950 such rows were served).
 
 **History (#1441, avo 22 Nov 2026):** ``etf_holdings_nport_history`` holds every typed quarter (2019q4 on): per
 quarter, each spine ETF's newest report in that quarter and its long equity, **one row per holding** (a fund reports a
@@ -189,6 +190,20 @@ def _spine_etfs() -> list[tuple[str, str]]:
         con.close()
 
 
+def _stale_etfs() -> bool:
+    """True when the live tables serve an ``(etf_ticker, series_id)`` the spine no longer pairs (a renamed ETF, a
+    series moved to another ticker). An unreadable spine or live file is not stale.
+
+    Only this direction: most spine ETFs have no long equity of a spine CUSIP, so they are never served, and "the
+    pairs differ" would rebuild on every run. shortcut: a newly added spine ETF waits for the next N-PORT quarter."""
+    etfs = set(_spine_etfs())
+    if not etfs:
+        return False
+    live = dirty._live_rows(KIND, f"SELECT DISTINCT etf_ticker, series_id FROM {TABLE} "
+                                  f"UNION SELECT DISTINCT etf_ticker, series_id FROM {HISTORY}")
+    return bool(live) and not set(live) <= etfs
+
+
 def _num(col: str) -> str:
     return f"TRY_CAST(replace(trim({col}), ',', '') AS DOUBLE)"
 
@@ -327,10 +342,13 @@ class Nport:
         return [p for raw in raws for p in self.to_parquet(ctx, raw)]
 
     def dirty(self, ctx: base.RunContext):
-        """Clean when none of its Parquet changed since the live file was built; else the table is built whole."""
+        """Clean when none of its Parquet changed since the live file was built and every ``(etf_ticker, series_id)``
+        the live tables serve is still a spine ETF's; else the tables are built whole (ticker plan PR 4: the spine
+        renamed SPLG to SPYM and both stayed served)."""
         changed = getattr(ctx, "changed", None)
         root = parquet_dir().resolve()
-        if changed is not None and not any(root in Path(p).resolve().parents for p in changed):
+        if (changed is not None and not any(root in Path(p).resolve().parents for p in changed)
+                and not _stale_etfs()):
             return dirty.CLEAN
         return dirty.ALL
 
