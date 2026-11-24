@@ -603,7 +603,11 @@ ACTION_KIND = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split', 
 # The ratio and the amount ``corporate_action`` serves of an Alpaca action, over its raw rates.
 ACTION_RATIO = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split') AND {a}.old_rate > 0 "
                 "AND {a}.new_rate > 0 THEN {a}.new_rate / {a}.old_rate "
+                "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 1 THEN {a}.rate "
                 "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 0 THEN 1 + {a}.rate END")
+# Alpaca writes a stock dividend's ``rate`` as the share ratio (new over old): all 8 in the tree on 24 Nov 2026 lie
+# between 1 and 1.5 (SCCO 1.0106 = Compustat's ajexdi step), so ``1 + rate`` doubled every factor (#1413).
+# shortcut: a rate at or below 1 is still read as a fraction (no live example of one), revisit when Alpaca shows one.
 ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_distribution') THEN {a}.rate END"
 # Compustat's split that Alpaca has a day or few off is the same split (#268): Compustat's ``datadate`` is the first
 # session on the new basis and Alpaca's ``ex_date`` is not always that day, so the same-day rule in
@@ -628,6 +632,13 @@ ALPACA_STOCK_DIV_BESIDE = f"""(a.source = '{ALPACA_ACTIONS}' AND a.action_type =
     AND EXISTS (SELECT 1 FROM _act w WHERE w.security_id = a.security_id AND w.source = '{wrds_history.NAME}'
                 AND {ACTION_KIND.format(a='w')} = 'split'
                 AND abs(date_diff('day', w.ex_date, a.ex_date)) <= {SPLIT_SAME_DAYS}))"""
+
+# Alpaca's cash dividend that copies the rate of its own stock dividend the same day and security: a mislabelled twin
+# of the stock dividend, never cash (SCCO, 3 Nov 2026: a stock dividend at 1.0106 and two cash rows, 1.30 and 1.0106,
+# read by the parquet check of #1413). Held back with ``not_applied_why``. Over ``_act`` and an alias ``a``.
+ALPACA_CASH_TWIN_OF_STOCK_DIV = f"""(a.source = '{ALPACA_ACTIONS}' AND a.action_type = 'cash_dividend'
+    AND EXISTS (SELECT 1 FROM _act s WHERE s.security_id = a.security_id AND s.source = '{ALPACA_ACTIONS}'
+                AND s.action_type = 'stock_dividend' AND s.ex_date = a.ex_date AND s.rate = a.rate))"""
 
 
 class PricesServing:
@@ -1005,6 +1016,8 @@ class PricesServing:
         restated_by = ("(SELECT max(r.crsp_ex_date) FROM _split_restated_by_crsp r "
                        "WHERE r.security_id = a.security_id AND r.dup_ex_date = a.ex_date)")
         why = f"""CASE
+            WHEN {ALPACA_CASH_TWIN_OF_STOCK_DIV}
+                THEN 'the same rate as Alpaca''s stock dividend that day: a mislabelled copy of it, not cash (#1413)'
             WHEN {ALPACA_STOCK_DIV_BESIDE}
                 THEN 'Compustat records this step within {SPLIT_SAME_DAYS} days and its row is the applied one '
                      || '(an Alpaca stock dividend never stands in for it, #1413)'
