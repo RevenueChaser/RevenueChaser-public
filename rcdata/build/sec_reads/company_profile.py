@@ -29,7 +29,7 @@ import json
 import logging
 from dataclasses import replace
 
-from ... import read, sec_locator, sec_profile, sec_sections
+from ... import read, sec_forms_label, sec_locator, sec_profile
 from ...sec_profile_input import MAX_XBRL_CUSTOMERS, clean_input, filing_sentences, text_status
 from .. import base
 from ..fundamentals import common
@@ -42,7 +42,7 @@ PROFILE_ID, LOCATE_ID = "company.profile", "business.locate"
 OWNER = "sec_reads"
 #: The rule version the business sections must be cut with before anything is asked: a run on another cut would be
 #: paid for again once ``sec/forms`` re-cuts (``module_relatedness.config.FORMS_RULES_VERSION``).
-FORMS_RULES_VERSION = sec_sections.forms_rows_version()
+FORMS_RULES_VERSION = sec_forms_label.forms_rows_version()
 #: The most of a business section a profile reads, or None for no cap (the owner's choice, 13 Nov 2026).
 MAX_BUSINESS_CHARS: int | None = None
 #: The most of a whole document, or of a located section, a profile reads: three chunks.

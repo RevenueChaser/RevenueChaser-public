@@ -44,7 +44,7 @@ from pathlib import Path
 
 import duckdb
 
-from ... import sec_notes, sec_sections
+from ... import sec_forms_label, sec_notes, sec_sections
 from .. import base
 from .. import dirty as dirty_set
 from ..fundamentals import common, filings
@@ -81,7 +81,7 @@ def rows_version() -> str:
     """The label on every section row this run writes: :data:`sec_sections.FORMS_ROWS_VERSION` with the
     edgartools cutter on, :data:`SECTIONS_VERSION` on the ``header`` rollback."""
     cutter.mode()                           # an unknown mode fails the run here, before any row is labelled
-    return sec_sections.forms_rows_version()
+    return sec_forms_label.forms_rows_version()
 
 _STAMPS = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 #: One row per (filing, document, section). ``document`` is in the key because one accession can hold more than

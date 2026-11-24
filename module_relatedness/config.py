@@ -10,7 +10,7 @@ import os
 
 from revenuechaser.core import llm_prices, llm_writers
 from revenuechaser.core.config import OUTPUT_DIR
-from revenuechaser.rcdata import sec_sections
+from revenuechaser.rcdata import sec_forms_label
 from revenuechaser.module_value_chain import config as vc_config
 
 RELATEDNESS_LATEST = OUTPUT_DIR / "relatedness_latest.html"
@@ -64,7 +64,7 @@ PROFILES_FROM = "service"
 
 # The rule version the business sections must be cut with before a profile run reads them (``_forms_ready``,
 # #841). None turns the check off.
-FORMS_RULES_VERSION = sec_sections.forms_rows_version()
+FORMS_RULES_VERSION = sec_forms_label.forms_rows_version()
 
 # $ hard-stop: cap the number of LLM calls per run (~1.5x the expected spend).
 # The cap's cost per call, measured on DeepSeek Flash: the 10 Nov 2026 pilot wrote 400 names in 668 calls for about

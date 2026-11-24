@@ -40,7 +40,6 @@ section stored under a version string nobody can reproduce is worse than a faile
 """
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 
@@ -57,16 +56,11 @@ OURS_3 = "ours-3"
 VERSIONS: tuple[str, ...] = (OURS_1, OURS_2, OURS_3)
 #: The label ``sec/forms`` writes on every section row when the edgartools cutter is on (avo, 24 Nov 2026: "edgarcut'i
 #: alalim", pin 6.3.0): a 10-K's Item 1 and a 20-F's Item 4 come from edgartools, everything else from ``ours-2``.
-#: A label, not a rule: :func:`rule` does not know it. The readers that pin the cut they read pin this, and a pin
-#: bump moves it (``rcdata/tests/test_sec_forms_edgartools.py`` holds the two together).
+#: A label, not a rule: :func:`rule` does not know it; :mod:`.sec_forms_label` says which label a run
+#: writes. The readers that pin the cut they read pin this, and a pin bump moves it
+#: (``rcdata/tests/test_sec_forms_edgartools.py`` holds the two together).
 FORMS_ROWS_VERSION = f"{OURS_2}+edgartools-6.3.0"
 
-
-def forms_rows_version() -> str:
-    """The label ``sec/forms`` writes now: :data:`FORMS_ROWS_VERSION`, or ``ours-2`` on the ``header`` rollback
-    (``RC_SEC_FORMS_CUTTER``, read and checked by ``rcdata/build/sec_forms/cutter.mode``). Here and not there, so a
-    board can pin it without importing the build package."""
-    return OURS_2 if (os.getenv("RC_SEC_FORMS_CUTTER") or "").strip().lower() == "header" else FORMS_ROWS_VERSION
 #: What a caller gets when it names none. The boards pin this explicitly anyway, so that a later default change
 #: cannot move their text without the change being visible in their own code.
 DEFAULT_VERSION = OURS_1
