@@ -220,7 +220,9 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
     ours = _flag(quality, text, item, form)
     # A doubtful edgartools cut (low confidence or a warning) never replaces a clean cut of our own: the 24 Nov 2026
     # full pass found confidence-0.5 cuts that were a table of contents or a pointer.
-    if edgartools is not None and not (cut.SUSPECT in edgartools[1] and ours == "ok"):
+    # A ``crossref`` cut says "the section is in another document": that is what a reader must see, and edgartools'
+    # text of this one is the pointer (the review of #1492 named MCD, HSBC and VOD among the 42 such documents).
+    if edgartools is not None and not (ours.startswith("crossref") or (cut.SUSPECT in edgartools[1] and ours == "ok")):
         out.append((BUSINESS, edgartools[0], edgartools[1], EDGARTOOLS, None, None))
         return out
     out.append((BUSINESS, item, ours, HEADER, *_span(text, item)))
@@ -246,15 +248,19 @@ def held() -> tuple[dict[str, set[tuple[str, str]]], set[str]]:
     docs: dict[str, set[tuple[str, str]]] = {}
     old: set[str] = set()
     current = rows_version()
+    retry = current == sec_sections.FORMS_ROWS_VERSION
     con = base.scratch_con()
     try:
         src = _glob(SECTIONS_PARQUET)
         if src:
-            for cik, accession, document, version in con.execute(
-                    f"SELECT cik, accession, document, rules_version FROM {src}").fetchall():
+            for cik, accession, document, version, section, method, form in con.execute(
+                    f"SELECT cik, accession, document, rules_version, section, method, form FROM {src}").fetchall():
                 docs.setdefault(str(cik), set()).add((str(accession), str(document)))
                 if str(version) != current:
                     old.add(str(cik))
+                elif (retry and section == BUSINESS and method == HEADER and str(form).upper() in cut.BUSINESS_ITEM
+                      and cutter.pending(str(accession))):
+                    old.add(str(cik))       # the cutter still has attempts at it: our own cut is a stand-in
         src = _glob(NOTES_PARQUET)
         if src:
             for cik, version in con.execute(

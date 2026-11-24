@@ -290,6 +290,16 @@ def _is_cut(out: Path) -> bool:
         return False
 
 
+def pending(accession: str) -> bool:
+    """Whether a run would still try this document: not cut and attempts left, or a degraded cut that is re-cut
+    (#802). ``sec/forms`` re-cuts a company only when its documents or label change, so it asks this to give a
+    transient failure its retries instead of serving our own cut until the next annual report."""
+    counts = read_sidecar(accession)
+    if counts["tries"] >= MAX_TRIES or deferred_for(accession):
+        return False                # given up, or backing off: re-cutting the company now would change nothing
+    return bool(counts["degraded"]) if _is_cut(answer_path(accession)) else True
+
+
 def _forget_failure(accession: str) -> None:
     """Remove this document's failure note, if there is one. A failure to remove it is *not* a failed run: the
     note only ever makes the cutter try one time fewer, and a bare ``OSError`` out of :meth:`Cutter.cut` -- which

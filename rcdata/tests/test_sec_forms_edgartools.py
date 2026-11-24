@@ -75,6 +75,12 @@ def test_a_doubtful_section_is_served_with_a_suspect_flag(tmp_path):
     assert cut.business(warned, "10-K") == (BODY, f"ok;{cut.SUSPECT}")
 
 
+def test_of_several_rows_holding_the_item_the_longest_is_taken(tmp_path):
+    """A short cross-reference row can come before the item itself."""
+    a = _answer(tmp_path / "a.jsonl.gz", {"item": "1", "text": "Business. See page 4."}, {"item": "Item 1", "text": BODY})
+    assert cut.business(a, "10-K") == (BODY, "ok")
+
+
 def test_no_section_a_short_one_or_a_form_without_vocabulary_is_handed_back(tmp_path):
     a = _answer(tmp_path / "a.jsonl.gz", {"item": "1", "text": "Business. See Item 15."},
                 {"item": "7", "text": BODY})
@@ -87,6 +93,7 @@ def test_no_section_a_short_one_or_a_form_without_vocabulary_is_handed_back(tmp_
     ("ok", f"ok;{cut.SUSPECT}", forms.HEADER),          # doubtful edgartools never replaces a clean cut of ours
     ("ok", "ok", forms.EDGARTOOLS),                     # a confident one does
     ("ok;suspect:S1", f"ok;{cut.SUSPECT}", forms.EDGARTOOLS),   # and a doubtful one still beats a doubtful one of ours
+    ("crossref", "ok", forms.HEADER),                   # "the section is elsewhere" stays, whatever edgartools says
 ])
 def test_a_doubtful_edgartools_cut_does_not_replace_a_clean_cut_of_ours(monkeypatch, ours, et_quality, served):
     """24 Nov 2026 full pass: confidence-0.5 cuts were a table of contents or a pointer."""
@@ -171,3 +178,16 @@ def test_turning_the_cutter_on_cuts_every_company_again(sec, edgartools, monkeyp
     assert q("SELECT DISTINCT rules_version FROM filing_section") == [(sec_sections.FORMS_ROWS_VERSION,)]
     assert q("SELECT method FROM filing_section WHERE cik = ? AND section = 'business'", MSFT) == [
         (forms.EDGARTOOLS,)]
+
+
+def test_a_company_whose_document_the_cutter_may_still_cut_is_cut_again(sec, edgartools):
+    """``sec/forms`` re-cuts a company only when its documents or label change, so a transient cutter failure would
+    otherwise be served as our own cut until the next annual report (review of #1492)."""
+    _stored(sec)
+    _cut()
+    assert MSFT in forms.held()[1], "no answer and attempts left: the next run tries edgartools again"
+    accession = q("SELECT accession FROM filing_section WHERE cik = ? AND section = 'business'", MSFT)[0][0]
+    sidecar = cutter.failed_path(accession)
+    sidecar.parent.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(json.dumps({"tries": cutter.MAX_TRIES}), "utf-8")
+    assert MSFT not in forms.held()[1], "given up: our own cut is the answer, nothing to re-cut"

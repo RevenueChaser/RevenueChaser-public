@@ -37,8 +37,8 @@ def business(answer: Path, form: str) -> tuple[str, str] | None:
     """``(text, quality)`` of the business section in ``answer``, or None when edgartools found none.
 
     A section that holds the item among several (``covered_items``, "Items 1 and 2. Business and Properties")
-    counts. None hands the document back to our own rule; so does a section under :data:`MIN_ITEM_CHARS`
-    with no text worth serving.
+    counts; of several that hold it, the longest is taken. None hands the document back to our own rule; so does a
+    section under :data:`MIN_ITEM_CHARS` with no text worth serving.
     """
     want = BUSINESS_ITEM.get(str(form).upper())
     if want is None:
@@ -48,9 +48,10 @@ def business(answer: Path, form: str) -> tuple[str, str] | None:
         for line in fh:
             row = json.loads(line) if line.strip() else {}
             items = {_item(row.get("item"))} | {_item(i) for i in (row.get("covered_items") or [])}
-            if want in items and str(row.get("text") or "").strip():
+            # The longest, not the first: a short cross-reference row can come before the item itself.
+            text = str(row.get("text") or "").strip()
+            if want in items and text and len(text) > len(str((found or {}).get("text") or "").strip()):
                 found = row
-                break
     if found is None:
         return None
     text = str(found["text"])
