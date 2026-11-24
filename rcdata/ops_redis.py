@@ -335,7 +335,8 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
             if (r["status"] == "queued" and dataset in (None, r["dataset"]) and r["dataset"] not in skip
                     and by in (None, r["requested_by"]) and (names is None or r["dataset"] in names)
                     and (not fetch_only or ops.is_fetch_only(r.get("params"))
-                         or (or_by is not None and r["requested_by"] == or_by))):
+                         or (or_by is not None and r["requested_by"] == or_by
+                             and not ops.params_of(r.get("params")).get("build_only")))):
                 row = {**r, "status": "running", "started_at": time.time()}
                 return ops._request(row), lambda p: _put(p, "build_requests", row)
         return None, None

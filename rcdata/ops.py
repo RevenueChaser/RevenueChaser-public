@@ -437,11 +437,16 @@ def queue_view(finished: int = 20) -> dict:
 FETCH_ONLY_PARAMS = ("no_duckdb", "no_parquet", "no_build")
 
 
-def is_fetch_only(params) -> bool:
-    """True for a request's params (a dict, its JSON text, or None) that build no serving file."""
+def params_of(params) -> dict:
+    """A request's params as a dict, from a dict, its JSON text, or None."""
     if isinstance(params, str):
         params = json.loads(params) if params else None
-    return any((params or {}).get(k) for k in FETCH_ONLY_PARAMS)
+    return params or {}
+
+
+def is_fetch_only(params) -> bool:
+    """True for a request's params (a dict, its JSON text, or None) that build no serving file."""
+    return any(params_of(params).get(k) for k in FETCH_ONLY_PARAMS)
 
 
 def _request(row: sqlite3.Row | None) -> dict | None:
@@ -489,8 +494,8 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
             args += (by,)
         if fetch_only:
             sql += " AND (" + " OR ".join(f"coalesce(json_extract(params, '$.{k}'), 0)" for k in FETCH_ONLY_PARAMS)
-            if or_by is not None:
-                sql += " OR requested_by = ?"
+            if or_by is not None:             # not the storage build's own requests (``build_only``)
+                sql += " OR (requested_by = ? AND NOT coalesce(json_extract(params, '$.build_only'), 0))"
                 args += (or_by,)
             sql += ")"
         if only is not None:

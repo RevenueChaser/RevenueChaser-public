@@ -66,3 +66,21 @@ def test_a_market_source_is_fetched_at_its_two_hours_and_retried_once(stager, mo
     ops.record_check(stager.name, "failed", note="fetch failed")
     assert at(8) is None and at(9) is not None                 # one retry, the hour after
     assert due._pass_mode(stager, "full", "build")[1] is not None   # the build pass is not held by the hours
+
+
+def test_a_build_only_request_builds_without_fetching(stager):  # noqa: F811
+    """Review of #1494: the storage build's own request builds what was staged, with no second fetch."""
+    row = base.run_request({"dataset": stager.name, "params": {"build_only": True}})
+    assert stager.steps == [] and stager.built == [stager.name] and row["result"] == "changed"
+
+
+def test_the_build_pass_queues_build_only_requests_the_fetch_never_takes(stager, monkeypatch):  # noqa: F811
+    from revenuechaser.rcdata import ops
+    monkeypatch.setattr(ops, "dataset_mode", lambda name, kind: "full")
+    base.run_request({"dataset": stager.name, "params": {"no_duckdb": True}})
+    (got,) = [r for r in due.enqueue_due({stager.name: stager}, stage="build") if r[2]]
+    req = ops.next_request(stager.name)
+    assert ops.params_of(req["params"]) == {"build_only": True}
+    ops.finish_request(req["id"], "failed", note="test")
+    ops.enqueue(stager.name, {"build_only": True}, by=due.REQUESTED_BY)
+    assert ops.next_request(fetch_only=True, or_by=due.REQUESTED_BY) is None
