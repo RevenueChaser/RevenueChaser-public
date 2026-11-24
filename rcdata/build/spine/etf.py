@@ -456,7 +456,7 @@ def _refuse_renames(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> lis
     priced = etf_series([t for c in cand for t in c[1:3]], ctx.as_of)
     refused: dict[tuple[str, str], str] = {}
     for series_id, ticker, target, holder, not_its_own in cand:
-        if False:  # MUTATION
+        if ticker in priced and target not in priced and not not_its_own:
             gvkey, iid, _ = priced[ticker]
             refused[(series_id, ticker)] = (f"the SEC fund file lists series {series_id} as {target}, N-CEN as "
                                             f"{ticker}, and Compustat still prices {ticker} (gvkey {gvkey} iid "
