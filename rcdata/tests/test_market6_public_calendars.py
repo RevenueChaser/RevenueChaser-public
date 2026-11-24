@@ -38,6 +38,8 @@ FED = {"events": [
      "type": "Beige"},
     {"month": "2026-11", "days": "24", "time": "4:30 p.m.", "title": "H.4.1 Factors", "type": "Stat"},
     {"month": "2019-03", "days": "20", "time": "2:00 p.m.", "title": "FOMC Meeting", "type": "FOMC"}]}
+UW_PDUFA = {"ticker": "IOVA", "drug": "Lifileucel", "status": "NDA", "catalyst": "PDUFA Date",
+            "start_date": "2026-12-04", "end_date": "2026-12-04", "indication": "Advanced Melanoma"}
 UW_CPI = {"event": "CPI", "type": "report", "time": "2026-12-10T13:30:00Z", "forecast": "0.3%", "prev": "0.4%",
           "reported_period": "November"}
 EFTS = {"hits": {"total": {"value": 1}, "hits": [
@@ -155,6 +157,17 @@ def test_pdufa_dates_from_an_8k_and_a_meeting_from_the_federal_register_land_in_
     meeting = got[("", "Oncologic Drugs Advisory Committee")]
     assert meeting["target_date"] == date(2026, 12, 15) and meeting["catalyst"] == "Advisory Committee Meeting"
     assert meeting["source"] == "federalregister"
+
+
+def test_a_day_with_the_keyless_fda_sources_leaves_uws_rows_of_that_day_out(http_mock):
+    """The FDA twin of the economic rule: UW's row of a day reads only until the SEC or the Federal Register has one."""
+    http_mock.add("/market/fda-calendar", {"data": [UW_PDUFA]}, headers=UW_HEADERS)
+    assert _run(uw_fda_calendar.NAME)["result"] == "changed"
+    assert [(r["ticker"], r["source"]) for r in read.fda_calendar()] == [("IOVA", "uw")]
+    _fda_routes(http_mock)
+    assert _run(fda.NAME)["result"] == "changed"
+    assert all(r["source"] != "uw" for r in read.fda_calendar()), "a keyless day hides UW's rows of that day"
+    assert all(r["source"] != "uw" for r in read.fda_events())
 
 
 def test_a_filed_document_is_fetched_once(http_mock):
