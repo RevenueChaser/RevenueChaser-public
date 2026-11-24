@@ -181,3 +181,50 @@ def test_two_tickers_of_one_id_apply_a_split_and_a_dividend_once(fake, monkeypat
               "WHERE security_id = ? AND source = ? ORDER BY 1", [FLG, yahoo_bars.NAME])
     assert [(a["d"], a["action_type"]) for a in acts] == [("2026-10-23", "forward_split"),
                                                          ("2026-10-26", "cash_dividend")]
+
+
+def test_a_nan_from_yahoo_is_no_number():
+    """Review N5: ``_num`` passed NaN, and in DuckDB NaN sorts above every number, so a NaN dividend was applied and
+    every earlier total-return factor became NaN. A non-finite value is no number; a row with no close is not kept."""
+    from revenuechaser.rcdata.build.prices.floats import _num
+    assert _num(float("nan")) is None and _num("inf") is None and _num("2.5") == 2.5
+    rows = yahoo_bars.nominal([{"date": "2026-10-26", "open": float("nan"), "high": float("nan"),
+                                "low": float("nan"), "close": float("nan"), "volume": float("nan"), "split": 0,
+                                "dividend": float("nan")}])
+    assert rows[0]["close"] is None and rows[0]["dividend"] is None
+
+
+def test_a_funds_capital_gains_distribution_is_a_cash_distribution(monkeypatch):
+    """Review N7: yfinance gives a fund's capital-gains distributions in their own ``Capital Gains`` column, and the
+    Yahoo-only names are mostly funds, so their total return missed those days. They are read with the dividend."""
+    import pandas as pd
+
+    frame = pd.DataFrame({"Open": [10.0, 10.0], "High": [10.0, 10.0], "Low": [10.0, 10.0], "Close": [10.0, 9.0],
+                          "Volume": [100, 100], "Dividends": [0.0, 0.1], "Stock Splits": [0.0, 0.0],
+                          "Capital Gains": [0.0, 0.9]},
+                         index=pd.DatetimeIndex(["2026-12-14", "2026-12-15"], tz="America/New_York"))
+
+    class Ticker:
+        def __init__(self, ticker):
+            pass
+
+        def history(self, **kw):
+            return frame
+    monkeypatch.setattr("yfinance.Ticker", Ticker)
+    rows = yahoo_bars._lookup("FUNDX")
+    assert [r["dividend"] for r in rows] == [0, pytest.approx(1.0)]
+
+
+def test_a_name_compustat_prices_only_over_the_counter_is_asked(fake, monkeypatch):
+    """Review N4 (24 Nov 2026 live check): CZZL is Nasdaq-listed, and Compustat prices its series only as the OTC
+    ``CZZLF`` (exchange 19), whose days are never served. ``asked()`` counted those days as priced, so neither source
+    gave CZZL a bar. A day counts only on an exchange whose days are served."""
+    fake[0].data["comp.secd"] += [_secd("088888", "01", d, "CZZLF", 3.0, exchg=19, cusip="88888A100")
+                                  for d in ("2026-10-26", "2026-10-27")]
+    _build()
+    names = [{"ticker": "CZZL", "cik": "2105038", "tier": "A", "security_type": "common",
+              "security_id": "088888:01"},
+             {"ticker": "AAPL", "cik": "320193", "tier": "A", "security_type": "common", "security_id": AAPL}]
+    monkeypatch.setattr(yahoo_bars, "scope", lambda want=None: names)
+    asked = {n["ticker"] for n in yahoo_bars.asked(base.Scope(), date(2026, 10, 27))}
+    assert asked == {"CZZL"}

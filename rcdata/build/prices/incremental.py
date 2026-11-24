@@ -268,6 +268,11 @@ def scope(ctx: Any, con: duckdb.DuckDBPyConnection, rebuild_shares) -> Scope:
             SELECT DISTINCT {yahoo_bars.ID}
             FROM read_parquet([{', '.join(base.sql_path(Path(p)) for p in yahoo)}]) y {yahoo_bars.JOIN}""").fetchall())
         words.append(f"{len(yahoo)} {yahoo_bars.NAME} file(s) changed: their names rebuilt whole")
+    # An id the Yahoo fetch saw that its rows are now served under another one (review N2): rebuilt, it comes out
+    # empty and ``serving._move_rekeyed`` moves its live bars to the new id instead of carrying it frozen.
+    add(con.execute(f"""
+        SELECT DISTINCT y.security_id FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
+        WHERE y.security_id <> {yahoo_bars.ID} AND y.security_id IN {served}""").fetchall())
     # The issuer behind each served cap; a security the issuer rule cannot place has none, before and now.
     con.execute(f"CREATE OR REPLACE TEMP TABLE _issuer AS SELECT DISTINCT security_id, cik FROM ({s.ISSUER_SQL})")
     issuer = con.execute("""
