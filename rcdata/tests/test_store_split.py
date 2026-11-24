@@ -15,7 +15,8 @@ def test_a_fetch_pass_never_builds_whatever_the_request_asked(stager, monkeypatc
     assert stager.steps == ["fetch", "to_parquet_all"]
 
 
-def test_the_passes_pick_their_mode(stager):  # noqa: F811
+def test_the_passes_pick_their_mode(stager, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(due, "FETCH_HOURS", {})             # the hours are their own test, below
     assert due._pass_mode(stager, "full", "fetch") == ("parquet", None)
     assert due._pass_mode(stager, "raw", "fetch") == ("raw", None)
     assert due._pass_mode(stager, "full", None) == ("full", None)
