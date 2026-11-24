@@ -55,6 +55,9 @@ def test_the_funnel_counts_the_spine_and_the_issues_come_by_kind():
     assert [(s["key"], s["count"]) for s in funnel["steps"]] == [
         ("sec", 14), ("listed", 12), ("tier_a", 10), ("cusip", 10), ("figi", 10), ("gics", 9), ("index", 7)]
     assert steps["listed"]["out_of"] == 14 and steps["figi"]["out_of"] == 10
+    # avo's spine row check, 24 Nov 2026: each label says what its count counts (Tier A or B; gsubind, not sector)
+    assert steps["listed"]["label"] == "Listed on an exchange (Tier A or B)"
+    assert steps["gics"]["label"] == "With a GICS sub-industry"
     assert {d["key"]: d["count"] for d in funnel["drops"]} == {"otc": 1, "no_exchange": 1, "excluded_type": 2}
     assert funnel["indexes"] == {"sp500": 5, "sp400": 2, "sp600": 0, "ndx": 1}
     kinds = {k["kind"]: k["count"] for k in funnel["issue_kinds"]}
