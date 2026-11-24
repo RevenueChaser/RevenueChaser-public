@@ -624,7 +624,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                   if any(CARBON_NAME.search(n) for n in names if n) else (None, None))
         if asset_class is None and category:
             asset_class = CATEGORY_ASSET_CLASS.get(category)
-            class_src = None  # MUTATION
+            class_src = "tickerinside_category" if asset_class else None
             if asset_class is None:
                 unmapped.setdefault(category, []).append(t)
         gvkey, iid, cusip = ids_of.get(t, (None, None, None))
@@ -658,7 +658,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
             r["asset_class"] = nport_class(mix, lev=lev, mm=bool(r["is_money_market"]), opt=r["is_option_income"],
                                            crypto=bool(CRYPTO_NAME.search(r["name"] or "")))
             r["asset_class_source"] = (r["asset_class"] and
-                                       ("nport_mix" if on_contracts(mix, lev) else "nport_derivative"))  # MUTATION
+                                       ("nport_derivative" if on_contracts(mix, lev) else "nport_mix"))
             from_nport += r["asset_class"] is not None
     issues += _series_issues(con, out, ti_series)
     ctx.notes.append(f"etf asset_class: {from_nport} from N-PORT ({len(mixes)} reports read), "
