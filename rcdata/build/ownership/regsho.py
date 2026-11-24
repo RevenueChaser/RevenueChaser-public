@@ -52,6 +52,7 @@ SCHEMA = [("list_date", "DATE"), ("market", "TEXT"), ("symbol", "TEXT"), ("sourc
           ("security_name", "TEXT"), ("market_category", "TEXT"), ("threshold_flag", "TEXT"), ("rule_3210", "TEXT"),
           ("file_stamp", "TEXT"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 SERVED = SCHEMA[:3] + [("ticker", "TEXT"), ("ticker_source", "TEXT")] + SCHEMA[3:] + [("source", "TEXT")]
+NAMING = common.BY_SYMBOL._replace(date="list_date")   # a row is named by the symbol of its day
 COLUMNS = {"security_name": "Security Name", "market_category": "Market Category",
            "threshold_flag": "Reg SHO Threshold Flag", "rule_3210": "Rule 3210"}
 
@@ -222,7 +223,7 @@ class RegShoThreshold:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {TABLE: common.build_keyed(ctx, con, NAME, TABLE, SERVED, partitions(parquet_dir(), "date"),
-                                          "list_date", "list_date, market, symbol", common.BY_SYMBOL)}
+                                          "list_date", "list_date, market, symbol", NAMING)}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         added, removed = base.compare_with_live(con, KIND, TABLE, ["list_date", "market", "symbol", "ticker"])

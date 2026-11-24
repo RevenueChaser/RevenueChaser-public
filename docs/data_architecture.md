@@ -1212,7 +1212,10 @@ of spill). `wrds_price_diff` is kept from the last whole build, which the monthl
 come from (`date=`, `half=`, `day=`, carried in each row as `settlement_date`, `list_date`, `snapshot_date`, `half`
 or `index_day`): a build on the live copy deletes the rows of each changed, new or gone partition and loads only
 those, then names every row's ticker again from the live spine and rewrites the rows whose name moved, so a spine
-change reaches rows no partition touched. A new source of the store (N-PORT) declares the same `dirty` and
+change reaches rows no partition touched. FINRA, FTD, IBKR, Reg SHO and a Form 4's symbol are named by the row's day
+through Compustat's `tic` periods (`rcdata/build/ticker_history.py`): an old symbol inside its period is the current
+ticker (`ticker_source` `spine:renamed`), a reused ticker's earlier row goes to that day's holder (`spine:reused`)
+or, none known and more than 7 days before the holder's first day, to no one. A new source of the store (N-PORT) declares the same `dirty` and
 `build_keyed`. The 13F totals (`ownership/serve`) are still derived whole on a `sec/13f` or `ownership/serve` run
 and kept as they are otherwise (whole build of 6 Nov 2026: 91 min).
 `market` (`rcdata/build/partitions.py`) reloads each changed Parquet partition: a UW session (`date=`) of
