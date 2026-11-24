@@ -33,7 +33,7 @@ NEVER_CHECKED = "never_checked"
 STATUS_UNKNOWN = "status_unknown"
 DATASET_OF_TABLE = {"market_series": "market_series", "spx_gamma_expiry_strike": "uw/spot_expiry_strike",
                     "spx_greek_expiry_strike": "uw/greek_expiry_strike",
-                    "economic_event": "uw/economic_calendar", "fda_event": "uw/fda_calendar",
+                    "economic_event": "public/economic_calendar", "fda_event": "public/fda_calendar",
                     "security": "spine/security", "security_history": "spine/security",
                     "gics_history": "spine/security", "index_membership": "funds/index_holdings",
                     "fund": "sec/company_tickers_mf", "etf_holdings": "funds/etf_holdings", "etf": "spine/security",

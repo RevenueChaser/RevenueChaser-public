@@ -9,8 +9,8 @@ stand side by side while UW still answers, and ``rcdata.read`` prefers these row
   23 Nov 2026 from homesrv: HTTP 200, 411 US rows for 16 Nov-5 Dec; 14 of UW's 17 events of 17-20 Nov had a row at the
   same time under another name ("Initial Jobless Claims" for UW's "Weekly Jobless Claims").
 - **The Fed** (``source = 'fed'``): ``GET federalreserve.gov/json/calendar.json``, the Board's own calendar, for what
-  TradingView does not carry: speeches and testimony (``fed-speaker``), the FOMC meeting, minutes and press conference
-  (``fomc``) and the Beige Book (``report``). Its times are New York times. It lists the Board's own members only, so a
+  TradingView does not carry: speeches and testimony (``fed-speaker``), the FOMC meeting and press conference
+  (``fomc``), the minutes and the Beige Book (``report``). Its times are New York times. It lists the Board's own members only, so a
   regional bank president's speech has no source here (3 of UW's 17 events of 17-20 Nov).
 
 **Both in one run, on purpose.** The News board retires every event its newest fetch no longer lists
@@ -80,6 +80,8 @@ def tradingview_rows(body) -> tuple[list[dict], int]:
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict) or item.get("country") not in (None, "US"):
             continue
+        if item.get("importance") == -1:
+            continue    # auctions, EIA, USDA, sub-indices: each high print has its importance-1 headline (avo, 24 Nov)
         ts, name = event_ts(item.get("date")), _text(item.get("title"))
         if ts is None or name is None:
             unkeyed += 1
@@ -117,7 +119,10 @@ def fed_rows(body) -> tuple[list[dict], int]:
         if ts is None or name is None:
             unkeyed += 1
             continue
-        out.append({"event_ts": ts, "event": name, "type": FED_TYPES[item["type"]],
+        kind = FED_TYPES[item["type"]]
+        if kind == "fomc" and "minutes" in name.lower():
+            kind = "report"          # the minutes come three weeks after the decision: not a rate event (Earnings R6)
+        out.append({"event_ts": ts, "event": name, "type": kind,
                     "event_time": datetime.fromtimestamp(ts, timezone.utc).isoformat(), "forecast": None,
                     "prev": None, "reported_period": _text(item.get("description")), "source": "fed"})
     return out, unkeyed

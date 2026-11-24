@@ -101,37 +101,47 @@ def partition_path(day: date) -> Path:
 def target(text: str) -> tuple[date | None, str | None, str | None]:
     """The first date ``text`` names, as ``(day, precision, the words that said it)``; Nones when it names none.
 
-    A day beats a period when both are there ("on March 15, 2027, in the first half of 2027" is the day)."""
-    m = _DAY_RE.search(text)
-    if m:
+    The earliest words win, day or period: "PDUFA date in Q3 2027, the Company said on November 20, 2026" is Q3 2027,
+    and "on March 15, 2027, in the first half of 2027" is the day."""
+    found = []
+    for m in _DAY_RE.finditer(text):
         try:
             month = [n[:3] for n in _MONTHS].index(m.group(1)[:3].lower()) + 1
-            return (date(int(m.group(3)), month, int(m.group(2))), DAY,
-                    m.group(0))
+            found.append((m.start(), date(int(m.group(3)), month, int(m.group(2))), DAY, m.group(0)))
+            break
         except ValueError:
-            pass
+            continue
     m = _QUARTER_RE.search(text)
     if m:
         q, year = (_ORD[m.group(1).lower()], m.group(2)) if m.group(1) else (int(m.group(3)), m.group(4))
-        return date(int(year), 3 * (q - 1) + 1, 1), QUARTER, m.group(0)
+        found.append((m.start(), date(int(year), 3 * (q - 1) + 1, 1), QUARTER, m.group(0)))
     m = _HALF_RE.search(text)
     if m:
         h, year = (_ORD[m.group(1).lower()], m.group(2)) if m.group(1) else (int(m.group(3)), m.group(4))
-        return date(int(year), 1 if h == 1 else 7, 1), HALF, m.group(0)
+        found.append((m.start(), date(int(year), 1 if h == 1 else 7, 1), HALF, m.group(0)))
     m = _MID_RE.search(text)
     if m:
-        return date(int(m.group(1)), 7, 1), MID, m.group(0)
+        found.append((m.start(), date(int(m.group(1)), 7, 1), MID, m.group(0)))
     m = _LATE_RE.search(text)
     if m:
-        return date(int(m.group(1)), 10, 1), LATE, m.group(0)
-    return None, None, None
+        found.append((m.start(), date(int(m.group(1)), 10, 1), LATE, m.group(0)))
+    return min(found, key=lambda f: f[0])[1:] if found else (None, None, None)
+
+
+def period_end(when: date, precision: str | None) -> date:
+    """The last day of the span a target names: a quarter's, a half year's, mid-year's (to September) or the year's."""
+    months = {QUARTER: 3, HALF: 6, MID: 3, LATE: 3}.get(precision)
+    if not months:
+        return when
+    month = when.month + months
+    return date(when.year + (month > 12), (month - 1) % 12 + 1, 1) - timedelta(days=1)
 
 
 def pdufa_sentences(document: str) -> list[str]:
     """The sentences of an 8-K document (HTML or text) that name a PDUFA date."""
     text = _text(document) or ""
     # A forward-looking-statements paragraph repeats the date without saying anything new: left out.
-    return [s.strip() for s in re.split(r"(?<=[.;])\s+(?=[A-Z(\u201c\"])", text)
+    return [s.strip() for s in re.split(r"(?<=[.;])(?<!U\.S\.)(?<!Inc\.)\s+(?=[A-Z(\u201c\"])", text)
             if "PDUFA" in s and "forward-looking" not in s.lower() and target(s)[0] is not None][:20]
 
 
@@ -166,7 +176,11 @@ def sec_rows(hits: list[dict], sentences: dict[str, list[str]], day: date) -> tu
             when, precision, words = target(sentence[sentence.find("PDUFA"):])
             if when is None:
                 when, precision, words = target(sentence)
-            if when is None or when < day - timedelta(days=KEEP_PAST_DAYS):
+                # A date before the word is only a target when it lies after the filing (not "On May 1, we...").
+                if when is not None and str(period_end(when, precision)) <= str(hit.get("file_date") or ""):
+                    continue
+            # A period target stays until its span ends ("Q4 2026" is still ahead on 20 November).
+            if when is None or period_end(when, precision) < day - timedelta(days=KEEP_PAST_DAYS):
                 continue
             # No product found: one row per ticker and date, so the same date read twice is one catalyst.
             name = product(sentence) or f"PDUFA {when.isoformat()}"
@@ -229,7 +243,8 @@ class PublicFdaCalendar:
         hits, total = [], None
         for page in range(MAX_PAGES):
             body = _json(common.get(ctx, "sec", f"{EFTS_BASE}/LATEST/search-index",
-                                    params={**params, "from": page * EFTS_PAGE}, headers=common.sec_headers()))
+                                    params={**params, "from": page * EFTS_PAGE}, headers=common.sec_headers(),
+                                    spacing=common.sec_spacing(ctx)))
             block = (body or {}).get("hits") or {}
             total = int((block.get("total") or {}).get("value") or 0)
             got = block.get("hits") or []
@@ -251,7 +266,7 @@ class PublicFdaCalendar:
         for h in hits:
             path = doc_path(h["adsh"], h["file"])
             if not path.exists():                 # a filed document never changes: fetched once, kept
-                r = common.get(ctx, "sec", h["url"], headers=common.sec_headers(), missing_object=True)
+                r = common.sec_get(ctx, h["url"], missing_object=True)     # paced: SEC answers a burst with 429
                 if r is None:
                     continue
                 base.write_raw(path, r.content)
