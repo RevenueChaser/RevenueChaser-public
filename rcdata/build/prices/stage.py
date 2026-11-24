@@ -130,7 +130,7 @@ def carry_reports(con: duckdb.DuckDBPyConnection, table: str = "wrds_price_diff"
         before = count(con, table)
         con.execute(f'''INSERT INTO "{table}" BY NAME SELECT l.* FROM live_reports."{table}" l
             WHERE l.as_of IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "{table}" b
-                  WHERE b.comparison = l.comparison)''')
+                  WHERE b.comparison = l.comparison AND b.as_of = l.as_of)''')
         return count(con, table) - before
     finally:
         con.execute("DETACH live_reports")
