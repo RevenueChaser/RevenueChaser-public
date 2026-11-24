@@ -13,13 +13,14 @@ and no ``active`` column** here; a board's thresholds (AUM, dollar volume) are i
 **What fills which column in this PR:** the ``is_*`` fund flags and ``aum`` (``DAILY_AVG_NET_ASSETS``, else
 ``MONTHLY_AVG_NET_ASSETS``, with the filing's report end as ``aum_as_of``) from the series' newest N-CEN, NULL for
 a row N-CEN does not hold (unknown, not false); ``inception`` from AV's ``ipoDate``; ``is_option_income`` by a name
-rule; ``asset_class`` ``commodity`` by the trust rule below, else (spine 11) TickerInside's category through
-:data:`CATEGORY_ASSET_CLASS`, else the fund's newest N-PORT holdings mix (:func:`nport_class`); ``expense_ratio`` and the identity columns (``gvkey``, ``iid``, ``cusip``, ``figi``,
-``composite_figi``, ``identity_source``) as :func:`rows` says. NULL until later PRs: ``focus`` and ``country``. ``adv_usd_20d`` is the
-20-session average daily dollar volume, read from the **raw** Compustat ``comp.secd`` Parquet
-(:func:`adv_usd_20d`); it is what decides a fund N-CEN gives no AUM for in ``my_universe`` (avo, 4 Nov 2026), and
-it is measured from the raw file rather than the live ``prices.duckdb`` because that store keeps only today's
-universe (#357, avo's decision B of 5 Nov 2026).
+rule; ``asset_class`` by the trust rule below (or the carbon name rule), else (spine 11) TickerInside's category
+through :data:`CATEGORY_ASSET_CLASS`, else the fund's newest N-PORT holdings mix (:func:`nport_class`), and (spine
+12) ``asset_class_source`` naming which of them (:data:`CLASS_SOURCES`); ``expense_ratio`` and the identity columns
+(``gvkey``, ``iid``, ``cusip``, ``figi``, ``composite_figi``, ``identity_source``) as :func:`rows` says. NULL until
+later PRs: ``focus`` and ``country``. ``adv_usd_20d`` is the 20-session average daily dollar volume, read from the
+**raw** Compustat ``comp.secd`` Parquet (:func:`adv_usd_20d`); it is what decides a fund N-CEN gives no AUM for in
+``my_universe`` (avo, 4 Nov 2026), and it is measured from the raw file rather than the live ``prices.duckdb``
+because that store keeps only today's universe (#357, avo's decision B of 5 Nov 2026).
 
 **The commodity rule.** An ``etp`` row of the spine that is no note, has no N-CEN series, and whose CIK filed no
 N-CEN at all is not a registered investment company: a grantor trust or commodity pool registered under the 1933
@@ -62,7 +63,10 @@ TABLE = "etf"
 SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"), ("cik", "TEXT"),
           ("source", "TEXT"), ("is_etn", "BOOLEAN"),
           # is_cef: the spine types the ticker a closed-end fund (AV calls some CEFs ETF); kept, not counted as ETFs.
-          ("is_cef", "BOOLEAN"), ("asset_class", "TEXT"), ("focus", "TEXT"), ("country", "TEXT"),
+          ("is_cef", "BOOLEAN"), ("asset_class", "TEXT"),
+          # asset_class_source (spine 12, review M3, avo's 5A of 24 Nov 2026): which writer set asset_class
+          # (:data:`CLASS_SOURCES`), so a TickerInside re-categorisation is seen; NULL where asset_class is.
+          ("asset_class_source", "TEXT"), ("focus", "TEXT"), ("country", "TEXT"),
           ("is_index", "BOOLEAN"), ("is_lev_inverse", "BOOLEAN"), ("is_money_market", "BOOLEAN"),
           ("is_option_income", "BOOLEAN"), ("is_fund_of_funds", "BOOLEAN"), ("inception", "DATE"),
           # aum (spine 9, #357): the fund's own shares times its close on aum_as_of (``shares_x_close``), else N-CEN's
@@ -217,6 +221,12 @@ _CATEGORIES = {
 }
 CATEGORY_ASSET_CLASS = {cat: cls for cls, cats in _CATEGORIES.items() for cat in cats.split()}
 COMPUSTAT_SECD, TICKERINSIDE = "compustat_secd", "tickerinside"
+#: ``asset_class_source``: the trust rule by TickerInside's trust category or by the name rule, the carbon name rule,
+#: TickerInside's category, and N-PORT's holdings mix or (leveraged, inverse, synthetic) its largest contracts.
+CLASS_SOURCES = ("trust_category", "trust_name", "carbon_name", "tickerinside_category", "nport_mix",
+                 "nport_derivative")
+#: The build note names at most this many funds whose class changed against the live file.
+CLASS_CHANGES_NOTED = 30
 
 #: ``asset_class``'s third source, below the commodity rule and TickerInside's category and never over either: the
 #: fund's newest N-PORT report (``sec/nport``, newest of the last :data:`NPORT_QUARTERS` quarters held, linked by
@@ -240,7 +250,7 @@ def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt:
     Leveraged, inverse or synthetic, it is the class of its largest contract type (:data:`DERIVATIVE_CLASS`); FX
     contracts of a fund whose name says crypto (``crypto``) are its crypto futures. The option-income rule holds on
     both paths (review L1: ACEI, 11.8 % rate contracts over Treasuries, was ``bond``)."""
-    if lev or mix.get("derivative", 0.0) >= NPORT_DERIVATIVE:
+    if on_contracts(mix, lev):
         contracts = sorted((v, k[2:]) for k, v in mix.items() if k.startswith("d:"))
         cls = DERIVATIVE_CLASS.get(contracts[-1][1]) if contracts else None
         cls = "crypto" if crypto and cls == "currency" else cls
@@ -251,6 +261,11 @@ def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt:
         cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
             "multi_asset" if sum(held.values()) >= NPORT_SHARE else None)
     return None if opt and cls != "equity" else cls
+
+
+def on_contracts(mix: dict[str, float], lev: bool = False) -> bool:
+    """Whether :func:`nport_class` reads the fund's contracts, not its lines: leveraged, inverse or 10 % derivatives."""
+    return lev or mix.get("derivative", 0.0) >= NPORT_DERIVATIVE
 
 
 def nport_mix(series_ids: list[str]) -> dict[str, dict[str, float]]:
@@ -497,6 +512,18 @@ def _series_issues(con: duckdb.DuckDBPyConnection, out: list[dict], ti_series: s
     return found
 
 
+def _class_changes(out: list[dict]) -> str:
+    """The build note of each fund whose ``asset_class`` changed against the live ``etf`` table: ``TICKER old->new
+    by <source>``, at most :data:`CLASS_CHANGES_NOTED` named. A fund new to the table, or gone from it, is no change."""
+    live = {r["ticker"]: r["asset_class"] for r in stage.live_rows(TABLE, ["ticker", "asset_class"]) or []}
+    changed = [f"{r['ticker']} {live[r['ticker']]}->{r['asset_class']}"
+               + (f" by {r['asset_class_source']}" if r["asset_class_source"] else "")
+               for r in out if r["ticker"] in live and live[r["ticker"]] != r["asset_class"]]
+    more = f", ... {len(changed) - CLASS_CHANGES_NOTED} more" if len(changed) > CLASS_CHANGES_NOTED else ""
+    return (f"etf asset_class vs live: {len(changed)} changed"
+            + (f" ({', '.join(changed[:CLASS_CHANGES_NOTED])}{more})" if changed else ""))
+
+
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | None = None) -> list[dict]:
     """Every ETF ticker's row, from the staging tables and the ``security`` table this build just created.
 
@@ -590,12 +617,16 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                                   f"{cik}: nothing taken from TickerInside"))
         ti = ti if ti is not None and (not raw_cik or ti["cik"] == cik) else None
         fund = ti_funds.get(t) if ti is not None else None
-        asset_class = (trust_class(names, (fund or {}).get("category")) if commodity else
-                       "commodity" if any(CARBON_NAME.search(n) for n in names if n) else None)
-        if asset_class is None and fund and fund["category"]:
-            asset_class = CATEGORY_ASSET_CLASS.get(fund["category"])
+        category = (fund or {}).get("category")
+        asset_class, class_src = ((trust_class(names, category), "trust_category"
+                                   if CATEGORY_ASSET_CLASS.get(category or "") in TRUST_CLASSES else "trust_name")
+                                  if commodity else ("commodity", "carbon_name")
+                                  if any(CARBON_NAME.search(n) for n in names if n) else (None, None))
+        if asset_class is None and category:
+            asset_class = CATEGORY_ASSET_CLASS.get(category)
+            class_src = "tickerinside_category" if asset_class else None
             if asset_class is None:
-                unmapped.setdefault(fund["category"], []).append(t)
+                unmapped.setdefault(category, []).append(t)
         gvkey, iid, cusip = ids_of.get(t, (None, None, None))
         figi = (ti or {}).get("composite_figi")
         if not series_id and (ti or {}).get("series_id"):
@@ -604,7 +635,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
             "ticker": t, "name": next((n for n in names if n), None),
             "series_id": series_id or (ti or {}).get("series_id"), "cik": raw_cik or (ti or {}).get("cik"),
             "source": "both" if r["in_av"] and nc else "av" if r["in_av"] else "ncen" if nc else "etp",
-            "is_etn": etn, "is_cef": r["is_cef"], "asset_class": asset_class, "focus": None,
+            "is_etn": etn, "is_cef": r["is_cef"], "asset_class": asset_class,
+            "asset_class_source": class_src, "focus": None,
             "country": None,
             "is_index": _flag(nc, r["is_index"]),
             "is_lev_inverse": True if is_lev_inverse(*names) else _flag(nc, r["is_multi_inverse_index"]),
@@ -622,13 +654,16 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     from_nport = 0
     for r in out:
         if r["asset_class"] is None and r["series_id"] in mixes:
-            r["asset_class"] = nport_class(mixes[r["series_id"]], lev=bool(r["is_lev_inverse"]),
-                                           mm=bool(r["is_money_market"]), opt=r["is_option_income"],
+            mix, lev = mixes[r["series_id"]], bool(r["is_lev_inverse"])
+            r["asset_class"] = nport_class(mix, lev=lev, mm=bool(r["is_money_market"]), opt=r["is_option_income"],
                                            crypto=bool(CRYPTO_NAME.search(r["name"] or "")))
+            r["asset_class_source"] = (r["asset_class"] and
+                                       ("nport_derivative" if on_contracts(mix, lev) else "nport_mix"))
             from_nport += r["asset_class"] is not None
     issues += _series_issues(con, out, ti_series)
     ctx.notes.append(f"etf asset_class: {from_nport} from N-PORT ({len(mixes)} reports read), "
                      f"{sum(1 for r in out if r['asset_class'] is None)} still NULL")
+    ctx.notes.append(_class_changes(out))
     issues += [("etf_category_unmapped", cat, f"TickerInside category {cat} has no asset class here: "
                 + ", ".join(sorted(ts))[:300]) for cat, ts in sorted(unmapped.items())]
     ctx.notes.append(f"etf identity: {sum(1 for r in out if r['gvkey'])} with a Compustat series, "

@@ -7,7 +7,7 @@ compare in ``dirty.full_rebuild_reason`` and ``serving._copy_live``. ``serving.S
 from __future__ import annotations
 
 # The serving schema of each kind. A change to a kind's tables bumps its number in its own PR (box rule).
-SERVING_SCHEMA_VERSION = {"market": 6, "spine": 11, "ownership": 7}
+SERVING_SCHEMA_VERSION = {"market": 6, "spine": 12, "ownership": 7}
 # market 3: ``economic_event``, UW's economic calendar by snapshot day (``build/uw_economic_calendar.py``), and
 #           ``news_headline``, IBKR's Dow Jones headlines (``build/ibkr_news.py``); #643, avo's D4 of 10 Nov 2026.
 # market 4: ``news_headline`` leaves; headlines live only in the News board's ``boards/news.duckdb`` (avo's option A,
@@ -65,6 +65,9 @@ SERVING_SCHEMA_VERSION = {"market": 6, "spine": 11, "ownership": 7}
 #           identity, #1334 K-A, avo's SP1 of 22 Nov 2026), ``etf.expense_ratio`` and ``asset_class`` filled from
 #           TickerInside (SP7), and ``etf_holdings.holdings_as_of`` / ``source_layer`` (plan v4 B2). One bump for all:
 #           the identity and the holdings columns cannot be reverted apart. Prices still keys ETFs its own way.
+# spine 12: ``etf.asset_class_source``, which of the four writers set ``asset_class`` (the trust rule by TickerInside's
+#           category or by name, the carbon name rule, TickerInside's category, N-PORT's mix or contracts), so a
+#           TickerInside re-categorisation is seen (review M3 of 24 Nov 2026, avo's 5A). Its own PR (box rule).
 
 # PR 7 (G2): ``prices.duckdb``, the daily bars, corporate actions, shares and market cap (``build/prices/``).
 SERVING_SCHEMA_VERSION["prices"] = 1

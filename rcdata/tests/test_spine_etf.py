@@ -69,8 +69,9 @@ def test_the_universe_is_av_etfs_and_ncen_etfs_and_the_spines_etp_rows_with_thei
 def test_the_columns_are_the_plans_and_there_is_no_active_column(built):
     with serving.open_read("spine") as con:
         cols = [d[0] for d in con.execute("SELECT * FROM etf LIMIT 0").description]
-    assert cols == ["ticker", "name", "series_id", "cik", "source", "is_etn", "is_cef", "asset_class", "focus",
-                    "country", "is_index", "is_lev_inverse", "is_money_market", "is_option_income", "is_fund_of_funds",
+    assert cols == ["ticker", "name", "series_id", "cik", "source", "is_etn", "is_cef", "asset_class",
+                    "asset_class_source", "focus", "country", "is_index", "is_lev_inverse", "is_money_market",
+                    "is_option_income", "is_fund_of_funds",
                     "inception", "aum", "aum_as_of", "aum_source", "adv_usd_20d", "expense_ratio",
                     "gvkey", "iid", "cusip", "figi", "composite_figi", "identity_source", "source_as_of",
                     "fetched_at", "run_id"]
@@ -613,6 +614,17 @@ def test_nport_fills_only_what_the_earlier_sources_left_null(with_nport):
     assert rows["CCOI"]["asset_class"] is None               # held funds: unread
     assert rows["SOXL"]["asset_class"] == "equity"           # leveraged: the class of its equity swaps
     assert rows["SPY"]["asset_class"] == "equity"            # TickerInside's, as before
+
+
+def test_each_asset_class_names_the_writer_that_set_it(with_nport):
+    """Spine 12 (review M3, avo's 5A of 24 Nov 2026): ``asset_class_source`` says which of the four writers set the
+    class, so a TickerInside re-categorisation is visible; NULL exactly where the class is."""
+    rows = _etf()
+    assert {t: rows[t]["asset_class_source"] for t in ("XLK", "SPY", "GLD", "SOXX", "TAPR", "SOXL", "CCOI")} == {
+        "XLK": "tickerinside_category", "SPY": "tickerinside_category",
+        "GLD": "trust_name",                                  # its TickerInside category is an equity one
+        "SOXX": "nport_mix", "TAPR": "nport_mix", "SOXL": "nport_derivative", "CCOI": None}
+    assert all((r["asset_class"] is None) == (r["asset_class_source"] is None) for r in rows.values())
 
 
 

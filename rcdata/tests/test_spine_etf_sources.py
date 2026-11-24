@@ -190,3 +190,44 @@ def test_a_deutsche_bank_aktiengesellschaft_note_is_an_etn():
     """L2: the SEC writes the issuer of ADZCF, DEENF and OLOXF as DEUTSCHE BANK AKTIENGESELLSCHAFT."""
     assert etf.is_etn("DEUTSCHE BANK AKTIENGESELLSCHAFT")
 
+
+
+# ── M3 (avo's 5A, spine 12): which writer set asset_class ───────────────────────────────────────────────────
+
+def _four_writers(monkeypatch) -> duckdb.DuckDBPyConnection:
+    """One fund per writer: two trusts (TickerInside's trust category, the name rule), a carbon fund, a
+    TickerInside category, an N-PORT mix, a leveraged fund's contracts, and a fund of funds N-PORT does not read."""
+    monkeypatch.setattr(ncen, "quarters_held", lambda: ncen.BACKFILL_QUARTERS)
+    monkeypatch.setattr(etf_holdings, "tickerinside_meta", lambda as_of=None: (
+        {"COIN1": {"cik": "2000001", "composite_figi": "BBG0C1", "series_id": None},
+         "FBEQ": {"cik": None, "composite_figi": "BBG0FB", "series_id": None}},
+        {"COIN1": {"category": "bitcoin", "expense_ratio": 0.2},
+         "FBEQ": {"category": "precious-metals", "expense_ratio": 0.3}}))
+    monkeypatch.setattr(etf, "nport_mix", lambda series_ids: {
+        "S1": {"equity": 95.0}, "S2": {"cash": 90.0, "derivative": 200.0, "d:DE": 200.0}, "S3": {"fund": 95.0}})
+    return _con(ncen_rows=[("EQF", "S1", "Example Equity Fund"), ("LEV2", "S2", "Example 2X Long Fund"),
+                           ("FOF", "S3", "Example Fund of Funds")],
+                av=[("COIN1", "Example Digital Trust"), ("FBEQ", "Franklin US Equity Index ETF"),
+                    ("KRBN", "KraneShares Global Carbon Strategy ETF")],
+                sec=[("COIN1", "2000001", "EXAMPLE DIGITAL TRUST", "etp"),
+                     ("GOLD1", "2000002", "EXAMPLE GOLD TRUST", "etp")])
+
+
+def test_asset_class_source_names_each_of_the_four_writers(monkeypatch):
+    rows = _rows(_four_writers(monkeypatch))
+    assert {t: (r["asset_class"], r["asset_class_source"]) for t, r in rows.items()} == {
+        "COIN1": ("crypto", "trust_category"), "GOLD1": ("commodity", "trust_name"),
+        "KRBN": ("commodity", "carbon_name"), "FBEQ": ("commodity", "tickerinside_category"),
+        "EQF": ("equity", "nport_mix"), "LEV2": ("equity", "nport_derivative"), "FOF": (None, None)}
+
+
+def test_the_build_notes_each_class_that_changed_against_the_live_file(monkeypatch):
+    """A re-categorisation is said in the build note: fund, old -> new class, and the writer that set the new one."""
+    con = _four_writers(monkeypatch)
+    monkeypatch.setattr(stage, "live_rows", lambda table, columns: [
+        {"ticker": "FBEQ", "asset_class": "equity"}, {"ticker": "EQF", "asset_class": "equity"},
+        {"ticker": "FOF", "asset_class": "bond"}, {"ticker": "GONE", "asset_class": "bond"}])
+    ctx = base.RunContext(run_id="r", dataset=security.NAME, as_of=DAY)
+    etf.rows(ctx, con, [])
+    assert "etf asset_class vs live: 2 changed (FBEQ equity->commodity by tickerinside_category, " \
+           "FOF bond->None)" in ctx.notes
