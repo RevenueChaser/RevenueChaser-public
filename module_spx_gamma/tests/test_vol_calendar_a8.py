@@ -58,3 +58,13 @@ def test_a_refresh_keeps_the_pr415_files(tmp_path):
               {f"{name}.json": {"data": [1]} for name in ("greek_flow", "vix_greeks")})
     raw = load_raw_day("2026-11-04")
     assert raw["greek_flow"] == {"data": [1]} and raw["vix_greeks"] == {"data": [1]}
+
+
+def test_tradingviews_names_for_cpi_jobs_and_the_fomc_decision_are_high_impact():
+    """TradingView (the calendar since UW ended, #1433) says "Inflation Rate", "Unemployment Rate" and, for the FOMC
+    decision, just "Interest Rate"; its rate projections are not high impact."""
+    rows = [{"event": e, "time": "2026-11-10T13:30:00Z", "type": "report"} for e in
+            ("Inflation Rate YoY", "Unemployment Rate", "Interest Rate", "Interest Rate Projection - Current")]
+    got = {r["event"]: r["high_impact"] for r in vol_calendar.week_events({"data": rows}, "2026-11-09")}
+    assert got == {"Inflation Rate YoY": True, "Unemployment Rate": True, "Interest Rate": True,
+                   "Interest Rate Projection - Current": False}

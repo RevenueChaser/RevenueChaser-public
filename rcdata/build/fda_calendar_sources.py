@@ -57,6 +57,8 @@ _MONTHS = ("january", "february", "march", "april", "may", "june", "july", "augu
 #: A month written whole or cut short ("December 4, 2026", "Dec. 4, 2026", "Sept. 4, 2026").
 _MONTH = r"\b(" + "|".join(f"{m[:3].capitalize()}(?:{m[3:]}|t)?" for m in _MONTHS) + r")\.?\s+(\d{1,2}),?\s+(20\d\d)"
 _DAY_RE = re.compile(_MONTH)
+#: "from <date> to": a moved target, whose new date follows.
+_MOVED = re.compile(r"\bfrom\b[^.;]{0,60}?\bto\b", re.I)
 _ORD = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
 _QUARTER_RE = re.compile(r"\b(first|second|third|fourth|1st|2nd|3rd|4th)\s+quarter\s+(?:of\s+)?(20\d\d)|"
                          r"\bQ([1-4])\s*(?:of\s+)?(20\d\d)", re.I)
@@ -173,7 +175,11 @@ def sec_rows(hits: list[dict], sentences: dict[str, list[str]], day: date) -> tu
             no_ticker += bool(sentences.get(doc))
             continue
         for sentence in sentences.get(doc, []):
-            when, precision, words = target(sentence[sentence.find("PDUFA"):])
+            rest = sentence[sentence.find("PDUFA"):]
+            moved = _MOVED.search(rest)
+            if moved and target(moved.group(0))[0] is not None:
+                rest = rest[moved.end():]        # "extended ... from <old date> to <new date>": the new one
+            when, precision, words = target(rest)
             if when is None:
                 when, precision, words = target(sentence)
                 # A date before the word is only a target when it lies after the filing (not "On May 1, we...").

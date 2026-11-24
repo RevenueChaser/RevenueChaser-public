@@ -183,3 +183,11 @@ def test_a_pass_never_asks_uw_more_than_the_cap():
 def test_the_pages_updated_time_is_its_newest_write():
     _store(run_at=TWEET + 1800, kind="news", option="")
     assert "Data updated at 21:54" in report.render_html(now=TWEET + 3600)    # no calendar run: the headline's
+
+
+def test_the_news_pass_no_longer_asks_uw_for_option_posts():
+    """UW's subscription ended on 6 Dec 2026: the News job must not start the option check (it would mark every post
+    "UW failed"). The check comes back with the options lane's prints source."""
+    from pathlib import Path
+    from revenuechaser.app import runners
+    assert "x_check.run(" not in Path(runners.__file__).read_text(encoding="utf-8")

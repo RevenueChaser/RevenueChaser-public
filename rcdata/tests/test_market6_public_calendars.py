@@ -223,6 +223,9 @@ def test_sec_requests_go_through_the_shared_sec_pace(http_mock, monkeypatch):
     # The earliest words win: the period after PDUFA, not the day the company said it.
     ("The PDUFA date is in Q3 2027, the Company said on November 20, 2026.", "2026-11-20", date(2026, 11, 24),
      date(2027, 7, 1)),
+    # A moved target: "from <old> to <new>" is the new date.
+    ("The FDA extended the PDUFA target action date from December 15, 2026 to March 15, 2027.", "2026-11-20",
+     date(2026, 11, 24), date(2027, 3, 15)),
     # The same shape with a date after the filing is a target.
     ("A decision on March 15, 2027 under PDUFA is expected for relutrigine.", "2026-11-03", date(2026, 11, 3),
      date(2027, 3, 15)),
