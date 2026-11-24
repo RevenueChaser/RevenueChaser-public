@@ -162,7 +162,7 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "yfinance/fx": "one request per currency, not per company",
     }
     honours = {n for n, d in DATASETS.items() if getattr(d, "honours_scope", False)}
-    assert honours == {"alpaca/bars", "yfinance/float", "tradingview/float", "funds/etf_holdings",
+    assert honours == {"alpaca/bars", "yfinance/float", "yfinance/bars", "tradingview/float", "funds/etf_holdings",
                        "alphavantage/earnings_transcripts"}, honours
     unnamed = sorted(set(DATASETS) - honours - set(ignores))
     assert not unnamed, (f"these datasets neither honour a scope nor are named as ignoring it: {unnamed}. "

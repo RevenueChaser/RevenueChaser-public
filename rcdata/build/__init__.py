@@ -37,9 +37,10 @@ serving.RETIRED_TABLES["market"] = ("news_headline",)
 # tables from their staging.
 from .prices import actions as prices_actions, bars as prices_bars, cover_shares as prices_cover  # noqa: E402
 from .prices import floats as prices_floats, serving as prices_serving, wrds_history as prices_wrds  # noqa: E402
+from .prices import yahoo_bars as prices_yahoo_bars  # noqa: E402
 
 DATASETS.update({d.name: d for d in (prices_bars.DATASET, prices_actions.DATASET, prices_cover.DATASET,
-                                     prices_floats.YAHOO_FLOAT, prices_floats.TV_FLOAT, prices_wrds.DATASET,
+                                     prices_floats.YAHOO_FLOAT, prices_floats.TV_FLOAT, prices_yahoo_bars.DATASET, prices_wrds.DATASET,
                                      prices_serving.DATASET)})
 # #446 steps 3 and 4: ``prices`` builds on a copy of the live file (``prices/incremental.py``).
 from .prices import incremental as prices_incremental  # noqa: E402

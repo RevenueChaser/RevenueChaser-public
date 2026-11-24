@@ -13,7 +13,8 @@ all. A build on the live copy (``serving.build(kind, base="live")``) stages only
 - **a security from a day**, the TEMP table ``_dirty_sec (security_id, since)``: that security's rows on or after
   its own ``since`` are rebuilt. ``since`` is ``0001-01-01`` -- the whole history -- for a security that joined or
   left the universe, whose issuer CIK changed, whose CRSP PERMNO link changed, or whose Compustat alias
-  (``_gvkey_alias``) formed, moved or went (the fund and the series both). A cover share count that changed restates
+  (``_gvkey_alias``) formed, moved or went (the fund and the series both), and for a name in a changed
+  ``yfinance/bars`` file (each holds the name's whole Yahoo history). A cover share count that changed restates
   the caps from its ``as_of``; an Alpaca action that moved or changed its ratio or amount restates from its ex-date.
   The set is closed over the issuer: the issuer cap of every class of the issuer moves with one class's cap.
 
@@ -256,6 +257,18 @@ def scope(ctx: Any, con: duckdb.DuckDBPyConnection, rebuild_shares) -> Scope:
     add(universe)
     add(alias)
     add(link)
+    # Yahoo's bars (``yfinance/bars``): a day's file holds each name's whole history (``period="max"``) under the
+    # fetch day's partition, so a name in a changed file is rebuilt whole, keyed as ``serving.YAHOO_BARS`` keys it.
+    from .. import base
+    from . import yahoo_bars
+    folder = base.parquet_root() / "yfinance" / "bars"
+    yahoo = [p for p in changed if _under(p, folder) and Path(p).is_file()]
+    if yahoo:
+        add(con.execute(f"""
+            SELECT DISTINCT coalesce(s.security_id, y.security_id)
+            FROM read_parquet([{', '.join(base.sql_path(Path(p)) for p in yahoo)}]) y
+            LEFT JOIN stg_spine s ON s.ticker = y.ticker AND s.cik IS NOT DISTINCT FROM y.cik""").fetchall())
+        words.append(f"{len(yahoo)} {yahoo_bars.NAME} file(s) changed: their names rebuilt whole")
     # The issuer behind each served cap; a security the issuer rule cannot place has none, before and now.
     con.execute(f"CREATE OR REPLACE TEMP TABLE _issuer AS SELECT DISTINCT security_id, cik FROM ({s.ISSUER_SQL})")
     issuer = con.execute("""
