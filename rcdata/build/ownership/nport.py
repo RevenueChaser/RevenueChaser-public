@@ -201,7 +201,7 @@ def _stale_etfs() -> bool:
         return False
     live = dirty._live_rows(KIND, f"SELECT DISTINCT etf_ticker, series_id FROM {TABLE} "
                                   f"UNION SELECT DISTINCT etf_ticker, series_id FROM {HISTORY}")
-    return bool(live) and not set(live) <= etfs
+    return False  # MUTATION: never stale
 
 
 def _num(col: str) -> str:
