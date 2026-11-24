@@ -28,7 +28,9 @@ TV = {"status": "ok", "result": [
      "forecast": 222, "previous": 220, "actual": None, "period": "Nov/22", "importance": 0},
     {"id": "2", "title": "CPI", "country": "US", "date": "2026-12-10T13:30:00.000Z", "forecast": None,
      "previous": 325.1, "actual": None, "period": "Nov", "importance": 0},
-    {"id": "3", "title": "no time", "country": "US", "date": None}]}
+    {"id": "3", "title": "no time", "country": "US", "date": None},
+    {"id": "4", "title": "Cleveland Fed CPI MoM", "country": "US", "date": "2026-12-10T16:00:00.000Z",
+     "importance": -1}]}
 FED = {"events": [
     {"month": "2026-11", "days": "20", "time": "12:15 p.m.", "title": "Speech - Governor Lisa D. Cook",
      "description": "The U.S. Economy in Global Context", "type": "Speeches"},
@@ -93,7 +95,8 @@ def test_both_sources_land_in_economic_event_with_their_source_and_read_back(htt
     got = read.economic_calendar()
     by_event = {r["event"]: r for r in got}
     assert set(by_event) == {"Initial Jobless Claims", "CPI", "Speech - Governor Lisa D. Cook", "FOMC Meeting",
-                             "Beige Book", "FOMC Minutes"}, "a Fed statistical release and a 2019 meeting are left out"
+                             "Beige Book", "FOMC Minutes"}, \
+        "a Fed statistical release, a 2019 meeting and TradingView's importance -1 rows are left out"
     assert by_event["FOMC Minutes"]["type"] == "report", "the minutes are not a rate decision (Earnings R6)"
     assert by_event["CPI"]["source"] == "tradingview" and by_event["CPI"]["type"] == "report"
     assert by_event["Initial Jobless Claims"]["forecast"] == "222" and by_event["CPI"]["prev"] == "325.1"

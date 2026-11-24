@@ -80,6 +80,8 @@ def tradingview_rows(body) -> tuple[list[dict], int]:
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict) or item.get("country") not in (None, "US"):
             continue
+        if item.get("importance") == -1:
+            continue    # auctions, EIA, USDA, sub-indices: each high print has its importance-1 headline (avo, 24 Nov)
         ts, name = event_ts(item.get("date")), _text(item.get("title"))
         if ts is None or name is None:
             unkeyed += 1
