@@ -169,6 +169,10 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
             return False, f"no next session known; ran for {ran}"
         return (True, f"next check {nxt} reached") if as_of >= nxt else (False, f"next check {nxt}")
     if cadence == "hourly":
+        if mode in STAGE_DONE and not _stage_done(check, mode):
+            # Under a partial mode the hour is the fetch's: a build of what it staged (the storage build at :05) is
+            # no fetch, and counting from it made the :45 fetch skip every second hour (review of #1483)
+            return True, "hourly: the newest check is a build, not a fetch"
         started = ops.run_started_at(check["run_id"]) if check.get("run_id") else None
         if started is None:
             return True, "hourly: the last check names no run"

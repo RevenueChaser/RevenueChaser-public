@@ -1088,6 +1088,8 @@ def flow(file_views: list[dict], datasets: dict, reads: dict, universe_view: dic
 
 
 BUILDER_ENTRY = "RC-Build"
+#: The hourly pass that fetches a source since the split (avo, 24 Nov 2026): a source's "next run" is this timer's.
+FETCH_ENTRY = "RC-Store-Fetch"
 
 
 SYSTEM_TIMER_PROPS = ("LoadState", "ActiveState", "UnitFileState", "LastTriggerUSec", "NextElapseUSecRealtime")
@@ -1117,7 +1119,7 @@ def read_system_timer(unit: str, system=None) -> tuple[str | None, str | None, s
             automations._show_value(props.get("NextElapseUSecRealtime")))
 
 
-def read_timer(scheduler=None, system=None) -> dict:
+def read_timer(scheduler=None, system=None, entry: str = BUILDER_ENTRY) -> dict:
     """The hourly builder timer (``core.automations``' ``RC-Build`` row, unit ``life-rc-builder``): ``state`` "on"
     while the timer is active, "off" when disabled; ``last`` / ``next`` its passes; ``minute`` the minute of its
     ``OnCalendar``. The scheduler answers first; when it has no row (no user unit, or no scheduler on this host)
@@ -1125,10 +1127,10 @@ def read_timer(scheduler=None, system=None) -> dict:
     or a read that fails: every value None."""
     from revenuechaser.core import automations
     try:
-        e = automations.entry(BUILDER_ENTRY)
+        e = automations.entry(entry)
         minute = int(automations.on_calendar(e).split()[-1].split(":")[1])
         scheduler = scheduler or automations.get_scheduler()
-        st = scheduler.status(BUILDER_ENTRY)
+        st = scheduler.status(entry)
         if st is not None:
             return {"state": "off" if st.state == "disabled" else "on", "last": st.last_run,
                     "next": st.next_run, "minute": minute}
@@ -1153,7 +1155,7 @@ def _timer(reader) -> dict:
 # ── The whole board ───────────────────────────────────────────────────────────────────────────────────────────
 
 def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, now: datetime | None = None,
-          datasets: dict | None = None, timer=None, job_runs=None, kind_modes=None, switches=None,
+          datasets: dict | None = None, timer=None, fetch_timer=None, job_runs=None, kind_modes=None, switches=None,
           runs_now=None, cgroup=None, alive=None, dataset_modes=None) -> dict:
     """The page's model from ``newdata.collect``'s output. ``applied`` is the saved universe
     (``board_settings.values("module_settings")["values"]``), ``ibkr`` the gateway's login state, ``datasets`` the
@@ -1176,6 +1178,10 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
     provider_rows = _providers(nd)
     reads = readers()
     timer_view = _timer(timer)
+    # A source is fetched by the storage fetch, so its next run is that timer's; a test that hands in only ``timer``
+    # gets it for both
+    fetch_view = (timer_view if timer is not None and fetch_timer is None
+                  else _timer(fetch_timer or (lambda: read_timer(entry=FETCH_ENTRY))))
     longest_unread = False
     try:
         longest = longest_build(job_runs() if job_runs else _read_job_runs(now), now)
@@ -1200,7 +1206,7 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
                                alive or procs.pid_alive, now)
     except Exception:  # noqa: BLE001 - an unreadable store leaves the lines without a limit, never the board failing
         running = []
-    file_views = files(nd, datasets, uni, reads, now, timer_view, modes, ds_modes)
+    file_views = files(nd, datasets, uni, reads, now, fetch_view, modes, ds_modes)
     control_sources.attach_pv(file_views, datasets)
     return {
         "error": None,

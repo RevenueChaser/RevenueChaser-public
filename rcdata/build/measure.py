@@ -51,17 +51,28 @@ def parquet(path: Path, seconds: float, rows: int | None) -> None:
         p["seconds"] = round(p["seconds"] + seconds, 3)
         if str(path.parent) not in p["dirs"] and len(p["dirs"]) < 5:
             p["dirs"].append(str(path.parent))
-    except OSError:
+    except Exception:  # noqa: BLE001 - the log never fails a write
         pass
 
 
 def build(run_id: str, kind: str, seconds: float, spill_bytes: int) -> None:
-    m = _OPEN.setdefault(run_id, {})
-    m["build"] = {"kind": kind, "seconds": round(seconds, 1), "spill_peak_gb": round(spill_bytes / 1e9, 2)}
+    """Add one dataset's build to ``run_id``'s: a kind's datasets no request named build under the lead's run."""
+    b = _OPEN.setdefault(run_id, {}).setdefault("build", {"kind": kind, "seconds": 0.0, "spill_peak_gb": 0.0,
+                                                          "datasets": 0})
+    b["seconds"] = round(b["seconds"] + seconds, 1)
+    b["spill_peak_gb"] = max(b["spill_peak_gb"], round(spill_bytes / 1e9, 2))
+    b["datasets"] += 1
 
 
 def finish(ctx, req: dict, check: dict, status: str, duckdb_bytes: int | None) -> None:
     """Write the run's line and forget it."""
+    try:
+        _finish(ctx, req, check, status, duckdb_bytes)
+    except Exception:  # noqa: BLE001 - the log never fails a run
+        logger.warning("measure: line not built", exc_info=True)
+
+
+def _finish(ctx, req: dict, check: dict, status: str, duckdb_bytes: int | None) -> None:
     m = _OPEN.pop(ctx.run_id, {})
     if _RUN.get() is m:
         _RUN.set(None)

@@ -41,3 +41,11 @@ def test_a_by_hand_source_staged_once_by_a_person_is_due_for_the_fetch(stager, m
     base.run_request({"dataset": stager.name, "params": {"no_duckdb": True}})
     assert due.is_due(stager, "parquet")[1] != due.BY_HAND_WHY
     assert due.is_due(stager, "full")[1] == due.BY_HAND_WHY             # a build still waits for a person's build
+
+
+def test_an_hourly_source_is_due_for_the_fetch_after_a_build(stager, monkeypatch):  # noqa: F811
+    """Review of #1483: the :05 build's check made the :45 fetch read "40 min ago" and skip every second hour."""
+    from revenuechaser.rcdata import ops
+    monkeypatch.setattr(type(stager), "cadence", "hourly")
+    ops.record_check(stager.name, "unchanged", source_as_of="2026-10-28")
+    assert due.is_due(stager, "parquet") == (True, "hourly: the newest check is a build, not a fetch")

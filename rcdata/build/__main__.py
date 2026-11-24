@@ -498,8 +498,9 @@ def main(argv: list[str] | None = None) -> int:
     wait = default_wait_s(args.cmd, getattr(args, "dataset", None)) if args.wait is None else max(0.0, args.wait)
     fetch_only = bool(getattr(args, "no_duckdb", False))
     fetch_pass = stage == "fetch"
-    base.FETCH_ONLY_PASS = fetch_pass           # the guard under the queue's own: no request of this pass builds
     with contextlib.ExitStack() as stack:
+        base.FETCH_ONLY_PASS = fetch_pass       # the guard under the queue's own: no request of this pass builds
+        stack.callback(setattr, base, "FETCH_ONLY_PASS", False)
         if fetch_only:
             got, problem = _take_fetch_locks(stack, _fetch_lock_names(args), wait)
         else:
@@ -572,24 +573,26 @@ def main(argv: list[str] | None = None) -> int:
                     # The one reason that can fail the pass on its own, with every dataset run ok (#1119).
                     reasons.append(f"due {name}: {why}")
                 due_failed = due_failed or int(error)
-            try:
-                pruned = ops.prune_issues()
-            except ops.BUSY_ERRORS as e:                 # best effort: the next hour prunes, the queue still drains
-                print(f"build_issues: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
-            else:
-                if pruned:
-                    print(f"build_issues: {pruned} resolved row(s) pruned", file=sys.stderr, flush=True)
-            # The run rows keep a year (avo, 20 Nov 2026), and this pass is their deleter: it is the writer of this
-            # store, so there is no second writer and no new timer. Best effort, like the issues above.
-            try:
-                gone = ops.prune_runs()
-            except ops.BUSY_ERRORS as e:
-                print(f"run rows: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
-            else:
-                if any(gone.values()):
-                    print("run rows pruned past " + f"{ops.RUN_ROWS_DAYS} days: "
-                          + ", ".join(f"{t} {n}" for t, n in sorted(gone.items()) if n),
-                          file=sys.stderr, flush=True)
+            # The prunes delete ops rows, so only the pass that checked the backup runs them (not --fetch-only).
+            if not fetch_pass:
+                try:
+                    pruned = ops.prune_issues()
+                except ops.BUSY_ERRORS as e:                 # best effort: the next hour prunes, the queue still drains
+                    print(f"build_issues: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
+                else:
+                    if pruned:
+                        print(f"build_issues: {pruned} resolved row(s) pruned", file=sys.stderr, flush=True)
+                # The run rows keep a year (avo, 20 Nov 2026), and this pass is their deleter: it is the writer of this
+                # store, so there is no second writer and no new timer. Best effort, like the issues above.
+                try:
+                    gone = ops.prune_runs()
+                except ops.BUSY_ERRORS as e:
+                    print(f"run rows: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
+                else:
+                    if any(gone.values()):
+                        print("run rows pruned past " + f"{ops.RUN_ROWS_DAYS} days: "
+                              + ", ".join(f"{t} {n}" for t, n in sorted(gone.items()) if n),
+                              file=sys.stderr, flush=True)
         # A due step that failed still drains the queue, then fails the pass, so an hourly error is not an exit 0.
         # Without --dataset this is the hourly pass, which leaves the attended requests queued for the terminal
         # that may run them.
