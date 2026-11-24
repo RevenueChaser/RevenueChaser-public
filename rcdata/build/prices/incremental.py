@@ -257,17 +257,16 @@ def scope(ctx: Any, con: duckdb.DuckDBPyConnection, rebuild_shares) -> Scope:
     add(universe)
     add(alias)
     add(link)
-    # Yahoo's bars (``yfinance/bars``): a day's file holds each name's whole history (``period="max"``) under the
-    # fetch day's partition, so a name in a changed file is rebuilt whole, keyed as ``serving.YAHOO_BARS`` keys it.
+    # Yahoo's bars (``yfinance/bars``): one file per ticker holds its whole history (``period="max"``), rewritten
+    # only when its bars changed, so the name of a changed file is rebuilt whole, keyed as ``serving.YAHOO_BARS`` is.
     from .. import base
     from . import yahoo_bars
     folder = base.parquet_root() / "yfinance" / "bars"
     yahoo = [p for p in changed if _under(p, folder) and Path(p).is_file()]
     if yahoo:
         add(con.execute(f"""
-            SELECT DISTINCT coalesce(s.security_id, y.security_id)
-            FROM read_parquet([{', '.join(base.sql_path(Path(p)) for p in yahoo)}]) y
-            LEFT JOIN stg_spine s ON s.ticker = y.ticker AND s.cik IS NOT DISTINCT FROM y.cik""").fetchall())
+            SELECT DISTINCT {yahoo_bars.ID}
+            FROM read_parquet([{', '.join(base.sql_path(Path(p)) for p in yahoo)}]) y {yahoo_bars.JOIN}""").fetchall())
         words.append(f"{len(yahoo)} {yahoo_bars.NAME} file(s) changed: their names rebuilt whole")
     # The issuer behind each served cap; a security the issuer rule cannot place has none, before and now.
     con.execute(f"CREATE OR REPLACE TEMP TABLE _issuer AS SELECT DISTINCT security_id, cik FROM ({s.ISSUER_SQL})")

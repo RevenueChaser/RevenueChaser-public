@@ -415,6 +415,11 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe_etf AS {universe.UNIVERSE_ETF_SQL}")
     con.execute(f"CREATE OR REPLACE TEMP TABLE _etf_tic_series AS {universe.ETF_TIC_SERIES_SQL}")
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe AS {universe.UNIVERSE_SQL}")
+    # A fund only Yahoo prices (no spine row, no Alpaca bar, no Compustat series) is in the universe by its ticker,
+    # never by its CIK: a CIK reaches an issuer's other classes (review of #1490, findings 3 and 4).
+    con.execute(f"""INSERT INTO _universe SELECT DISTINCT {yahoo_bars.ID} FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
+                    WHERE y.ticker IN (SELECT ticker FROM _universe_ticker) AND {yahoo_bars.SERVED}
+                    EXCEPT SELECT security_id FROM _universe""")
     # A name that left the universe keeps its stored bars (avo, DECISIONS S18: the store collects everything and is
     # never narrowed; #1079 dropped 20 securities when names left ``my_universe``). It stops getting new fetches
     # (``prices.scope``), but every id the live file serves stays in what this build stores.
@@ -596,20 +601,18 @@ CREATE OR REPLACE TEMP TABLE _hist_all AS
     SELECT * FROM ({crsp}) UNION ALL BY NAME SELECT * FROM ({comp}) UNION ALL BY NAME SELECT * FROM ({yahoo});
 """
 # Yahoo's bars (``yfinance/bars``, avo 24 Nov 2026, F28): asked only for the names Compustat has not priced lately,
-# priority 3, so ``HIST_FIRST`` serves one only on a session no Compustat row of the security has. Keyed like
-# Alpaca's (the spine's id of the ticker and CIK, else the id the fetch saw).
-# shortcut: Yahoo gives no dividend here, so a Yahoo-only name's total-return factor counts Alpaca's dividends only;
-# add Yahoo's ``Dividends`` column if a Yahoo-only name pays one Alpaca does not list.
+# priority 3, so ``HIST_FIRST`` serves one only on a session no Compustat row of the security has. Keyed by
+# ``yahoo_bars.ID``: the Compustat series claiming a fund's ticker, else the spine's id, else the fetch's; a ``class:``
+# id never (review of #1490, findings 2 and 3).
 YAHOO_BARS = f"""
-    SELECT coalesce(s.security_id, y.security_id) AS security_id, y.session_date, y.ticker AS symbol, y.cik,
+    SELECT {yahoo_bars.ID} AS security_id, y.session_date, y.ticker AS symbol, y.cik,
            y.open, y.high, y.low, y.close, y.volume, CAST(NULL AS DOUBLE) AS vwap, CAST(NULL AS BIGINT) AS trade_count,
            CAST(NULL AS DOUBLE) AS shares_outstanding, '{yahoo_bars.NAME}' AS source, y.source_as_of, y.fetched_at,
-           y.run_id, 3 AS priority, coalesce(s.security_id, y.security_id) AS series
-    FROM {yahoo_bars.STAGING} y LEFT JOIN stg_spine s ON s.ticker = y.ticker AND s.cik IS NOT DISTINCT FROM y.cik
+           y.run_id, 3 AS priority, {yahoo_bars.ID} AS series
+    FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
     WHERE y.session_date <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')
-      AND coalesce(s.security_id, y.security_id) IN (SELECT security_id FROM _universe)
-    QUALIFY row_number() OVER (PARTITION BY coalesce(s.security_id, y.security_id), y.session_date
-                               ORDER BY y.fetched_at DESC) = 1"""
+      AND {yahoo_bars.ID} IN (SELECT security_id FROM _universe) AND {yahoo_bars.SERVED}
+    QUALIFY row_number() OVER (PARTITION BY {yahoo_bars.ID}, y.session_date ORDER BY y.fetched_at DESC) = 1"""
 # The kind of an action for "the same action on the same day": a split, a reverse split and a stock dividend are one
 # kind, each a step of the share basis (review SHOULD 3 of #382: Compustat's ajexdi step and an Alpaca stock dividend
 # of the same day were both applied).
@@ -836,6 +839,13 @@ class PricesServing:
               AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.ex_date = w.ex_date
                               AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='w')}
                               AND p.action_type <> 'stock_dividend')""")
+        # Yahoo's splits and dividends (D2, 24 Nov 2026), only on a day whose served bar is Yahoo's and that holds no
+        # Alpaca or Compustat action of the kind: a Yahoo-only name had no total return at all (review of #1490, 1).
+        con.execute(f"""INSERT INTO _act BY NAME SELECT y.* FROM ({yahoo_bars.ACTIONS_SQL}) y
+            WHERE EXISTS (SELECT 1 FROM price_bar_daily b WHERE b.security_id = y.security_id
+                          AND b.session_date = y.ex_date AND b.source = '{yahoo_bars.NAME}'){mine.replace('w.', 'y.')}
+              AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = y.security_id AND p.ex_date = y.ex_date
+                              AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='y')})""")
         # The split Alpaca and Compustat both know, its day a session or two apart (``SPLIT_TWIN_SQL``, #268); the
         # dropped ones are counted for the build note.
         splits = con.execute(SPLIT_TWIN_SQL.format(mine=mine)).fetchone()[0]
