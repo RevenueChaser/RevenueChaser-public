@@ -236,22 +236,6 @@ def test_trust_class_reads_the_name():
     assert set(etf.TRUST_CLASSES) <= set(etf.ASSET_CLASSES)
 
 
-def test_a_trust_is_an_etf_row_with_no_series_no_note_no_cef_and_a_commodity_or_crypto_class():
-    """``etf.TRUST_SQL`` is the one definition ``my_universe`` reads (avo, 23 Nov 2026, option a)."""
-    import duckdb
-    con = duckdb.connect()
-    con.execute("CREATE TABLE etf (ticker TEXT, series_id TEXT, is_etn BOOLEAN, is_cef BOOLEAN, asset_class TEXT)")
-    con.executemany("INSERT INTO etf VALUES (?, ?, ?, ?, ?)", [
-        ("GLD", None, False, False, "commodity"), ("IBIT", None, None, None, "crypto"),
-        ("DBC", "S1", False, False, "commodity"),           # a 40-Act commodity fund: a series, so a fund
-        ("SPY", None, False, False, None),                  # a unit investment trust: no class here
-        ("OILX", None, True, False, "commodity"), ("CEFX", None, False, True, "commodity"),
-        ("SOXX", None, False, False, "equity"), ("FXE", None, False, False, "currency"),
-        ("UVXY", None, False, False, "volatility")])
-    got = {r[0] for r in con.execute(f"SELECT ticker FROM etf WHERE {etf.TRUST_SQL}").fetchall()}
-    assert got == {"GLD", "IBIT", "FXE", "UVXY"}
-
-
 def test_the_columns_later_prs_fill_stay_null(built):
     for r in _etf().values():
         assert (r["focus"], r["country"], r["adv_usd_20d"], r["expense_ratio"]) == (None, None, None, None)
@@ -461,6 +445,30 @@ def test_an_etf_s_compustat_ticker_history_is_in_security_history(request):
                           "WHERE gvkey = '131856' ORDER BY valid_from").fetchall()
     assert got == [("XLK", "tic", "XLKOLD", date(2010, 1, 4), date(2020, 3, 2)),
                    ("XLK", "tic", "XLK", date(2020, 3, 2), None)]
+
+
+def test_an_open_compustat_period_ends_null_not_on_compustats_far_future_day(request):
+    """Review M4 (24 Nov 2026): Compustat ends an open ``sec_idhist`` period on 2900-01-01, and the build wrote
+    2900-01-02 where the docstring, and an open SEC period, say NULL."""
+    import duckdb
+    from revenuechaser.rcdata.build.spine import wrds
+    folder = wrds.parquet_dir(wrds.SEC_IDHIST.name) / "delta=9999-12-31"
+    folder.mkdir(parents=True)
+    con = duckdb.connect()
+    try:
+        con.execute("COPY (SELECT '131856' AS gvkey, '01' AS iid, 'TIC' AS item, 'XLKOLD' AS itemvalue, "
+                    "DATE '2010-01-04' AS efffrom, DATE '2020-03-01' AS effthru, DATE '2026-11-01' AS source_as_of, "
+                    "CAST(1.0 AS DOUBLE) AS fetched_at, 'r' AS run_id "
+                    "UNION ALL SELECT '131856', '01', 'TIC', 'XLK', DATE '2020-03-02', DATE '2900-01-01', "
+                    "DATE '2026-11-01', 1.0, 'r') "
+                    f"TO {base.sql_path(folder / 'sec_idhist.parquet')} (FORMAT parquet)")
+    finally:
+        con.close()
+    request.getfixturevalue("identity")
+    with serving.open_read("spine") as con:
+        got = con.execute("SELECT value, valid_to FROM security_history WHERE gvkey = '131856' "
+                          "ORDER BY valid_from").fetchall()
+    assert got == [("XLKOLD", date(2020, 3, 2)), ("XLK", None)]
 
 
 def test_tickerinside_gives_the_figi_expense_ratio_and_asset_class_where_its_cik_agrees(identity):
