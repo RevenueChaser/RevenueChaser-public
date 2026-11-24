@@ -64,6 +64,30 @@ def test_s1_a_request_with_allow_shrink_cannot_empty_another_datasets_table(monk
         assert con.execute("SELECT count(*) FROM spx").fetchone()[0] == 391
 
 
+def test_a_request_may_name_the_one_table_it_lets_shrink(monkeypatch):
+    """24 Nov 2026: the prices build lost 186 bar-less ``security_symbol`` placeholders (ETPs the spine moved to Tier
+    B), 1.47 %, and the swap refused it. ``allow_shrink`` would also turn off every other guard of the kind, so a
+    request names the table instead: that table may shrink, another one's guard stays, and ``allow_shrink`` is off."""
+    series, spx = _Fake("market_series", "market_series", 50), _Fake("uw/spot_expiry_strike", "spx", 391)
+    monkeypatch.setattr(base, "kind_datasets", lambda kind: [series, spx])
+    base.parquet_root().mkdir(parents=True, exist_ok=True)
+    base.build_kind(base.RunContext(run_id="r1", dataset=series.name), series)
+    series.rows = 40
+    with pytest.raises(serving.SwapRefused, match="market_series"):
+        base.build_kind(base.RunContext(run_id="r2", dataset=series.name), series)
+    spx.rows = 300                                   # not named: still refused
+    named = base.RunContext(run_id="r3", dataset=series.name, shrink_tables=("market_series", "spx"))
+    assert not named.allow_shrink
+    with pytest.raises(serving.SwapRefused, match="spx"):
+        base.build_kind(named, series)
+    spx.rows = 391
+    base.build_kind(named, series)
+    with serving.open_read("market") as con:
+        assert con.execute("SELECT count(*) FROM market_series").fetchone()[0] == 40
+    assert base._tables({"allow_shrink_tables": ["security_symbol", 3]}) == ("security_symbol",)
+    assert base._tables({"allow_shrink_tables": "security_symbol"}) == ()
+
+
 def test_s1_the_scope_is_the_own_tables_plus_the_ones_the_dataset_declares_it_feeds(monkeypatch):
     """Since #326 the scope is declared, not inferred: ``tables`` plus ``feeds``, in that order."""
     series, spx = _Fake("market_series", "market_series", 1), _Fake("uw/spot_expiry_strike", "spx", 1)

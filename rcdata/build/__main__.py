@@ -367,6 +367,9 @@ def main(argv: list[str] | None = None) -> int:
                    "without it a table that empties or loses more than 1%% of its rows refuses the swap, and "
                    "another dataset's table keeps that guard even with it")
     run.add_argument("--allow-shrink", action="store_true", help="with --dataset: " + shrink_help)
+    run.add_argument("--allow-shrink-table", dest="shrink_tables", action="append", metavar="TABLE",
+                     help="with --dataset: let only this table of the dataset's shrink (repeatable); every other "
+                          "guard stays on, unlike --allow-shrink")
     run.add_argument("--reread", action="store_true",
                      help="with --dataset sec/reads: the owner's word for a mass re-read. Without it a run asks only "
                           "new filings and retries, up to the day cap; with it every stale company is asked")
@@ -429,10 +432,11 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "no_build", False):
         print("--no-build is deprecated: it is --no-duckdb (fetch and Parquet, no serving build). "
               "--no-parquet is the raw-only mode.", file=sys.stderr)
-    if args.cmd == "run" and not args.dataset and (args.as_of or args.allow_shrink or args.reread or args.no_duckdb or args.tiers
+    if args.cmd == "run" and not args.dataset and (args.as_of or args.allow_shrink or args.shrink_tables
+                                                   or args.reread or args.no_duckdb or args.tiers
                                                    or args.names or args.include):
         # They only shape the request queued for --dataset; without it they would be dropped silently (F5).
-        p.error("--as-of, --allow-shrink, --reread, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
+        p.error("--as-of, --allow-shrink, --allow-shrink-table, --reread, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
                 "--names and --include need --dataset")
     stage = getattr(args, "stage", None)
     if stage and args.dataset:
@@ -565,10 +569,12 @@ def main(argv: list[str] | None = None) -> int:
                 _say_failed(reasons)
             return worst
         mine = _own_requests_only(args.dataset) if args.dataset else None
-        if args.dataset and (args.as_of or args.allow_shrink or args.reread or args.no_duckdb or scope
-                             or not ops.queued(args.dataset, by=mine)):
+        tables = getattr(args, "shrink_tables", None)
+        if args.dataset and (args.as_of or args.allow_shrink or tables or args.reread or args.no_duckdb
+                             or scope or not ops.queued(args.dataset, by=mine)):
             params = {**({"as_of": args.as_of} if args.as_of else {}),
                       **({"allow_shrink": True} if args.allow_shrink else {}),
+                      **({"allow_shrink_tables": tables} if tables else {}),
                       **({"reread": True} if args.reread else {}),
                       **({"no_duckdb": True, "no_build": True} if args.no_duckdb else {}),
                       **({"no_parquet": True} if args.no_parquet else {}), **scope}

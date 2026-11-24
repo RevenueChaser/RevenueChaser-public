@@ -302,6 +302,10 @@ class RunContext:
     notes: list[str] = field(default_factory=list)
     uw_sampled: bool = False
     allow_shrink: bool = False                                      # a request's explicit "allow_shrink": true
+    #: A request's ``"allow_shrink_tables"``: only these of its tables may shrink in the swap, and nothing else is
+    #: relaxed (a kind's own guards, ``prices``'s per-security bar check, stay on). The 24 Nov 2026 prices build:
+    #: ``security_symbol`` lost 186 bar-less placeholder rows of ETPs the spine moved to Tier B, 1.47 %.
+    shrink_tables: tuple[str, ...] = ()
     reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
     full: bool = False                                              # a request's explicit "full": true (wrds/*)
     #: Whether this run is the hourly pass's own request (``_scheduled``: ``requested_by`` ``due.REQUESTED_BY``).
@@ -1194,6 +1198,12 @@ def feeds(ds) -> tuple[str, ...]:
     return tuple(getattr(ds, "feeds", ()))
 
 
+def _tables(params: dict) -> tuple[str, ...]:
+    """A request's ``"allow_shrink_tables"`` (a list of table names), else none."""
+    named = params.get("allow_shrink_tables")
+    return tuple(t for t in named if isinstance(t, str)) if isinstance(named, list) else ()
+
+
 def shrink_scope(ds: Dataset) -> tuple[str, ...]:
     """The tables a request's ``allow_shrink`` may let shrink (review S-1 of #220): the dataset's own tables and the
     served tables its rows feed (:func:`feeds`), never a table its rows never reach.
@@ -1255,7 +1265,8 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
     if not parquet_root().is_dir():
         raise SourceError(f"the Parquet root {parquet_root()} is missing (RC_MARKET_RAW_DIR unset or not mounted?)")
     ctxs = {ds.name: c for ds, c in members}
-    shrink = tuple(dict.fromkeys(t for ds, c in members if c.allow_shrink for t in shrink_scope(ds)))
+    shrink = tuple(dict.fromkeys(t for ds, c in members for t in shrink_scope(ds)
+                                 if c.allow_shrink or t in c.shrink_tables))
     from . import dirty
     plan = dirty.plan(kind, lead)
     every = [lead, *ctxs.values()]
@@ -1347,7 +1358,7 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     params = req.get("params") or {}
     run_id = new_run_id()
     ctx = RunContext(run_id=run_id, dataset=req["dataset"], trigger=trigger, sleep=sleep, clock=clock,
-                     allow_shrink=params.get("allow_shrink") is True,
+                     allow_shrink=params.get("allow_shrink") is True, shrink_tables=_tables(params),
                      reread=params.get("reread") is True, full=params.get("full") is True,
                      scheduled=_scheduled(req))
     ops.start_run(run_id, req["dataset"], trigger, params)
@@ -1544,7 +1555,7 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             ds = DATASETS.get(req["dataset"])
             params = req.get("params") or {}
             ctx = RunContext(run_id=new_run_id(), dataset=req["dataset"], trigger=trigger,
-                             allow_shrink=params.get("allow_shrink") is True,
+                             allow_shrink=params.get("allow_shrink") is True, shrink_tables=_tables(params),
                              reread=params.get("reread") is True, full=params.get("full") is True,
                              scheduled=_scheduled(req))
             ops.start_run(ctx.run_id, req["dataset"], trigger, params)
