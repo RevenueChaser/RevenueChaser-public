@@ -152,6 +152,7 @@ DATASETS: dict[str, DatasetCard] = {
     'yfinance/fx': DatasetCard('Daily exchange rates for non-USD filers (Yahoo)', step=9, role='fills'),
     'tradingview/float': DatasetCard('Float (TradingView)', step=8, role='first'),
     'yfinance/float': DatasetCard('Float check (Yahoo)', step=8, role='cross-check'),
+    'yfinance/bars': DatasetCard('Daily bars where Compustat has none (Yahoo)', step=8, role='fills'),
 }
 
 #: The column whose newest value dates a serving table's last write. Never ``Need.day_column``; see the note above.

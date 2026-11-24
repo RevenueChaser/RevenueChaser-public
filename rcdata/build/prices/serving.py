@@ -3,7 +3,7 @@
 **Tables** (``prices.duckdb``, serving schema version 1), every one keyed on the security id (``prices.security_id``):
 
 - ``price_bar_daily``: one bar per security and New York session, **nominal** (the prices as traded that day):
-  the WRDS history (Alpaca's bars are the tester's, ``prices.tester``, and never served) -- ``wrds/prices``'s
+  Yahoo's (``yfinance/bars``) only on a session Compustat has no row of the security (F28), else the WRDS history (Alpaca's bars are the tester's, ``prices.tester``, and never served) -- ``wrds/prices``'s
   Compustat on every day it prices and lists, a day without ``trfd`` too, its return read with ``trfd`` = 1 and the
   day's dividend flagged; **CRSP serves no bar** (avo, 4 Nov 2026: the cross-check only) -- and the S&P 500 index
   level from the market store's Cboe file (``index:SPX``, the close only);
@@ -64,7 +64,7 @@ import duckdb
 
 from ... import ops
 from .. import base, secd
-from . import KIND, incremental, stage, universe, wrds_history
+from . import KIND, incremental, stage, universe, wrds_history, yahoo_bars
 from .cover_shares import DEI_SOURCE as DEI
 
 logger = logging.getLogger(__name__)
@@ -593,8 +593,23 @@ CREATE OR REPLACE TEMP TABLE _gvkey_alias AS {alias};
 BUILD_HIST_SQL = """
 CREATE OR REPLACE TEMP TABLE _secd_listed AS {listed};
 CREATE OR REPLACE TEMP TABLE _hist_all AS
-    SELECT * FROM ({crsp}) UNION ALL BY NAME SELECT * FROM ({comp});
+    SELECT * FROM ({crsp}) UNION ALL BY NAME SELECT * FROM ({comp}) UNION ALL BY NAME SELECT * FROM ({yahoo});
 """
+# Yahoo's bars (``yfinance/bars``, avo 24 Nov 2026, F28): asked only for the names Compustat has not priced lately,
+# priority 3, so ``HIST_FIRST`` serves one only on a session no Compustat row of the security has. Keyed like
+# Alpaca's (the spine's id of the ticker and CIK, else the id the fetch saw).
+# shortcut: Yahoo gives no dividend here, so a Yahoo-only name's total-return factor counts Alpaca's dividends only;
+# add Yahoo's ``Dividends`` column if a Yahoo-only name pays one Alpaca does not list.
+YAHOO_BARS = f"""
+    SELECT coalesce(s.security_id, y.security_id) AS security_id, y.session_date, y.ticker AS symbol, y.cik,
+           y.open, y.high, y.low, y.close, y.volume, CAST(NULL AS DOUBLE) AS vwap, CAST(NULL AS BIGINT) AS trade_count,
+           CAST(NULL AS DOUBLE) AS shares_outstanding, '{yahoo_bars.NAME}' AS source, y.source_as_of, y.fetched_at,
+           y.run_id, 3 AS priority, coalesce(s.security_id, y.security_id) AS series
+    FROM {yahoo_bars.STAGING} y LEFT JOIN stg_spine s ON s.ticker = y.ticker AND s.cik IS NOT DISTINCT FROM y.cik
+    WHERE y.session_date <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')
+      AND coalesce(s.security_id, y.security_id) IN (SELECT security_id FROM _universe)
+    QUALIFY row_number() OVER (PARTITION BY coalesce(s.security_id, y.security_id), y.session_date
+                               ORDER BY y.fetched_at DESC) = 1"""
 # The kind of an action for "the same action on the same day": a split, a reverse split and a stock dividend are one
 # kind, each a step of the share basis (review SHOULD 3 of #382: Compustat's ajexdi step and an Alpaca stock dividend
 # of the same day were both applied).
@@ -709,7 +724,7 @@ class PricesServing:
         chunked = None if live or stage.chunks() == 1 else Chunked(ctx, con, stage.chunks())
         if chunked is None:
             con.execute(BUILD_HIST_SQL.format(crsp=wrds_history.CRSP_BARS, comp=wrds_history.COMP_BARS,
-                                              listed=wrds_history.SECD_LISTED))
+                                              listed=wrds_history.SECD_LISTED, yahoo=YAHOO_BARS))
             # Alpaca's bar wins its session; of the history bars, Compustat's (priority 1) before CRSP's.
             bars_sql = f"SELECT * FROM ({_index_levels(con)}) UNION ALL {HIST_BARS}"
             counts["price_bar_daily"] = _create(con, "price_bar_daily", bars_sql, live, rows)
@@ -1629,7 +1644,7 @@ class Chunked:
                              ("dsf", "permno IN (SELECT permno FROM _bpermno)")):
             name = w.STAGING[table]
             con.execute(f"CREATE OR REPLACE TEMP TABLE {name} AS SELECT * FROM {name}{incremental.WHOLE} WHERE {where}")
-        con.execute(BUILD_HIST_SQL.format(crsp=w.CRSP_BARS, comp=w.COMP_BARS, listed=w.SECD_LISTED))
+        con.execute(BUILD_HIST_SQL.format(crsp=w.CRSP_BARS, comp=w.COMP_BARS, listed=w.SECD_LISTED, yahoo=YAHOO_BARS))
         # A PERMNO linked to two securities is staged in both chunks: each keeps only its own.
         con.execute("DELETE FROM _hist_all WHERE security_id NOT IN (SELECT security_id FROM _bucket)")
 
