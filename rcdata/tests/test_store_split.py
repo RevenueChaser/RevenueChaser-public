@@ -49,3 +49,19 @@ def test_an_hourly_source_is_due_for_the_fetch_after_a_build(stager, monkeypatch
     monkeypatch.setattr(type(stager), "cadence", "hourly")
     ops.record_check(stager.name, "unchanged", source_as_of="2026-10-28")
     assert due.is_due(stager, "parquet") == (True, "hourly: the newest check is a build, not a fetch")
+
+
+def test_a_market_source_is_fetched_at_its_two_hours_and_retried_once(stager, monkeypatch):  # noqa: F811
+    """avo, 24 Nov 2026: market at 07:45 and 22:45 (before its 08:25 / 23:25 build), not hourly."""
+    from datetime import datetime
+    from revenuechaser.core import calendar
+    from revenuechaser.rcdata import ops
+
+    def at(hour):
+        monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, hour, 45).astimezone())
+        return due._pass_mode(stager, "full", "fetch")[1]
+    assert at(7) is None and at(22) is None
+    assert at(12) == "market is fetched at 07:45 and 22:45" and at(8) is not None
+    ops.record_check(stager.name, "failed", note="fetch failed")
+    assert at(8) is None and at(9) is not None                 # one retry, the hour after
+    assert due._pass_mode(stager, "full", "build")[1] is not None   # the build pass is not held by the hours

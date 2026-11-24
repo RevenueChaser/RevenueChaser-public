@@ -184,13 +184,33 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     return False, f"{cadence}: last checked {age} days ago"
 
 
+#: The local hours (the machine's zone, Europe/Amsterdam on homesrv) the storage fetch takes a kind's sources at, for a
+#: kind that is built on a timer of its own (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each just before its
+#: build at 08:25 and 23:25, not hourly). A fetch that failed tries once more the next hour.
+FETCH_HOURS = {"market": (7, 22)}
+
+
+def _fetch_hour(ds) -> str | None:
+    """Why the storage fetch leaves ``ds`` for a later hour, or None."""
+    hours = FETCH_HOURS.get(ds.kind)
+    if not hours:
+        return None
+    hour = calendar._now().astimezone().hour
+    if hour in hours:
+        return None
+    check = ops.latest_check(ds.name)
+    if (hour - 1) % 24 in hours and check is not None and check["result"] == "failed":
+        return None                           # the one retry of a failed fetch
+    return f"{ds.kind} is fetched at " + " and ".join(f"{h:02d}:45" for h in hours)
+
+
 def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
     """``(mode, why not)`` for the split passes (avo, 24 Nov 2026: a storage fetch timer always on, a storage build
     timer he switches). ``fetch``: a ``full`` source is queued as ``parquet``, so the pass never builds DuckDB.
     ``build``: only a ``full`` source whose newest check is a Parquet stage is queued, and as ``full``: the build of
     what the fetch timer staged, at no provider call (the raw file is the resume marker)."""
     if stage == "fetch":
-        return ("parquet" if mode == "full" else mode), None
+        return ("parquet" if mode == "full" else mode), _fetch_hour(ds)
     if stage == "build":
         if mode != "full":
             return mode, f"automation {mode}: the build pass builds only full sources"
