@@ -93,11 +93,12 @@ def _lines(con: duckdb.DuckDBPyConnection, files, table: str, where: str) -> Non
         WHERE h.cusip IS NOT NULL AND h.cik IS NOT NULL AND h.period IS NOT NULL AND ({where})""")
 
 
-def build(con: duckdb.DuckDBPyConnection, pad) -> dict[str, int]:
+def build(con: duckdb.DuckDBPyConnection, pad, files=None) -> dict[str, int]:
     """The seven tables, from ``_active``, ``_px``, ``_deadline``, ``_sp_security``, ``sec13f_filer_period`` and
     ``sec13f_cusip_map`` that ``ownership/serve`` has built; ``pad(con, table)`` gives an eight-digit CUSIP its lost
-    leading zero as the long book does (#937). Their row counts."""
-    files = sec13f.DATASET.holding_files()
+    leading zero as the long book does (#937). ``files``: the holdings partitions to read, every one by default.
+    Their row counts."""
+    files = sec13f.DATASET.holding_files() if files is None else files
     _lines(con, files, "_opt", "upper(trim(h.put_call)) IN ('PUT', 'CALL')")
     _lines(con, files, "_prn", "upper(h.sh_type) = 'PRN' AND coalesce(trim(h.put_call), '') = ''")
     pad(con, "_opt")
