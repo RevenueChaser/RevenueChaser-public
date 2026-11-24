@@ -41,13 +41,15 @@ def norm_symbol(raw) -> str:
 
 
 def spine_tickers() -> set[str] | None:
-    """Every ticker of the live spine's ``security`` table; None when there is no spine file yet."""
+    """Every ticker of the live spine's ``security`` and ``etf`` tables (an ETF's ticker is only in ``etf``: FINRA,
+    FTD, IBKR and Reg SHO list ETFs too); None when there is no spine file yet."""
     try:
         con = serving.open_read(SPINE)
     except serving.ServingFileMissing:
         return None
     try:
-        return {r[0] for r in con.execute("SELECT ticker FROM security").fetchall()}
+        sql = "SELECT ticker FROM security" + (" UNION SELECT ticker FROM etf" if has_table(con, "etf") else "")
+        return {r[0] for r in con.execute(sql).fetchall()}
     finally:
         con.close()
 
