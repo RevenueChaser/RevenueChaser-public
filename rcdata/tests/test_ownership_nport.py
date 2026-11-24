@@ -341,12 +341,6 @@ def test_a_spine_etf_ticker_change_rebuilds_with_no_parquet_change(two_quarters,
     assert not nport.DATASET.dirty(ctx).clean
     monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000009999")])
     assert not nport.DATASET.dirty(ctx).clean
-
-
-def test_no_spine_etfs_does_not_rebuild_the_served_tables_away(two_quarters, monkeypatch):
-    """A spine that cannot be read gives no ETFs; that must not read as every live ETF gone."""
-    ctx, con, _ = two_quarters
-    _serve_live(con)
-    ctx.changed = []
+    # a spine that cannot be read gives no ETFs; that must not read as every live ETF gone
     monkeypatch.setattr(nport, "_spine_etfs", lambda: [])
     assert nport.DATASET.dirty(ctx).clean
