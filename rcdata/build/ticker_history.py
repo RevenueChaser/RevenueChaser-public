@@ -84,8 +84,8 @@ def starts(con: duckdb.DuckDBPyConnection | None = None) -> dict[str, date]:
     rows = _rows(con)
     gvkeys = {(t, g) for t, g, *_ in rows if t is not None}
     first: dict[tuple[str, str], date] = {}
-    for _, g, _, s, f, _ in rows:
-        if f is not None and (s, g) in gvkeys:
+    for t, g, _, s, f, _ in rows:
+        if t is not None and f is not None and (s, g) in gvkeys:
             first[(s, g)] = min(f, first.get((s, g), f))
     out: dict[str, date] = {}
     for (t, _), f in first.items():
