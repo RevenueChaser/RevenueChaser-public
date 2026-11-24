@@ -122,7 +122,10 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
         return False, ATTENDED_WHY
     if mode == "off":                       # after attended: the Settings row reads "by hand only" first too
         return False, f"automation off for {ds.kind}"
-    if getattr(ds, "starts_by_hand", False) and not ops.ever_built(ds.name):
+    if getattr(ds, "starts_by_hand", False) and not ops.ever_built(ds.name) \
+            and not (mode in STAGE_DONE and _stage_done(ops.latest_check(ds.name) or {"result": None}, mode)):
+        # Under a partial mode a person's first staged run is its first run: the storage fetch builds nothing, so
+        # waiting for a build would keep the source off the hourly fetch for good (avo, 24 Nov 2026).
         return False, BY_HAND_WHY
     schedule = ops.schedule_get(ds.name) or {}
     if schedule.get("paused_at") is not None:
@@ -177,11 +180,28 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     return False, f"{cadence}: last checked {age} days ago"
 
 
-def enqueue_due(datasets: dict | None = None) -> list[tuple[str, str, int | None, bool]]:
+def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
+    """``(mode, why not)`` for the split passes (avo, 24 Nov 2026: a storage fetch timer always on, a storage build
+    timer he switches). ``fetch``: a ``full`` source is queued as ``parquet``, so the pass never builds DuckDB.
+    ``build``: only a ``full`` source whose newest check is a Parquet stage is queued, and as ``full``: the build of
+    what the fetch timer staged, at no provider call (the raw file is the resume marker)."""
+    if stage == "fetch":
+        return ("parquet" if mode == "full" else mode), None
+    if stage == "build":
+        if mode != "full":
+            return mode, f"automation {mode}: the build pass builds only full sources"
+        check = ops.latest_check(ds.name)
+        if not (check and _stage_done(check, "parquet")):
+            return mode, "no staged Parquet waiting for a build"
+    return mode, None
+
+
+def enqueue_due(datasets: dict | None = None, stage: str | None = None) -> list[tuple[str, str, int | None, bool]]:
     """Queue every due dataset once; ``(name, why, request id or None, error)`` per dataset, in registry order.
 
     No id: not due, already queued or running, or an error (``why`` says which). ``error`` is True when the due check
     raised or ``ops.sqlite`` stayed locked past its busy timeout; one dataset's error does not stop the others.
+    ``stage`` is the split pass (``run --fetch-only`` / ``--build-only``, ``_pass_mode``); None is the old whole pass.
     """
     if datasets is None:
         from . import DATASETS as datasets
@@ -195,7 +215,8 @@ def enqueue_due(datasets: dict | None = None) -> list[tuple[str, str, int | None
                 out.append((name, f"not due (held: {ops.switch_words(*held)})", None, False))
                 continue
             mode = ops.dataset_mode(name, datasets[name].kind)   # #527: a source's own mode wins over its kind's
-            due, why = is_due(datasets[name], mode)
+            mode, not_now = _pass_mode(datasets[name], mode, stage)
+            due, why = (False, not_now) if not_now else is_due(datasets[name], mode)
         except Exception as e:  # noqa: BLE001 - a calendar past its table for one dataset must not stop the rest
             out.append((name, f"due check failed: {type(e).__name__}: {e}"[:300], None, True))
             continue

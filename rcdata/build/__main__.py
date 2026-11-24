@@ -1,7 +1,11 @@
 """``python -m revenuechaser.rcdata.build`` — the builder CLI.
 
-    run [--once] [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread] [--no-duckdb] [--no-parquet]
+    run [--once] [--fetch-only | --build-only]
+        [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread] [--no-duckdb] [--no-parquet]
                   [--tiers A,B] [--names KO,MSFT]]
+                                        --fetch-only / --build-only (no --dataset): the two hourly timers (avo, 24
+                                        Nov 2026), the storage fetch (raw and Parquet, never DuckDB) and the
+                                        storage build (what the fetch staged, then the queue); ``due._pass_mode``
                                         take queued requests in order (FIFO) and run each; without --dataset, every
                                         dataset that is due (``due.py``) is queued first (by "schedule", once);
                                         with --dataset, a dataset with nothing queued (or any, with --as-of) is
@@ -202,7 +206,7 @@ def _take_the_turn(stack: contextlib.ExitStack, wait: float) -> tuple[bool, str 
         time.sleep(min(WAIT_POLL_S, max(0.0, deadline - time.monotonic())))
 
 
-def _claim_kind(req: dict, *, skip=(), only=None, by=None) -> list[dict]:
+def _claim_kind(req: dict, *, skip=(), only=None, by=None, fetch_only: bool = False) -> list[dict]:
     """``req`` and every other request of its kind queued now, in registry order (PR A): the pass builds the
     kind's file once for all of them. A request queued after this moment waits for the next turn of its kind.
 
@@ -223,7 +227,7 @@ def _claim_kind(req: dict, *, skip=(), only=None, by=None) -> list[dict]:
     try:
         while names:
             try:
-                more = ops.next_request(only=names, by=by)
+                more = ops.next_request(only=names, by=by, fetch_only=fetch_only)
             except ops.BUSY_ERRORS as e:
                 # a locked ops store while claiming: run what is claimed; the rest waits for the next turn
                 print(f"{ds.kind}: ops store busy while claiming: {e}", file=sys.stderr, flush=True)
@@ -289,7 +293,8 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
                 return worst
             time.sleep(POLL_S)
             continue
-        batch = [req] if dataset is not None else _claim_kind(req, skip=skip_now, only=only, by=by)
+        batch = [req] if dataset is not None else _claim_kind(req, skip=skip_now, only=only, by=by,
+                                                              fetch_only=fetch_only)
         from . import DATASETS as registry          # read here, so a test's registry is this loop's too
         mine = [r["dataset"] for r in batch if base.heavy(registry.get(r["dataset"]))]
         if mine and not ran_heavy:
@@ -380,6 +385,14 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--tiers", help=scope_help)
     run.add_argument("--names", help=scope_help)
     run.add_argument("--include", help=group_help)
+    # avo, 24 Nov 2026: two timers, a storage fetch always on and a storage build he switches (due._pass_mode).
+    split = run.add_mutually_exclusive_group()
+    split.add_argument("--fetch-only", dest="stage", action="store_const", const="fetch",
+                       help="without --dataset: the hourly storage fetch: every due source to raw and Parquet "
+                            "(a full source as parquet), never a DuckDB build")
+    split.add_argument("--build-only", dest="stage", action="store_const", const="build",
+                       help="without --dataset: the storage build: the full sources whose newest check is a "
+                            "Parquet stage, built into their serving DuckDB, then the queue")
     at = sub.add_parser("attended")
     at.add_argument("--dataset", choices=sorted(base.attended_names()),
                     help="only this attended dataset")
@@ -416,6 +429,9 @@ def main(argv: list[str] | None = None) -> int:
         # They only shape the request queued for --dataset; without it they would be dropped silently (F5).
         p.error("--as-of, --allow-shrink, --reread, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
                 "--names and --include need --dataset")
+    stage = getattr(args, "stage", None)
+    if stage and args.dataset:
+        p.error("--fetch-only and --build-only are the hourly passes: they take no --dataset")
     scope = {k: [n.strip() for n in v.split(",") if n.strip()]
              for k, v in (("tiers", getattr(args, "tiers", None)), ("names", getattr(args, "names", None)),
                           ("include", getattr(args, "include", None))) if v}
@@ -481,6 +497,8 @@ def main(argv: list[str] | None = None) -> int:
     reasons: list[str] = []
     wait = default_wait_s(args.cmd, getattr(args, "dataset", None)) if args.wait is None else max(0.0, args.wait)
     fetch_only = bool(getattr(args, "no_duckdb", False))
+    fetch_pass = stage == "fetch"
+    base.FETCH_ONLY_PASS = fetch_pass           # the guard under the queue's own: no request of this pass builds
     with contextlib.ExitStack() as stack:
         if fetch_only:
             got, problem = _take_fetch_locks(stack, _fetch_lock_names(args), wait)
@@ -488,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
             # avo's rule (#212): a live write needs a fresh verified backup. Checked before the turn, because no
             # wait makes a stale copy fresh, and only for a run that replaces a served file -- a fetch-only run
             # writes raw files and Parquet partitions, which the next build reads again.
-            stale = base.backup_problem()
+            stale = None if fetch_pass else base.backup_problem()
             got, problem = (False, stale) if stale else _take_the_turn(stack, wait)
         if not got:
             # Exit 3 is "nothing was done", but it is still a red job row with no reason anywhere, so it says
@@ -548,7 +566,7 @@ def main(argv: list[str] | None = None) -> int:
             ops.enqueue(args.dataset, params or None, by="cli")
         due_failed = 0
         if not args.dataset:
-            for name, why, _, error in due.enqueue_due():
+            for name, why, _, error in due.enqueue_due(stage=stage):
                 print(f"{name}: {why}", file=sys.stderr, flush=True)
                 if error:
                     # The one reason that can fail the pass on its own, with every dataset run ok (#1119).
@@ -576,7 +594,8 @@ def main(argv: list[str] | None = None) -> int:
         # Without --dataset this is the hourly pass, which leaves the attended requests queued for the terminal
         # that may run them.
         skip = () if args.dataset else base.attended_names()
-        code = max(_run_queue(args.dataset, args.once, skip=skip, by=mine, fetch_only=fetch_only, reasons=reasons),
+        code = max(_run_queue(args.dataset, args.once, skip=skip, by=mine, fetch_only=fetch_only or fetch_pass,
+                              reasons=reasons),
                    due_failed)
         if code:
             _say_failed(reasons)

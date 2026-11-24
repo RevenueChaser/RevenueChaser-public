@@ -2043,7 +2043,7 @@ ND_WORKER_SILENT_MINUTES = 70
 ND_PAGE_STALE_MINUTES = 15
 ND_PAUSE_STOPS = "A Pause cancels a queued request and stops a running one before its next provider call."
 ND_BACKFILL_CONFIRM_OVER = 1000
-ND_NEXT_PASS = "the builder takes it at its next pass (hourly at :05)"
+ND_NEXT_PASS = "the storage build takes it at its next pass (hourly at :05, when its timer is on)"
 
 ND_THEME_CSS = (THEME_CSS.replace(':root[data-theme="auto"]{', ':root[data-theme="auto"] #newdata{')
                 .replace(':root[data-theme="light"]{', ':root[data-theme="light"] #newdata{')

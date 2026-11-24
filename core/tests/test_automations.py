@@ -153,9 +153,13 @@ class _FakeSystemctl:
         return 0, "", ""
 
 
-def test_the_builder_row_runs_one_queue_pass_every_hour_at_05():
+def test_the_storage_build_runs_every_hour_at_05_and_the_storage_fetch_at_35():
+    """avo, 24 Nov 2026: the hourly pass split in two timers, a fetch that never builds and a build he switches."""
+    f = A.entry("RC-Store-Fetch")
+    assert f.args == ("-m", "revenuechaser.rcdata.build", "run", "--once", "--fetch-only")
+    assert f.hourly and f.time == "00:35" and f.unit_name == A.STORE_FETCH_UNIT == "life-rc-store-fetch"
     e = A.entry("RC-Build")
-    assert e.args == ("-m", "revenuechaser.rcdata.build", "run", "--once")
+    assert e.args == ("-m", "revenuechaser.rcdata.build", "run", "--once", "--build-only")
     assert e.hourly and e.time == "00:05" and e.schedule == "hourly at :05 (local)"
     assert e.settings.time_limit_minutes == 120
     assert e.tables_written == (), "it writes the market store, never the old one: no job_runs row (job_runs2 instead)"
