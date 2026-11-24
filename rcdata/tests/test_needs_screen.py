@@ -221,3 +221,15 @@ def test_the_sec_pace_words_state_the_bucket_rate_the_code_runs():
     from revenuechaser.core import sec_throttle
     from revenuechaser.rcdata.needs import screen
     assert f"{sec_throttle.RATE} a second" in screen.PROVIDERS["sec"].pace
+
+
+def test_every_prices_dataset_says_what_it_fetches_in_its_own_words():
+    """avo, 24 Nov 2026 16:06 ("tekrardan spine a bak aynisi olsun"): the Grafana prices panel showed each dataset's
+    label twice, as its name and as what it fetches, where the spine's rows say it in a few words of their own. Every
+    prices card carries an ``about`` and a ``short`` name, as the spine's do."""
+    from revenuechaser.rcdata.build import DATASETS as BUILT
+    prices = [n for n, d in BUILT.items() if d.kind == "prices"]
+    assert prices
+    for name in prices:
+        card = screen.DATASETS[name]
+        assert card.about and card.short and card.about != card.label, name
