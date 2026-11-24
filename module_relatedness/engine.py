@@ -447,7 +447,9 @@ def service_rows(tickers: list[str] | None = None) -> list[dict]:
     from revenuechaser.rcdata import read
     from . import store
     tickers = [t.upper() for t in tickers] if tickers else select_pilot()
-    ciks = _cik_for(tickers)
+    # The layer's company, never ``_cik_for``'s SEC ticker map: that one downloads, and a Refresh is zero-network.
+    got = {str(c["ticker"]).upper(): str(c.get("cik") or "") for c in read.fundamental_companies(tickers)}
+    ciks = {t: got.get(t, "") for t in tickers}
     wanted = {read._cik(c) for c in ciks.values() if c}
     answers = {read._cik(r["cik"]): r for r in read.sec_reads(wanted, "company.profile")} if wanted else {}
     # shortcut: a company the service leaves out (SIC 6770) or has no text for gets no ``shell`` / ``no_text`` row
