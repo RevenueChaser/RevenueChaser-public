@@ -429,3 +429,24 @@ def test_reading_the_queue_closes_a_request_whose_run_was_killed(client):
     body = client.get("/api/build/queue").get_json()
     assert body["active"] == []
     assert body["finished"][0]["id"] == rid and body["finished"][0]["status"] == "failed"
+
+
+def test_a_duckdbs_fetch_hours_are_set_from_the_panel_and_every_hour_drops_the_row(client):
+    """avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali ... Grafana bu sekilde kontrol edilmeli")."""
+    url, head = "/api/build/fetch-hours/market", {"X-RC-Panel": "grafana"}
+    r = client.post(url, json={"hours": [22, 7]}, headers=head)
+    assert r.status_code == 200 and r.get_json()["hours"] == [7, 22] and ops.fetch_hours_get("market")["hours"] == "7,22"
+    for bad in ({}, {"hours": []}, {"hours": list(range(24))}, {"hours": ["x"]}, {"hours": "7"}, {"hours": None}):
+        assert client.post(url, json=bad, headers=head).status_code == 400, bad
+    assert ops.fetch_hours_get("market")["hours"] == "7,22", "a refused body changes nothing"
+    assert client.post("/api/build/fetch-hours/nope", json={"hours": [7]}, headers=head).status_code == 400
+    r = client.post(url, json={"hours": "every"}, headers=head)
+    assert r.status_code == 200 and ops.fetch_hours_get("market") is None
+    assert r.get_json()["source"] == "FETCH_HOURS", "every hour is the code's own hours while it names the kind"
+
+
+def test_the_kinds_rows_create_nothing_and_name_their_source(client):
+    rows = {k["kind"]: k for k in client.get("/api/build/kinds").get_json()["kinds"]}
+    assert rows["market"]["hours"] == [7, 22] and rows["market"]["source"] == "FETCH_HOURS"
+    assert rows["spine"]["hours"] is None and rows["spine"]["next_fetch"].endswith(("+01:00", "+02:00"))
+    assert rows["spine"]["switch_on"] is True and ops.fetch_hours_get("spine") is None

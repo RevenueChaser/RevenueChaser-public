@@ -919,6 +919,20 @@ def slot_get(dataset: str) -> dict | None:
     return _one("dataset_slot", dataset)
 
 
+def fetch_hours_set(kind: str, hours: str | None) -> None:
+    if hours is None:
+        row = _one("kind_fetch_hours", kind)
+        if row is not None:
+            _transaction(["kind_fetch_hours"], lambda: (None, lambda p: _delete(p, "kind_fetch_hours", row)))
+        return
+    row = {"kind": kind, "hours": hours, "set_at": ops.calendar._now().timestamp()}
+    _transaction(["kind_fetch_hours"], lambda: (None, lambda p: _put(p, "kind_fetch_hours", row)))
+
+
+def fetch_hours_get(kind: str) -> dict | None:
+    return _one("kind_fetch_hours", kind)
+
+
 def kind_mode_set(kind: str, mode: str, *, by: str) -> None:
     row = {"kind": kind, "mode": ops._kind_mode(mode), "set_at": time.time(), "set_by": by}
     _transaction(["kind_automation"], lambda: (None, lambda p: _put(p, "kind_automation", row)))

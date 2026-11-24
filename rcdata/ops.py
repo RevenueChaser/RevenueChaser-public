@@ -171,6 +171,11 @@ _DDL = {
     # avo, 24 Nov 2026: when a daily or weekly dataset starts. A new table, no upgrade step.
     "dataset_slot": """CREATE TABLE IF NOT EXISTS dataset_slot (
         dataset TEXT PRIMARY KEY, at TEXT NOT NULL, weekday INTEGER, set_at REAL NOT NULL)""",
+    # avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali"): the Amsterdam hours the storage fetch takes one serving
+    # file's sources at, as "7,22"; no row is the code's own hours (``due.FETCH_HOURS``), else every hour. Fetch only:
+    # a build hour is not this table's. A new table, no upgrade step.
+    "kind_fetch_hours": """CREATE TABLE IF NOT EXISTS kind_fetch_hours (
+        kind TEXT PRIMARY KEY, hours TEXT NOT NULL, set_at REAL NOT NULL)""",
     # A new table, no upgrade step: ``ensure`` makes it in an older file too, and an older checkout ignores it.
     "kind_automation": """CREATE TABLE IF NOT EXISTS kind_automation (
         kind TEXT PRIMARY KEY, mode TEXT NOT NULL, set_at REAL, set_by TEXT)""",
@@ -1186,6 +1191,26 @@ def slot_set(dataset: str, at: str | None, weekday: int | None) -> None:
 def slot_get(dataset: str) -> dict | None:
     with _open() as con:
         row = con.execute("SELECT * FROM dataset_slot WHERE dataset = ?", (dataset,)).fetchone()
+    return dict(row) if row else None
+
+
+@_routed
+def fetch_hours_set(kind: str, hours: str | None) -> None:
+    """``hours`` ("7,22", already checked by ``due.parse_hours``) the storage fetch takes ``kind`` at; None drops the
+    row, which is the code's own hours again (``due.fetch_hours``)."""
+    with _open() as con:
+        if hours is None:
+            con.execute("DELETE FROM kind_fetch_hours WHERE kind = ?", (kind,))
+            return
+        con.execute("INSERT INTO kind_fetch_hours (kind, hours, set_at) VALUES (?, ?, ?) "
+                    "ON CONFLICT (kind) DO UPDATE SET hours = excluded.hours, set_at = excluded.set_at",
+                    (kind, hours, calendar._now().timestamp()))
+
+
+@_routed
+def fetch_hours_get(kind: str) -> dict | None:
+    with _open() as con:
+        row = con.execute("SELECT * FROM kind_fetch_hours WHERE kind = ?", (kind,)).fetchone()
     return dict(row) if row else None
 
 

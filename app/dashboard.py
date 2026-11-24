@@ -2068,6 +2068,55 @@ def api_build_timer():
     return jsonify({"ok": True, "on": on, "said": (done.stdout or "").strip()[:300]})
 
 
+@app.route("/api/build/kinds")
+def api_build_kinds():
+    """One row per serving DuckDB for the Grafana Jobs board (avo, 24 Nov 2026: a fetch time per DuckDB, steered from
+    Grafana): ``kind``, ``hours`` (Amsterdam, None = every hour), ``source`` (``kind_fetch_hours``, ``FETCH_HOURS`` or
+    ``every hour``), ``next_fetch`` (ISO, the next ``:45`` that takes it) and ``switch_on`` (its ``file-<kind>`` switch).
+    Read-only: no row is created."""
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build import due
+
+    rows = []
+    for kind in ops.FILE_KINDS:
+        try:
+            hours, source = due.fetch_hours(kind)
+            nxt, error = due.next_fetch(kind).isoformat(), None
+        except ValueError as exc:                    # a row that does not parse: named, never shown as hourly
+            hours, source, nxt, error = None, "kind_fetch_hours", None, str(exc)
+        rows.append({"kind": kind, "hours": list(hours) if hours else None, "source": source, "next_fetch": nxt,
+                     "error": error, "switch_on": ops.switch_off(f"file-{kind}") is None})
+    return jsonify({"ok": True, "minute": due.FETCH_MINUTE, "kinds": rows})
+
+
+@app.route("/api/build/fetch-hours/<kind>", methods=["POST"])
+def api_build_fetch_hours(kind: str):
+    """Set the Amsterdam hours the storage fetch takes one serving file's sources at: ``{"hours": [7, 22]}``, or
+    ``{"hours": "every"}`` to drop the row (the code's own hours, ``due.FETCH_HOURS``, else every hour). 400 for an
+    unknown kind, a body without ``hours``, an empty list, all 24 hours, or anything but whole hours 0-23."""
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build import due
+
+    if kind not in ops.FILE_KINDS:
+        return jsonify({"ok": False, "error": f"unknown kind {kind!r}; known: {', '.join(ops.FILE_KINDS)}"}), 400
+    body = request.get_json(silent=True) or {}
+    if "hours" not in body:
+        return jsonify({"ok": False, "error": "hours is required: a list of hours 0-23, or \"every\""}), 400
+    if body["hours"] == "every":
+        ops.fetch_hours_set(kind, None)
+    else:
+        if not isinstance(body["hours"], list):
+            return jsonify({"ok": False, "error": "hours must be a list of hours 0-23, or \"every\""}), 400
+        try:
+            hours = due.parse_hours(body["hours"])
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        ops.fetch_hours_set(kind, ",".join(str(h) for h in hours))
+    got, source = due.fetch_hours(kind)
+    return jsonify({"ok": True, "kind": kind, "hours": list(got) if got else None, "source": source,
+                    "next_fetch": due.next_fetch(kind).isoformat()})
+
+
 @app.route("/api/build/switch/<name>", methods=["POST"])
 def api_build_switch(name: str):
     """#527: turn the board's ``fetch`` or ``backup`` switch, or a file's ``file-<kind>`` switch, on or off:

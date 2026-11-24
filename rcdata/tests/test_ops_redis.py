@@ -375,3 +375,15 @@ def test_a_start_time_on_redis_too():
     ops.slot_set("market_series", None, None)
     assert ops.slot_get("market_series") is None
     ops.slot_set("market_series", "", None)                # dropping a start that is not there is no error
+
+
+def test_a_kinds_fetch_hours_on_redis_too():
+    """avo, 24 Nov 2026: the same answers as SQLite's: one row per kind, replaced whole, dropped by None."""
+    assert ops.fetch_hours_get("market") is None
+    ops.fetch_hours_set("market", "7,22")
+    ops.fetch_hours_set("market", "9")
+    row = ops.fetch_hours_get("market")
+    assert (row["hours"], isinstance(row["set_at"], float)) == ("9", True)
+    ops.fetch_hours_set("market", None)
+    assert ops.fetch_hours_get("market") is None
+    ops.fetch_hours_set("market", None)                  # dropping a row that is not there is no error
