@@ -161,3 +161,23 @@ def test_a_refusal_stops_the_run_and_keeps_what_was_read(fake, monkeypatch):
 def test_a_day_with_no_split_leaves_the_prices_as_they_are(split):
     rows = yahoo_bars.nominal([{**r, "split": split} for r in _yahoo(7.0)])
     assert {r["close"] for r in rows} == {7.0}
+
+
+def test_two_tickers_of_one_id_apply_a_split_and_a_dividend_once(fake, monkeypatch):
+    """Review N1 (24 Nov 2026 follow-up): a renamed name's old ticker file stays beside the new one, and both rows fall
+    back to the same id. Each held the same split and dividend, so the build applied a 2:1 split as 4:1 and the
+    dividend twice."""
+    _build()
+    rows = _yahoo(10.0, split_on="2026-10-23")
+    for r in rows:
+        r["dividend"] = 0.25 if r["date"] == "2026-10-26" else 0
+    names = [{"ticker": "FLG", "cik": "910073", "tier": "A", "security_type": "common", "security_id": FLG},
+             {"ticker": "FLGO", "cik": None, "tier": "A", "security_type": "common", "security_id": FLG}]
+    monkeypatch.setattr(yahoo_bars, "scope", lambda want=None: names)
+    monkeypatch.setattr(yahoo_bars, "_lookup", lambda t: [dict(r) for r in rows])
+    row = base.run_request({"dataset": yahoo_bars.NAME, "params": {"as_of": "2026-10-27", "names": ["FLG", "FLGO"]}})
+    assert row["result"] != "failed", row
+    acts = _q("SELECT CAST(ex_date AS TEXT) AS d, action_type FROM corporate_action "
+              "WHERE security_id = ? AND source = ? ORDER BY 1", [FLG, yahoo_bars.NAME])
+    assert [(a["d"], a["action_type"]) for a in acts] == [("2026-10-23", "forward_split"),
+                                                         ("2026-10-26", "cash_dividend")]
