@@ -51,13 +51,13 @@ from .. import base
 #: The version of *our* side of the cut: the worker's pin, the protocol and what we store per section. It names
 #: the answer directory, so a bump recuts instead of mixing two cuts. Bumped with the edgartools pin, and also on
 #: its own if what we read off a section changes.
-CUTTER_VERSION = "1"
+CUTTER_VERSION = "2"
 
 PYTHON_ENV = "RC_EDGARTOOLS_PYTHON"     # the python of the venv that has edgartools; no default (a server path)
 MODE_ENV = "RC_SEC_FORMS_CUTTER"        # "edgartools" (the default) or "header" (the rollback: no worker)
 WORKER = Path(__file__).with_name("cutter_worker.py")
-#: The pin's one home. Four files mention 6.0.0 -- this one, the worker's docstring, the plan and the issue -- and
-#: only this one is read, so a bump that misses a prose mention is wrong in a comment and not in the data.
+#: The pin's one home. Four files mention the pinned version -- this one, the worker's docstring, the plan and the
+#: issue -- and only this one is read, so a bump that misses a prose mention is wrong in a comment and not in the data.
 REQUIREMENTS = Path(__file__).resolve().parents[3] / "requirements-edgartools.txt"
 
 TIMEOUT_S = 180.0        # one document; the measured mean is 3.9 s, so this is a hang and not a slow filing
@@ -76,8 +76,9 @@ MAX_STOPS = 3            # runs that may fail on one document for "the box's fau
 #: everything behind them in the pass never cut.
 STOP_BACKOFF_S = 6 * 3600
 
-#: The forms **edgartools 6.0.0 has any section vocabulary for**, as base forms (a ``/A`` amendment and a
-#: ``424B5`` carry the same vocabulary as their base). Measured in the pinned wheel, not guessed:
+#: The forms **edgartools has any section vocabulary for** (6.0.0; unchanged in 6.3.0, whose ``form_schema.py:1221``
+#: still names 40-F among the forms with none), as base forms (a ``/A`` amendment and a ``424B5`` carry the same
+#: vocabulary as their base). Measured in the pinned wheel, not guessed:
 #: ``document.py:938`` routes ``10-K``, ``10-Q``, ``8-K``, ``20-F`` and every title-based form to the hybrid
 #: detector, ``form_schema.py:1205`` gives every other form ``DEFAULT_SCHEMA``, whose ``title_based`` is false,
 #: and ``pattern_section_extractor.py:105`` then holds patterns for eight forms and answers ``{}`` for the rest.
@@ -712,7 +713,7 @@ class Cutter:
             # able to retire a 10-K, and when the cutter the 40-F and the 10-KT are getting lands beside this one
             # -- or ``KNOWN_FORMS`` grows -- the old notes must not keep those filings terminal.
             self.no_vocabulary += 1
-            self.failed[accession] = f"edgartools 6.0.0 detects no section in a {form}"
+            self.failed[accession] = f"edgartools detects no section in a {form}"
             return None
         if spent >= self.max_tries:
             self.failed[accession] = f"gave up after {spent} attempts in earlier runs"
@@ -795,9 +796,9 @@ class Cutter:
                 # no vocabulary for the form at all. Round 4 made this a charged failure, which round 5 measured
                 # as 2N/5 stopped runs for N such filings -- and the 40-F and the 10-KT are both in our corpus
                 # (``rcdata/build/fundamentals/filings.py:47``) and both answer this for every filing they have.
-                _note_failure(accession, f"edgartools 6.0.0 detects no section in a {form}", no_vocabulary=1)
+                _note_failure(accession, f"edgartools detects no section in a {form}", no_vocabulary=1)
                 self.no_vocabulary += 1
-                self.failed[accession] = f"edgartools 6.0.0 detects no section in a {form}"
+                self.failed[accession] = f"edgartools detects no section in a {form}"
                 return None
             if swallowed:
                 # A known form, and the library caught a failure on the detection path and returned nothing in
