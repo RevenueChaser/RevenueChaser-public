@@ -293,3 +293,14 @@ def test_the_fetch_pass_stages_the_schedule_s_own_full_request(clock, ran, monke
     assert cli.main(["run", "--once", "--fetch-only"]) == 0
     assert UW in [r["dataset"] for r in ran]
     assert [r for r in _queue() if r["status"] == "queued"] == []
+
+
+def test_a_kind_s_build_queues_and_drains_only_that_kind(clock, ran):
+    """avo, 24 Nov 2026: market.duckdb builds on a timer of its own (RC-Build-Market, run --build-only --kind)."""
+    ops.enqueue("sec/13f", None, by="cli")                   # another kind's request stays for its own build
+    ops.enqueue(UW, None, by="cli")
+    assert cli.main(["run", "--once", "--build-only", "--kind", "market"]) == 0
+    assert [r["dataset"] for r in ran] == [UW]
+    assert [r["dataset"] for r in _queue() if r["status"] == "queued"] == ["sec/13f"]
+    with pytest.raises(SystemExit):
+        cli.main(["run", "--once", "--fetch-only", "--kind", "market"])

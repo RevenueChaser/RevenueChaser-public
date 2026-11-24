@@ -200,17 +200,21 @@ def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
     return mode, None
 
 
-def enqueue_due(datasets: dict | None = None, stage: str | None = None) -> list[tuple[str, str, int | None, bool]]:
+def enqueue_due(datasets: dict | None = None, stage: str | None = None,
+                kinds: tuple[str, ...] = ()) -> list[tuple[str, str, int | None, bool]]:
     """Queue every due dataset once; ``(name, why, request id or None, error)`` per dataset, in registry order.
 
     No id: not due, already queued or running, or an error (``why`` says which). ``error`` is True when the due check
     raised or ``ops.sqlite`` stayed locked past its busy timeout; one dataset's error does not stop the others.
     ``stage`` is the split pass (``run --fetch-only`` / ``--build-only``, ``_pass_mode``); None is the old whole pass.
+    ``kinds``, when given, leaves every other kind's dataset out (``run --build-only --kind market``).
     """
     if datasets is None:
         from . import DATASETS as datasets
     out = []
     for name in datasets:                     # registry order: sources before the kind's derived datasets (PR A)
+        if kinds and datasets[name].kind not in kinds:
+            continue
         try:
             # avo, 10 Nov 2026 ("burada yaptigim her ayarin uygulanabilir oldugundan emin ol"): a dataset the fetch
             # switch or its file's switch holds is not queued at all, so a held file leaves no hourly skipped rows

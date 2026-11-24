@@ -395,6 +395,9 @@ def main(argv: list[str] | None = None) -> int:
     split.add_argument("--build-only", dest="stage", action="store_const", const="build",
                        help="without --dataset: the storage build: the full sources whose newest check is a "
                             "Parquet stage, built into their serving DuckDB, then the queue")
+    run.add_argument("--kind", dest="kinds", action="append", default=[], choices=sorted(serving.KINDS),
+                     help="with --build-only: only this serving kind's datasets, queued and drained (repeatable; "
+                          "avo, 24 Nov 2026: market builds twice a day on a timer of its own)")
     at = sub.add_parser("attended")
     at.add_argument("--dataset", choices=sorted(base.attended_names()),
                     help="only this attended dataset")
@@ -434,6 +437,9 @@ def main(argv: list[str] | None = None) -> int:
     stage = getattr(args, "stage", None)
     if stage and args.dataset:
         p.error("--fetch-only and --build-only are the hourly passes: they take no --dataset")
+    kinds = tuple(getattr(args, "kinds", None) or ())
+    if kinds and stage != "build":
+        p.error("--kind goes with --build-only")
     scope = {k: [n.strip() for n in v.split(",") if n.strip()]
              for k, v in (("tiers", getattr(args, "tiers", None)), ("names", getattr(args, "names", None)),
                           ("include", getattr(args, "include", None))) if v}
@@ -569,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
             ops.enqueue(args.dataset, params or None, by="cli")
         due_failed = 0
         if not args.dataset:
-            for name, why, _, error in due.enqueue_due(stage=stage):
+            for name, why, _, error in due.enqueue_due(stage=stage, kinds=kinds):
                 print(f"{name}: {why}", file=sys.stderr, flush=True)
                 if error:
                     # The one reason that can fail the pass on its own, with every dataset run ok (#1119).
@@ -599,9 +605,13 @@ def main(argv: list[str] | None = None) -> int:
         # Without --dataset this is the hourly pass, which leaves the attended requests queued for the terminal
         # that may run them.
         skip = () if args.dataset else base.attended_names()
+        # a kind's own build drains only that kind's requests (next_request takes skip or only, never both)
+        only = ([n for n, d in DATASETS.items() if d.kind in kinds and n not in skip] if kinds else None)
+        skip = () if kinds else skip
         # The storage fetch also takes the schedule's own requests (a full one from before the split included) and
         # stages them only; a person's full Fetch waits for the storage build (avo, 24 Nov 2026)
-        code = max(_run_queue(args.dataset, args.once, skip=skip, by=mine, fetch_only=fetch_only or fetch_pass,
+        code = max(_run_queue(args.dataset, args.once, skip=skip, only=only, by=mine,
+                              fetch_only=fetch_only or fetch_pass,
                               or_by=due.REQUESTED_BY if fetch_pass else None, reasons=reasons),
                    due_failed)
         if code:

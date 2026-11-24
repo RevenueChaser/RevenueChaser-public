@@ -134,6 +134,9 @@ BUILDER_UNIT = "life-rc-builder"
 # avo, 24 Nov 2026: the hourly pass split in two timers. The storage fetch (raw and Parquet, never DuckDB) runs always;
 # the builder above is now the storage build, which avo switches on and off himself (home-server units).
 STORE_FETCH_UNIT = "life-rc-store-fetch"
+# avo, 24 Nov 2026 ("timer icin mantikli zamanlar ... ondan eminsen duckdb yi kur"): market.duckdb builds twice a
+# day, after the 07:45 and 22:45 storage fetches; its own unit, so the whole-store build above can stay off.
+MARKET_BUILD_UNIT = "life-rc-build-market"
 # The weekly backup (avo, 8 Nov 2026): one job, every step, onto the HDD, the newest 4 copies kept. Its unit pair is
 # installed from the home-server repository, not from the Settings page (one name, one timer).
 BACKUP_WEEKLY_UNIT = "life-rc-backup-weekly"
@@ -213,6 +216,17 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                     "start. Writes only the market store and ops.sqlite, with its own job_runs2 row per run.",
         # 2 h (avo 6 Nov 2026, #527): 166 runs since 20 Oct peaked at 107 min; at 50 min one was killed (2 Nov)
         settings=TaskSettings(time_limit_minutes=120)),
+    AutomationEntry(
+        name="RC-Build-Market", label="Market build (twice a day)",
+        args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--build-only", "--kind", "market"),
+        time="08:15", unit_name=MARKET_BUILD_UNIT,
+        description="market.duckdb's own build (avo, 24 Nov 2026): at 08:15 and 23:15, half an hour after the 07:45 "
+                    "and 22:45 storage fetches, the market sources those fetches staged as Parquet are built and "
+                    "the file swapped in, then the market requests in the queue run; no other kind is touched. "
+                    "About 2 minutes and 2.6 GB at its peak (measured 24 Nov 2026). The server's timer carries the "
+                    "second time (23:15). It does not start while a job lock is held or another builder runs "
+                    "(exit 3). Writes market.duckdb and ops.sqlite, with its own job_runs2 row per run.",
+        settings=TaskSettings(time_limit_minutes=30)),
     AutomationEntry(
         name="RC-SEC-Read", label="SEC reads (nightly check)",
         args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--dataset", "sec/reads"), time="01:10",
