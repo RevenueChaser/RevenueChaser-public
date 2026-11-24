@@ -317,3 +317,36 @@ def test_the_history_reader_names_a_cusip_by_the_13f_map_of_the_reports_quarter(
     assert [(q["quarter"], q["holdings"], q["no_ticker"]) for q in read.etf_nport_quarters("VTI")] == [
         ("2026q3", 3, 2), ("2026q2", 1, 0)]
     assert read.etf_holdings_history("SPY", ["2026q3"]) == []
+
+
+def _serve_live(con) -> None:
+    """The built tables as the live ownership file holds them."""
+    from revenuechaser.rcdata import serving
+    path = serving.live_path("ownership")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con.execute(f"ATTACH '{path}' AS live_w")
+    for t in (nport.TABLE, nport.HISTORY):
+        con.execute(f"CREATE TABLE live_w.{t} AS SELECT * FROM {t}")
+    con.execute("DETACH live_w")
+
+
+def test_a_spine_etf_ticker_change_rebuilds_with_no_parquet_change(two_quarters, monkeypatch):
+    """Ticker plan PR 4 (avo, 24 Nov 2026): the spine renamed SPLG to SPYM (S000006983) and N-PORT kept serving both,
+    because only a Parquet change rebuilt it. A live ETF ticker or series the spine no longer pairs rebuilds whole."""
+    ctx, con, _ = two_quarters
+    _serve_live(con)
+    ctx.changed = []
+    assert nport.DATASET.dirty(ctx).clean
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTIX", "S000002848")])
+    assert not nport.DATASET.dirty(ctx).clean
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000009999")])
+    assert not nport.DATASET.dirty(ctx).clean
+
+
+def test_no_spine_etfs_does_not_rebuild_the_served_tables_away(two_quarters, monkeypatch):
+    """A spine that cannot be read gives no ETFs; that must not read as every live ETF gone."""
+    ctx, con, _ = two_quarters
+    _serve_live(con)
+    ctx.changed = []
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [])
+    assert nport.DATASET.dirty(ctx).clean
