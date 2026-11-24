@@ -422,10 +422,10 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                     GROUP BY series_id HAVING count(DISTINCT ticker) = 1),
              nc AS (SELECT n.* REPLACE (CASE WHEN EXISTS (SELECT 1 FROM stg_sec_mf s WHERE s.series_id = n.series_id
                                                           AND s.ticker = n.ticker) THEN n.ticker
-                                             ELSE n.ticker END AS ticker)
+                                             ELSE coalesce(mf.ticker, n.ticker) END AS ticker)
                     FROM {NCEN} n LEFT JOIN mf ON mf.series_id = n.series_id
                     WHERE n.is_etf AND n.ticker IS NOT NULL
-                    QUALIFY row_number() OVER (PARTITION BY n.ticker
+                    QUALIFY row_number() OVER (PARTITION BY coalesce(mf.ticker, n.ticker)
                                                ORDER BY n.filing_date DESC NULLS LAST, n.accession DESC,
                                                         n.series_id) = 1),
              etp AS (SELECT ticker, cik, name, source_as_of, fetched_at FROM security WHERE security_type = 'etp'),
