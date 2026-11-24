@@ -70,6 +70,8 @@ RELEASE = "release"
 UNCUT, HEADER, AIF = "uncut", "header", "aif"
 #: A business section cut by edgartools (:mod:`cut`).
 EDGARTOOLS = "edgartools"
+#: An edgartools cut shorter than 1/SHORT_RATIO of a clean cut of ours is not served (see :func:`sections_of`).
+SHORT_RATIO = 10
 SECTIONS = (WHOLE, PROXY, BUSINESS, RELEASE)
 
 #: The cutter version this layer stores sections with, and the note reader's own version. Both ride on every row.
@@ -222,7 +224,11 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
     # full pass found confidence-0.5 cuts that were a table of contents or a pointer.
     # A ``crossref`` cut says "the section is in another document": that is what a reader must see, and edgartools'
     # text of this one is the pointer (the review of #1492 named MCD, HSBC and VOD among the 42 such documents).
-    if edgartools is not None and not (ours.startswith("crossref") or (cut.SUSPECT in edgartools[1] and ours == "ok")):
+    # And a cut under a tenth of a clean cut of ours is not the section: the 24 Nov 2026 re-cut served AstraZeneca's
+    # 20-F Item 4 as 3,820 chars of its cash-flow statement (ours 114,937) at confidence 0.95, with no warning.
+    short = len(edgartools[0]) * SHORT_RATIO < len(item) if edgartools is not None else False
+    if edgartools is not None and not (ours.startswith("crossref")
+                                       or (ours == "ok" and (cut.SUSPECT in edgartools[1] or short))):
         out.append((BUSINESS, edgartools[0], edgartools[1], EDGARTOOLS, None, None))
         return out
     out.append((BUSINESS, item, ours, HEADER, *_span(text, item)))
