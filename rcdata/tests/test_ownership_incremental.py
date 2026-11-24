@@ -276,19 +276,22 @@ BOOKS = {1000001: tuple(ox.SPINE_CUSIPS.values()), 1000002: (MSFT, AAPL, GME),
 HISTORY = [serve.shift(date(2023, 6, 30), n) for n in range(13)]          # 2023 Q2 .. 2026 Q2
 
 
-def _book(cik: int, n: int, more: float = 0.0) -> list[tuple[str, float, float]]:
-    """A filer's long book in quarter ``n``: shares that move quarter to quarter, at a fixed price per CUSIP."""
+def _book(cik: int, n: int, more: float = 0.0, off: dict | None = None) -> list[tuple[str, float, float]]:
+    """A filer's long book in quarter ``n``: shares that move quarter to quarter, at a fixed price per CUSIP, each
+    CUSIP of ``off`` written that many times its value."""
     out = []
     for j, cusip in enumerate(BOOKS[cik]):
         shares = 1000.0 + 37.0 * ((n * (j + 2) + cik) % 11) + more
-        out.append((cusip, shares * PRICE[cusip], shares))
+        out.append((cusip, shares * PRICE[cusip] * (off or {}).get(cusip, 1.0), shares))
     return out
 
 
-def _history() -> None:
+def _history(off: dict | None = None) -> None:
+    """``off``: per quarter, the CUSIPs every filer writes off by a factor (``_book``)."""
     _seed()
     for n, q in enumerate(HISTORY):
-        _13f(str(q + timedelta(days=20)), [(f"000{cik}-{q:%y%m}-000001", cik, _book(cik, n)) for cik in BOOKS], q)
+        _13f(str(q + timedelta(days=20)),
+             [(f"000{cik}-{q:%y%m}-000001", cik, _book(cik, n, off=(off or {}).get(q))) for cik in BOOKS], q)
     first, last = sec13f_listing.sec13f_sets.window("01jun2026-31aug2026_form13f.zip")
     _part(sec13f_listing.parquet_path(), sec13f_listing.SCHEMA,
           [{"name": "01jun2026-31aug2026_form13f.zip", "first_day": first, "last_day": last, "url": "u",
@@ -316,6 +319,22 @@ def test_an_amendment_of_an_old_quarter_derives_it_its_neighbours_and_the_flows_
     want = _same_as_whole(monkeypatch, row)                          # first: the rows, then how few were derived
     assert "13F derived for 4 quarter(s) (2023-09-30..2024-06-30), read 7" in _note(row), _note(row)
     assert any(r[1] == date(2023, 12, 31) for r in want["sec13f_filer_period"])
+
+
+def test_a_restated_quarter_moves_the_consensus_price_of_the_quarter_before(monkeypatch):
+    """2023 Q3's MSFT is written 1,000 times its price by every holder, so its consensus price is moved back against
+    both quarters beside it (#780). Two filers restate 2023 Q4 the same way: the quarters beside 2023 Q3 no longer
+    agree, its price stays, and its rows change although no filing of 2023 Q3 did."""
+    _history(off={date(2023, 9, 30): {MSFT: 1000.0}})
+    assert _serve().get("result") in ("changed", "unchanged")
+    sql = "SELECT value FROM sec13f_ticker_period WHERE ticker = 'MSFT' AND period = '2023-09-30'"
+    before = _rows(sql)
+    _13f("2026-10-28", [(f"000{cik}-26-900001", cik, _book(cik, 2, off={MSFT: 1000.0})) for cik in (1000001, 1000002)],
+         date(2023, 12, 31), amendment="RESTATEMENT")
+    row = _13f_run(monkeypatch)
+    _same_as_whole(monkeypatch, row)
+    assert "13F derived for 4 quarter(s) (2023-09-30..2024-06-30)" in _note(row), _note(row)
+    assert _rows(sql) != before
 
 
 def test_a_new_filing_of_the_newest_quarter_derives_the_style_window_with_it(history, monkeypatch):

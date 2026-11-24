@@ -797,8 +797,8 @@ class OwnershipServe:
         """The quarters a ``sec/13f`` run on the live copy derives again (module doc, *Per quarter*), ``[]`` when
         none changed; or None and why every quarter is derived again."""
         plan = ctx.incremental
-        if plan.changed is None:
-            return None, "nothing is known of what changed"
+        if plan.changed is None or plan.fallback:
+            return None, "nothing is known of what changed (or of a partition that is gone)"
         if NAME in plan.recoded:
             return None, "its build code changed"
         if self._kept(con) is None or not common.has_table(con, FAMILY_TABLE):
@@ -965,7 +965,8 @@ class OwnershipServe:
         ``sec13f_filer_period`` holds every other quarter as the live file has it, before ``_held`` reads it."""
         rows, _start, first, left = self._served(con, files)
         if read is not None:
-            rows = [r for r in rows if r[2] in set(read)]
+            wanted = set(read)
+            rows = [r for r in rows if r[2] in wanted]
             files = _files_for(con, files, read)
         common.temp_rows(con, "_active", [("accession", "TEXT")], [{"accession": a} for a in active_accessions(rows)])
         # A filer's holdings report for the period, and whether it left holdings out under confidential treatment.
