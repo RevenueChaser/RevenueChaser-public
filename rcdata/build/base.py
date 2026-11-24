@@ -1456,6 +1456,12 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
         if unmounted:
             raise SourceError(unmounted)
         mode = params.get("mode", "daily")
+        if params.get("build_only") is True and not FETCH_ONLY_PASS:
+            # The storage build's own request (avo, 24 Nov 2026; review of #1494): what the storage fetch staged is
+            # built from Parquet, the build's only input, with no second provider call
+            ctx.as_of = ds.default_as_of()
+            ctx.check_pause(force=True)
+            return None, None
         staged: int | None = None
         # The two "do not build" switches (#498). ``no_parquet`` is raw-only and implies ``no_duckdb``, because
         # Parquet is the only input a build reads: a build with no new partition would be a no-op that still took

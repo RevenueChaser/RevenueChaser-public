@@ -252,7 +252,8 @@ def enqueue_due(datasets: dict | None = None, stage: str | None = None,
             out.append((name, f"not due ({why})", None, False))
             continue
         try:
-            rid = ops.enqueue_once(name, base.STAGE_PARAMS[mode] or None, by=REQUESTED_BY)
+            params = {"build_only": True} if stage == "build" else base.STAGE_PARAMS[mode] or None
+            rid = ops.enqueue_once(name, params, by=REQUESTED_BY)
         except ops.BUSY_ERRORS as e:
             # ops.sqlite held past busy_timeout, or Redis not answering (as in _run_queue): this dataset waits for
             # the next pass.
