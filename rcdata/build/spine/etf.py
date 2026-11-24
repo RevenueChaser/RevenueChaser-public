@@ -27,7 +27,14 @@ Act only (GLD, SLV, USO, the bitcoin trusts), so ``asset_class='commodity'``, or
 so (:data:`CRYPTO_NAME`: IBIT, FBTC, GBTC, ETHA; avo, 23 Nov 2026). A unit investment trust does file
 N-CEN (SPY and DIA as S-6 registrants, with no series row), so it is not caught. Until ``sec/ncen`` holds four
 quarters (a fund files once a fiscal year) the rule says nothing: one quarter holds a fraction of the filers.
-Such a row is a **trust** to ``my_universe`` (:data:`TRUST_SQL`), not an ETF.
+Such a row is a **trust** to ``my_universe`` (:data:`TRUST_SQL`), not an ETF. Its class is TickerInside's category
+where that maps to a trust class, else its name's (:func:`trust_class`; avo's 4A, 24 Nov 2026).
+
+**A renamed fund.** N-CEN is annual and keeps the ticker of its filing day; SEC's fund file is current but can lag
+as well. An N-CEN series the fund file lists under one other ETF ticker takes that ticker, unless Compustat
+disagrees or the ticker is another series' (:func:`_refuse_renames`, one ``etf_ticker_sources_disagree`` issue).
+Two series checks are issues only, nothing overwritten (:func:`_series_issues`): ``etf_series_id_shared`` and
+``etf_series_file_disagrees``.
 
 **A label on a security that is no fund** (avo, 23 Nov 2026). Alpha Vantage labels some operating companies and
 listed notes ``ETF`` (PAM, an ADR; PFX; SPAC units), and the spine's ``etp`` type reaches baby bonds through
@@ -71,10 +78,11 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"
           ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 #: A note, by its name: ETN / ETRACS, a dated note, or a bank issuer's name (Alpha Vantage lists BMO's, UBS's,
-#: Barclays' and Deutsche Bank's products under the bank's name, and the spine's etp rows carry the SEC's).
+#: Barclays' and Deutsche Bank's products under the bank's name, and the spine's etp rows carry the SEC's, which for
+#: Deutsche Bank is "DEUTSCHE BANK AKTIENGESELLSCHAFT": ADZCF, DEENF, OLOXF; review L2, 24 Nov 2026).
 ETN_NAME = re.compile(
     r"\bETNs?\b|\bETRACS\b|" + NOTE_NAME +
-    r"|\b(?:bank\s+of\s+montreal|ubs\s+ag|barclays\s+bank|deutsche\s+bank\s+ag|credit\s+suisse\s+ag"
+    r"|\b(?:aktiengesellschaft|bank\s+of\s+montreal|ubs\s+ag|barclays\s+bank|deutsche\s+bank\s+ag|credit\s+suisse\s+ag"
     r"|jpmorgan\s+chase\s+(?:bank|financial|&\s+co)|citigroup\s+global\s+markets|morgan\s+stanley\s+finance"
     r"|goldman\s+sachs\s+international|royal\s+bank\s+of\s+canada|canadian\s+imperial\s+bank)\b", re.I)
 #: Option income, by the fund's name: a **name rule** (the plan's words: option income, covered call, buffer,
@@ -95,9 +103,13 @@ LEV_INVERSE_NAME = re.compile(
     r"|\bproshares\s+(?:ultra|short\b)|\binverse\b|\bleveraged\b(?!\s+loans?)"
     r"|\bdaily\b.*\b(?:long|short|bull|bear)\b|\b(?:long|short|bull|bear)\b.*\bdaily\b", re.I)
 
-#: A crypto asset by the fund's or trust's name (avo's E, 17 Nov 2026; ``etf_class`` reads it from here).
+#: A crypto asset by the fund's or trust's name (avo's E, 17 Nov 2026; ``etf_class`` reads it from here). Sui, HBAR,
+#: INJ, TRX, BNB and a digital market cap fund since 24 Nov 2026 (review M2: GSUI, HBR, INJC, SUIS, TRXS, TSUI,
+#: VBNB, BAGZ were commodity trusts). NEAR only as a coin's name, before a fund word: over the 20,255 N-CEN and Alpha
+#: Vantage names of 24 Nov 2026 a bare "near" also hits "USGI NEAR-TERM TAX FREE FUND".
 CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|zcash|"
-                         r"polkadot|avalanche|cardano|hedera|chainlink|hyperliquid|digital assets?|digital holdings)\b",
+                         r"polkadot|avalanche|cardano|hedera|chainlink|hyperliquid|digital assets?|digital holdings|"
+                         r"sui|hbar|inj|trx|bnb|digital market cap|near(?=\s+(?:etf|trust|fund|staking)\b))\b",
                          re.IGNORECASE)
 #: A currency or a VIX trust by its name (avo, 23 Nov 2026, "Evet düzenle": FXE, FXY, UUP, UVXY, SVXY).
 CURRENCY_NAME = re.compile(r"\b(currencyshares|currency|dollar index|euro|yen|swiss franc|british pound|yuan)\b", re.I)
@@ -106,8 +118,11 @@ VOLATILITY_NAME = re.compile(r"\b(vix|volatility)\b", re.I)
 TRUST_CLASSES = ("crypto", "volatility", "currency", "commodity")
 
 
-def trust_class(names) -> str:
-    """The ``asset_class`` of a 1933-Act trust or pool from its names: crypto, VIX, currency, else commodity."""
+def trust_class(names, category: str | None = None) -> str:
+    """The ``asset_class`` of a 1933-Act trust or pool: TickerInside's ``category`` where it maps to one of
+    :data:`TRUST_CLASSES` (avo's 4A, 24 Nov 2026), else from its names: crypto, VIX, currency, else commodity."""
+    if CATEGORY_ASSET_CLASS.get(category or "") in TRUST_CLASSES:
+        return CATEGORY_ASSET_CLASS[category]
     names = [n for n in names if n]
     for cls, rx in (("crypto", CRYPTO_NAME), ("volatility", VOLATILITY_NAME), ("currency", CURRENCY_NAME)):
         if any(rx.search(n) for n in names):
@@ -116,9 +131,17 @@ def trust_class(names) -> str:
 
 
 #: An ``etf`` row that is a **trust** (avo, 23 Nov 2026, "Bence trust lazım"): a 1933-Act grantor trust or commodity
-#: pool, no 40-Act fund -- no N-CEN series, no note, no CEF, and a class of :data:`TRUST_CLASSES`. The one definition.
+#: pool, no 40-Act fund. The one definition, and the trust rule's own condition (review M1, avo's 4A of 24 Nov
+#: 2026), not merely a class of :data:`TRUST_CLASSES`, which TickerInside's category also gives an Alpha Vantage row
+#: (FBEQ, FIBT: equity index funds): no N-CEN series and no N-CEN row (``source`` ``av`` or ``etp``), no note, no CEF,
+#: a ``security`` ``etp`` row whose CIK filed no N-CEN (:data:`ncen.FILERS`), and a class of :data:`TRUST_CLASSES`.
+#: It reads ``security`` and the N-CEN filer staging, so it holds inside the spine build only, which is where
+#: ``my_universe`` reads it. Before four N-CEN quarters are held the rule gives no class, so only a TickerInside
+#: trust class can match then.
 TRUST_SQL = ("series_id IS NULL AND NOT coalesce(is_etn, FALSE) AND NOT coalesce(is_cef, FALSE) "
-             f"AND asset_class IN {TRUST_CLASSES}")
+             f"AND source IN ('av', 'etp') AND asset_class IN {TRUST_CLASSES} "
+             "AND ticker IN (SELECT s.ticker FROM security s WHERE s.security_type = 'etp' "
+             f"AND NOT EXISTS (SELECT 1 FROM {FILERS} f WHERE f.cik = s.cik))")
 
 
 #: A carbon-allowance fund (KCCA, KRBN): a commodity whatever its collateral or category says (Grok xReview,
@@ -215,15 +238,18 @@ def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt:
     (:data:`OPTION_INCOME_NAME`) is read only as ``equity``, where it holds the shares it writes on: a buffer or
     put-write fund's Treasuries are collateral (Innovator's Premium Income funds, 100 % bills, 23 Nov 2026).
     Leveraged, inverse or synthetic, it is the class of its largest contract type (:data:`DERIVATIVE_CLASS`); FX
-    contracts of a fund whose name says crypto (``crypto``) are its crypto futures."""
+    contracts of a fund whose name says crypto (``crypto``) are its crypto futures. The option-income rule holds on
+    both paths (review L1: ACEI, 11.8 % rate contracts over Treasuries, was ``bond``)."""
     if lev or mix.get("derivative", 0.0) >= NPORT_DERIVATIVE:
-        held = sorted((v, k[2:]) for k, v in mix.items() if k.startswith("d:"))
-        cls = DERIVATIVE_CLASS.get(held[-1][1]) if held else None
-        return "crypto" if crypto and cls == "currency" else cls
-    held = {"equity": mix.get("equity", 0.0), "bond": mix.get("debt", 0.0), "commodity": mix.get("commodity", 0.0)}
-    k, v = max(sorted({**held, "cash": mix.get("cash", 0.0)}.items()), key=lambda kv: kv[1])
-    cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
-        "multi_asset" if sum(held.values()) >= NPORT_SHARE else None)
+        contracts = sorted((v, k[2:]) for k, v in mix.items() if k.startswith("d:"))
+        cls = DERIVATIVE_CLASS.get(contracts[-1][1]) if contracts else None
+        cls = "crypto" if crypto and cls == "currency" else cls
+    else:
+        held = {"equity": mix.get("equity", 0.0), "bond": mix.get("debt", 0.0),
+                "commodity": mix.get("commodity", 0.0)}
+        k, v = max(sorted({**held, "cash": mix.get("cash", 0.0)}.items()), key=lambda kv: kv[1])
+        cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
+            "multi_asset" if sum(held.values()) >= NPORT_SHARE else None)
     return None if opt and cls != "equity" else cls
 
 
@@ -398,6 +424,79 @@ def shares_x_close(tickers: list[str], as_of: date | None = None) -> dict[str, t
     return {str(t): (float(v), d) for t, v, d in found}
 
 
+#: The fund file's series that it lists under exactly one ETF ticker: the ``mf`` CTE of :func:`rows`.
+_FUND_FILE_SERIES = """mf AS (SELECT series_id, min(ticker) AS ticker FROM stg_sec_mf
+                    WHERE is_etf AND series_id IS NOT NULL GROUP BY series_id HAVING count(DISTINCT ticker) = 1)"""
+
+
+def _refuse_renames(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[tuple[str, str, str]]:
+    """Write ``_rename_refused`` (``series_id``, N-CEN's ``ticker``): the renames the fund file asks for that
+    :func:`rows` does not make, and return one ``etf_ticker_sources_disagree`` issue per series (avo's 1A, 24 Nov
+    2026, review H1). The fund file can lag too: it lists TCW's PWRD as NETZ, the ticker Compustat retired in Feb
+    2025. So the fund file's ticker is taken only when Compustat agrees or is silent. It disagrees when a series of
+    Compustat's still carries N-CEN's own ticker on its newest priced day within :data:`TIC_RECENT_DAYS`
+    (:func:`etf_series`, asked on N-CEN's ticker, before any rename), and none carries the fund file's. Compustat's
+    series of N-CEN's ticker is not this fund's, so it says nothing, where the fund file or N-CEN gives that ticker
+    to another series (GLOW is S000085471's; N-CEN wrote it for its sibling, BMDL). Measured on 24 Nov 2026, the
+    second clause keeps APLZ -> APLX and CORZ (a stock) -> COZX, both priced by Compustat under the new ticker. A
+    rename is refused too when its target is already another series' ETF ticker in the fund file or in N-CEN: two
+    series would then share one row."""
+    cand = con.execute(f"""
+        WITH {_FUND_FILE_SERIES}
+             , etfs AS (SELECT series_id, ticker FROM stg_sec_mf WHERE is_etf
+                        UNION ALL SELECT series_id, ticker FROM {NCEN} WHERE is_etf)
+        SELECT DISTINCT n.series_id, n.ticker, mf.ticker AS target,
+               (SELECT min(o.series_id) FROM etfs o WHERE o.ticker = mf.ticker AND o.series_id <> n.series_id),
+               EXISTS (SELECT 1 FROM etfs o WHERE o.ticker = n.ticker AND o.series_id <> n.series_id)
+        FROM {NCEN} n JOIN mf ON mf.series_id = n.series_id
+        WHERE n.is_etf AND n.ticker IS NOT NULL AND n.ticker <> mf.ticker
+          AND NOT EXISTS (SELECT 1 FROM stg_sec_mf s WHERE s.is_etf AND s.series_id = n.series_id
+                                                       AND s.ticker = n.ticker)
+        ORDER BY 1, 2""").fetchall()
+    priced = etf_series([t for c in cand for t in c[1:3]], ctx.as_of)
+    refused: dict[tuple[str, str], str] = {}
+    for series_id, ticker, target, holder, not_its_own in cand:
+        if ticker in priced and target not in priced and not not_its_own:
+            gvkey, iid, _ = priced[ticker]
+            refused[(series_id, ticker)] = (f"the SEC fund file lists series {series_id} as {target}, N-CEN as "
+                                            f"{ticker}, and Compustat still prices {ticker} (gvkey {gvkey} iid "
+                                            f"{iid}): kept {ticker}")
+        elif holder:
+            refused[(series_id, ticker)] = (f"the SEC fund file lists series {series_id} as {target}, N-CEN as "
+                                            f"{ticker}, and {target} is already series {holder}'s: kept {ticker}")
+    base.rows_table(con, "_rename_refused", [("series_id", "TEXT"), ("ticker", "TEXT")],
+                    [{"series_id": s, "ticker": t} for s, t in refused])
+    out: dict[str, str] = {}
+    for (series_id, _), detail in refused.items():
+        out[series_id] = out.get(series_id, "") + ("; " if series_id in out else "") + detail
+    ctx.notes.append(f"etf tickers the SEC fund file renames: {len(cand) - len(refused)} taken, "
+                     f"{len(refused)} refused ({len(out)} series)")
+    return [("etf_ticker_sources_disagree", s, d) for s, d in sorted(out.items())]
+
+
+def _series_issues(con: duckdb.DuckDBPyConnection, out: list[dict], ti_series: set[str]) -> list[tuple[str, str, str]]:
+    """Two series checks over the built rows, issues only, nothing overwritten (avo's 2A and 3A, 24 Nov 2026):
+    ``etf_series_id_shared`` where two rows carry one ``series_id`` (RPSA and RSPA; ``my_universe`` keeps one of
+    them), and ``etf_series_file_disagrees`` where a row's ``series_id`` (N-CEN's, else TickerInside's) is none the
+    SEC fund file lists for the ticker as an ETF. Neither source is right by default: CONI's file series is a
+    GraniteShares sibling's, and a reorganised fund (AESR, FIXT) keeps N-CEN's old one until it files again."""
+    by_series: dict[str, list[str]] = {}
+    for r in out:
+        if r["series_id"]:
+            by_series.setdefault(r["series_id"], []).append(r["ticker"])
+    found = [("etf_series_id_shared", s, f"etf rows {', '.join(sorted(ts))} carry one series {s}")
+             for s, ts in sorted(by_series.items()) if len(ts) > 1]
+    filed: dict[str, set[str]] = {}
+    for t, s in con.execute("SELECT DISTINCT ticker, series_id FROM stg_sec_mf "
+                            "WHERE is_etf AND series_id IS NOT NULL").fetchall():
+        filed.setdefault(t, set()).add(s)
+    found += [("etf_series_file_disagrees", r["ticker"],
+               f"the etf row's series is {r['series_id']} ({'TickerInside' if r['ticker'] in ti_series else 'N-CEN'}"
+               f"), the SEC fund file's {', '.join(sorted(filed[r['ticker']]))}: not overwritten")
+              for r in out if r["series_id"] and r["ticker"] in filed and r["series_id"] not in filed[r["ticker"]]]
+    return found
+
+
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | None = None) -> list[dict]:
     """Every ETF ticker's row, from the staging tables and the ``security`` table this build just created.
 
@@ -411,23 +510,27 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     ``asset_class`` through :data:`CATEGORY_ASSET_CLASS` only where the commodity rule left it NULL; an unmapped
     category is one ``etf_category_unmapped`` issue per category."""
     from .etf_holdings import tickerinside_meta
+    issues = [] if issues is None else issues
+    issues += _refuse_renames(ctx, con)
     cur = con.execute(f"""
         WITH av AS (SELECT ticker, name, ipo_date, source_as_of, fetched_at FROM {AV}
                     WHERE asset_type = 'ETF' AND status = 'Active'
                     QUALIFY row_number() OVER (PARTITION BY ticker ORDER BY ipo_date DESC NULLS LAST, symbol) = 1),
              -- N-CEN is annual and writes the ticker of its filing day; SEC's fund file is current. A series the
              -- fund file lists under one ETF ticker, none of them N-CEN's, was renamed: it takes that ticker
-             -- (SPLG -> SPYM, PHB -> IFLN: 15 of 16 such funds on 24 Nov 2026, each with bars under the new one).
-             mf AS (SELECT series_id, min(ticker) AS ticker FROM stg_sec_mf WHERE is_etf AND series_id IS NOT NULL
-                    GROUP BY series_id HAVING count(DISTINCT ticker) = 1),
-             nc AS (SELECT n.* REPLACE (CASE WHEN EXISTS (SELECT 1 FROM stg_sec_mf s WHERE s.series_id = n.series_id
-                                                          AND s.ticker = n.ticker) THEN n.ticker
-                                             ELSE coalesce(mf.ticker, n.ticker) END AS ticker)
-                    FROM {NCEN} n LEFT JOIN mf ON mf.series_id = n.series_id
-                    WHERE n.is_etf AND n.ticker IS NOT NULL
-                    QUALIFY row_number() OVER (PARTITION BY coalesce(mf.ticker, n.ticker)
-                                               ORDER BY n.filing_date DESC NULLS LAST, n.accession DESC,
-                                                        n.series_id) = 1),
+             -- (SPLG -> SPYM, PHB -> IFLN), unless :func:`_refuse_renames` kept N-CEN's (``_rename_refused``).
+             {_FUND_FILE_SERIES},
+             nc0 AS (SELECT n.*, CASE WHEN mf.ticker IS NULL
+                                        OR EXISTS (SELECT 1 FROM stg_sec_mf s WHERE s.is_etf
+                                                   AND s.series_id = n.series_id AND s.ticker = n.ticker)
+                                        OR EXISTS (SELECT 1 FROM _rename_refused k
+                                                   WHERE k.series_id = n.series_id AND k.ticker = n.ticker)
+                                      THEN n.ticker ELSE mf.ticker END AS emitted
+                     FROM {NCEN} n LEFT JOIN mf ON mf.series_id = n.series_id
+                     WHERE n.is_etf AND n.ticker IS NOT NULL),
+             nc AS (SELECT * REPLACE (emitted AS ticker) FROM nc0
+                    QUALIFY row_number() OVER (PARTITION BY emitted ORDER BY filing_date DESC NULLS LAST,
+                                               accession DESC, series_id) = 1),
              etp AS (SELECT ticker, cik, name, source_as_of, fetched_at FROM security WHERE security_type = 'etp'),
              cef AS (SELECT ticker FROM security WHERE security_type = 'cef'),
              -- a fund record counts only under the security's own CIK (CORZ: N-CEN files Tradr's 2x ETF under it)
@@ -454,7 +557,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
         ORDER BY t.ticker""")
     cols = [d[0] for d in cur.description]
     found = [dict(zip(cols, x)) for x in cur.fetchall()]      # before the next execute replaces the result
-    issues = [] if issues is None else issues
+    con.execute("DROP TABLE _rename_refused")
     issues += [("etf_label_not_a_fund", r["ticker"],
                 f"{'Alpha Vantage lists' if r['in_av'] else 'the spine types'} {r['ticker']} "
                 f"({r['av_name'] or r['etp_name']}) as an ETF, but security types it {r['nf_type']} by "
@@ -469,6 +572,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     ids_of = etf_series([r["ticker"] for r in found], ctx.as_of)
     ti_ids, ti_funds = tickerinside_meta(ctx.as_of)
     unmapped: dict[str, list[str]] = {}
+    ti_series: set[str] = set()
     out = []
     for r in found:
         names = (r["fund_name"], r["av_name"], r["etp_name"])
@@ -486,7 +590,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                                   f"{cik}: nothing taken from TickerInside"))
         ti = ti if ti is not None and (not raw_cik or ti["cik"] == cik) else None
         fund = ti_funds.get(t) if ti is not None else None
-        asset_class = (trust_class(names) if commodity else
+        asset_class = (trust_class(names, (fund or {}).get("category")) if commodity else
                        "commodity" if any(CARBON_NAME.search(n) for n in names if n) else None)
         if asset_class is None and fund and fund["category"]:
             asset_class = CATEGORY_ASSET_CLASS.get(fund["category"])
@@ -494,6 +598,8 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                 unmapped.setdefault(fund["category"], []).append(t)
         gvkey, iid, cusip = ids_of.get(t, (None, None, None))
         figi = (ti or {}).get("composite_figi")
+        if not series_id and (ti or {}).get("series_id"):
+            ti_series.add(t)
         out.append({
             "ticker": t, "name": next((n for n in names if n), None),
             "series_id": series_id or (ti or {}).get("series_id"), "cik": raw_cik or (ti or {}).get("cik"),
@@ -520,6 +626,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                            mm=bool(r["is_money_market"]), opt=r["is_option_income"],
                                            crypto=bool(CRYPTO_NAME.search(r["name"] or "")))
             from_nport += r["asset_class"] is not None
+    issues += _series_issues(con, out, ti_series)
     ctx.notes.append(f"etf asset_class: {from_nport} from N-PORT ({len(mixes)} reports read), "
                      f"{sum(1 for r in out if r['asset_class'] is None)} still NULL")
     issues += [("etf_category_unmapped", cat, f"TickerInside category {cat} has no asset class here: "
