@@ -31,6 +31,8 @@ The tables and what writes them:
   and an optional note; ``watchlist_*_changes`` is their history, one row per add or remove. The dashboard's toggle
   routes write them (PR 4); the option list is what the options build will cover besides SPX.
 - ``dataset_schedule``: cadence and pause state per dataset.
+- ``dataset_slot``: the Amsterdam time a daily or weekly dataset starts at, and its weekday for a weekly one
+  (avo, 24 Nov 2026); no row is any time of day.
 - ``kind_automation``: what the hourly pass queues on its own for each serving kind (``KIND_MODES``); no row is off.
 
 ``ensure()`` creates the tables and stamps ``ops_schema``; it upgrades an older file in place and refuses a file
@@ -166,6 +168,9 @@ _DDL = {
         at REAL NOT NULL, by TEXT, note TEXT)""" for k in WATCH_KINDS},
     "dataset_schedule": """CREATE TABLE IF NOT EXISTS dataset_schedule (
         dataset TEXT PRIMARY KEY, cadence TEXT, next_due TEXT, paused_at REAL, paused_by TEXT)""",
+    # avo, 24 Nov 2026: when a daily or weekly dataset starts. A new table, no upgrade step.
+    "dataset_slot": """CREATE TABLE IF NOT EXISTS dataset_slot (
+        dataset TEXT PRIMARY KEY, at TEXT NOT NULL, weekday INTEGER, set_at REAL NOT NULL)""",
     # A new table, no upgrade step: ``ensure`` makes it in an older file too, and an older checkout ignores it.
     "kind_automation": """CREATE TABLE IF NOT EXISTS kind_automation (
         kind TEXT PRIMARY KEY, mode TEXT NOT NULL, set_at REAL, set_by TEXT)""",
@@ -1156,6 +1161,26 @@ def schedule_resume(dataset: str) -> None:
 def schedule_get(dataset: str) -> dict | None:
     with _open() as con:
         row = con.execute("SELECT * FROM dataset_schedule WHERE dataset = ?", (dataset,)).fetchone()
+    return dict(row) if row else None
+
+
+@_routed
+def slot_set(dataset: str, at: str | None, weekday: int | None) -> None:
+    """``at`` ("HH:MM", Amsterdam) and ``weekday`` (0 Monday, for a weekly dataset) when ``dataset`` starts; no
+    ``at`` drops the row (any time of day). ``set_at`` is now: a slot that passed before it was set is not owed."""
+    with _open() as con:
+        if not at:
+            con.execute("DELETE FROM dataset_slot WHERE dataset = ?", (dataset,))
+            return
+        con.execute("INSERT INTO dataset_slot (dataset, at, weekday, set_at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT (dataset) DO UPDATE SET at = excluded.at, weekday = excluded.weekday, "
+                    "set_at = excluded.set_at", (dataset, at, weekday, calendar._now().timestamp()))
+
+
+@_routed
+def slot_get(dataset: str) -> dict | None:
+    with _open() as con:
+        row = con.execute("SELECT * FROM dataset_slot WHERE dataset = ?", (dataset,)).fetchone()
     return dict(row) if row else None
 
 

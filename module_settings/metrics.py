@@ -490,7 +490,7 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
     used_today = {str(p["provider"]): int(p["today"] or 0) for p in (spend or {}).get("providers", [])}
     colour = {p["id"]: control.SOURCE_COLORS[i % len(control.SOURCE_COLORS)] for i, p in enumerate(providers)}
     names = {p["id"]: p["name"] for p in providers}
-    from revenuechaser.rcdata.build import base
+    from revenuechaser.rcdata.build import base, due
     from revenuechaser.rcdata.needs import screen
     paid = {pid for pid, w in screen.PROVIDERS.items() if w.paid}
     history: dict[str, list] = {}
@@ -512,6 +512,7 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
             recent = ops.recent_checks(name, limit=DETAIL_RUNS)
             last = recent[0] if recent else None
             raw = ops.read_schedule(name) or {}
+            slot = ops.slot_get(name)
             cadence = newdata._cadence(name, raw)
             state, reason, base_check = newdata.status_of(name, last, ops.latest_unskipped_check(name), cadence, now)
             own = ops.dataset_mode_get(name)
@@ -540,11 +541,14 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
                 "state": state, "reason": reason, "cadence": cadence, "cadence_own": raw.get("cadence"),
                 "next_due": str(raw.get("next_due") or "")[:10] or None, "paused": schedule["paused"],
                 "paused_by": raw.get("paused_by"), "mode": mode, "mode_own": (own or {}).get("mode"),
+                # avo, 24 Nov 2026: the start time (Amsterdam) and a weekly one's day, None while any time
+                "start_at": (slot or {}).get("at"),
+                "start_day": due.DAYS[int(slot.get("weekday") or 0)] if slot and cadence == "weekly" else None,
                 "next": control.next_run_words(schedule, last, control.as_of_kind(ds), cadence,
                                                attended=row["attended"],
                                                starts_by_hand=bool(getattr(ds, "starts_by_hand", False)),
                                                timer=timer, now=now, mode=mode,
-                                               starts=getattr(ds, "due_from_ny", None)),
+                                               starts=getattr(ds, "due_from_ny", None), slot=slot),
                 "limits": getattr(ds, "limits", None),
                 "last": ({k: last.get(k) for k in ("checked_on", "result", "rows", "added", "removed", "note")}
                          if last else None),

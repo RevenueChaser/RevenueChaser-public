@@ -15,9 +15,9 @@ OPEN = {"paused": False, "paused_by": None, "paused_at": None}
 
 
 def words(check=None, kind="today_ny", cadence="daily", *, schedule=OPEN, attended=False, starts_by_hand=False,
-          timer=ON, now=NOW, mode="full", starts=None):
+          timer=ON, now=NOW, mode="full", starts=None, slot=None):
     return control.next_run_words(schedule, check, kind, cadence, attended=attended, starts_by_hand=starts_by_hand,
-                                  timer=timer, now=now, mode=mode, starts=starts)
+                                  timer=timer, now=now, mode=mode, starts=starts, slot=slot)
 
 
 def ok(**kw):
@@ -126,3 +126,13 @@ def test_a_partial_runs_own_skip_waits_for_its_next_check_like_a_build():
              "note": base.skip_note(1, raw_only=True)}
     assert not words(stage, mode="raw").startswith("due")
     assert words(stage, mode="full").startswith("due")
+
+
+def test_a_start_time_moves_the_next_run_to_its_first_pass_after_it():
+    """avo, 24 Nov 2026: a daily dataset starts at its time once its next session is in; a weekly one on its day."""
+    thursday = datetime(2026, 10, 29, 17, 31, tzinfo=timezone.utc).timestamp()
+    nightly = {"at": "22:00", "weekday": None, "set_at": thursday}
+    assert words(ok(next_check_due="2026-10-30"), slot=nightly) == "Fri 30 Oct, 22:07 (17:07 New York)"
+    monday = {"at": "09:00", "weekday": 0, "set_at": thursday}
+    assert words(ok(), cadence="weekly", slot=monday) == "Mon 2 Nov, 09:07 (03:07 New York)"
+    assert words(ok(), cadence="monthly", slot=monday) == "Sat 28 Nov, 06:07 (00:07 New York)"   # no start: by days

@@ -363,3 +363,15 @@ def test_a_sources_own_automation_on_redis_too():
     with pytest.raises(ValueError):
         ops.dataset_mode_set("market_series", "x", by="avo")
     assert ops.read_dataset_modes() == {}
+
+
+def test_a_start_time_on_redis_too():
+    """avo, 24 Nov 2026: the same answers as SQLite's: a start and its weekday, replaced whole, dropped by no time."""
+    assert ops.slot_get("market_series") is None
+    ops.slot_set("market_series", "22:00", 4)
+    ops.slot_set("market_series", "07:30", None)
+    row = ops.slot_get("market_series")
+    assert (row["at"], row["weekday"], isinstance(row["set_at"], float)) == ("07:30", None, True)
+    ops.slot_set("market_series", None, None)
+    assert ops.slot_get("market_series") is None
+    ops.slot_set("market_series", "", None)                # dropping a start that is not there is no error
