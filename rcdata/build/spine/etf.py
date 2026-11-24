@@ -593,7 +593,7 @@ def _settle_series(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, out: li
             said.append(f"{t} dead on {ours} (no N-PORT since {ours_day}, no Compustat series; {theirs} a candidate)")
             done[t] = ours
             continue
-        elif t in changed and not sibling:  # MUTATION: no period-end check
+        elif t in changed and report_end.get(t) and changed[t] > report_end[t] and not sibling:
             how = f"{t} {ours}->{theirs} (issuer code changed {changed[t]}, after N-CEN's {report_end[t]})"
         elif ours_day and not (sibling and len(names) > 1):
             how = f"{t} kept {ours} (N-PORT {ours_day}, {theirs} none)"
