@@ -1003,7 +1003,7 @@ touching every file of a board, and that does not apply there.
 **The first board on it: SPX Gamma (PR 3, D7).** `module_spx_gamma/store_reads.py` is the board's one reader (D4:
 no SQL of its own, no kept connection; a missing day is a "not stored" marker, never an exception or a provider call).
 Since #330 it reads through the needs layer, `needs.ask(need, as_of=day)` over `market.spx_expiry_strike`,
-`market.spx_greek_expiry_strike`, `market.vix`, `market.cot`, `market.cot_release` and `market.spx_close` (its `READS`;
+`market.spx_greek_expiry_strike`, `market.vix`, `market.cot`, `market.cot_release`, `market.spx_close` and, since #1433, `market.economic_calendar` for the week's volatility calendar (its `READS`;
 the greek grid feeds the DTE-band walls, falling back to the day's own per-expiry files when the day is not stored, #291). VIX and COT are judged against the day rendered, not
 the newest session, with the catalog's lag limits; the closes and the 0-1 DTE slice keep their own rules, and a day
 the calendar's holiday table does not cover keeps its rows with the lag left undecided: the 0-1 DTE dollar OI gamma per strike (`call_gamma_oi + put_gamma_oi` over the
