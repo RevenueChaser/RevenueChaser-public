@@ -199,3 +199,17 @@ def test_market_6_keys_both_calendars_with_their_source_and_registers_the_two_ne
         assert DATASETS[ds.name] is ds and ds.kind == "market" and ds.cadence == "hourly" and ds.tables == ()
         assert ds.starts_by_hand, "a new dataset starts by hand (decision F4)"
     assert econ.DATASET.feeds == (uw_economic_calendar.TABLE,) and fda.DATASET.feeds == (uw_fda_calendar.TABLE,)
+
+
+def test_spx_gammas_week_calendar_reads_the_store_and_not_uw(http_mock):
+    """#1433: SPX Gamma's volatility calendar (A8) is the market store's, so the board asks UW for nothing here."""
+    from revenuechaser.module_spx_gamma import snapshot as spx_snap, store_reads, vol_calendar
+    assert store_reads.vol_calendar(date(2026, 11, 23))["stored"] is False, "nothing stored yet: says so"
+    _econ_routes(http_mock)
+    assert _run(econ.NAME)["result"] == "changed"
+    out = store_reads.vol_calendar(date(2026, 11, 24))          # no snapshot of the 24th yet: the newest before it
+    assert out["stored"] is True and out["source_as_of"] == "2026-11-23"
+    week = vol_calendar.week_events(out["payload"], "2026-11-23")   # through Fri 27 Nov
+    assert [r["event"] for r in week] == ["Initial Jobless Claims", "Beige Book"]
+    assert week[0]["forecast"] == "222" and week[0]["local"] == "Wed 25 Nov 14:30"
+    assert "economic_calendar" not in spx_snap.BASE_ENDPOINTS

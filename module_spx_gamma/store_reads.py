@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import functools
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from revenuechaser.core import calendar
 from revenuechaser.rcdata import needs, ops, read, serving
@@ -300,6 +300,30 @@ def vix_family(day) -> dict:
             "status": vix_row.get("status"), "source": SERIES_SOURCE, "source_as_of": _iso(vix_row.get("source_as_of"))}
 
 
+# ── the week's volatility calendar (A8) ──
+CALENDAR_SOURCE = "rcdata:economic_event"
+
+
+def vol_calendar(day) -> dict:
+    """The economic calendar the board's week reads (A8), as the ``{"data": [...]}`` payload ``week_events`` takes:
+    the snapshot of ``day`` (New York), else the newest one held before it. From the market store since #1433, so the
+    board no longer asks UW's ``/market/economic-calendar`` itself."""
+    d = _day(day)
+    try:
+        rows = needs.ask("market.economic_calendar", as_of=d, snapshot_date=d).rows
+        if not rows:
+            rows = [r for r in needs.ask("market.economic_calendar", as_of=d).rows if _day(r["snapshot_date"]) <= d]
+    except Exception as exc:  # noqa: BLE001
+        return _missing("Economic calendar", d, _failed(exc), source=CALENDAR_SOURCE, payload=None)
+    if not rows:
+        return _missing("Economic calendar", d, source=CALENDAR_SOURCE, payload=None)
+    snap = _iso(rows[0]["snapshot_date"])
+    data = [{"type": r["type"], "event": r["event"], "prev": r.get("prev"), "forecast": r.get("forecast"),
+             "time": datetime.fromtimestamp(float(r["event_ts"]), timezone.utc).isoformat()} for r in rows]
+    return {"stored": True, "label": f"economic calendar of {snap} ({CALENDAR_SOURCE})", "payload": {"data": data},
+            "status": None, "source": CALENDAR_SOURCE, "source_as_of": snap}
+
+
 # ── CFTC COT ──
 
 def _cot_report(by_field: dict[str, float], fields: tuple[str, ...]) -> float | None:
@@ -397,7 +421,7 @@ def read_day(day) -> dict:
     """The raw-dict keys the store now fills for ``day``: ``vix``, ``cftc``, ``ohlc``, ``zero_one_dte`` and
     ``store_inputs`` (per input: stored or not, its label, source, ``source_as_of`` and status)."""
     vix, cot, candles, zod = vix_family(day), cot_tff(day), spx_candles(day), zero_one_dte_dollars(day)
-    grid = greek_expiry_grid(day)
+    grid, cal = greek_expiry_grid(day), vol_calendar(day)
     candle_source = candles["label"]
     if candles["stored"]:
         candle_source = CANDLE_SOURCE
@@ -413,6 +437,7 @@ def read_day(day) -> dict:
         "ohlc": {"source": candle_source, "data": candles["rows"]},
         "zero_one_dte": zod,
         "greek_grid": grid,
+        "economic_calendar": cal.get("payload"),
         "store_inputs": {"vix": _meta(vix), "cftc": _meta(cot), "candles": _meta(candles),
-                         "zero_one_dte": _meta(zod), "greek_grid": _meta(grid)},
+                         "zero_one_dte": _meta(zod), "greek_grid": _meta(grid), "economic_calendar": _meta(cal)},
     }

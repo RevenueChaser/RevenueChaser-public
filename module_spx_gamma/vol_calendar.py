@@ -1,7 +1,7 @@
-"""The week's volatility calendar (A8) from UW's /market/economic-calendar.
+"""The week's volatility calendar (A8) from the market store's economic calendar (``store_reads.vol_calendar``).
 
 Events from the board's day through the Friday the week resolves on, high-impact releases marked, times in
-Europe/Amsterdam (the owner's clock). UW repeats rows, so (event, time) duplicates are dropped.
+Europe/Amsterdam (the owner's clock). A source can repeat rows, so (event, time) duplicates are dropped.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from .brier import target_friday
 
 AMS = ZoneInfo("Europe/Amsterdam")
-HIGH_IMPACT = ("cpi", "employment report", "nonfarm", "ppi", "fomc", "fed interest rate", "pce", "gdp",
+HIGH_IMPACT = ("cpi", "employment report", "nonfarm", "non farm", "ppi", "fomc", "fed interest rate", "pce", "gdp",
                "retail sales")
 
 

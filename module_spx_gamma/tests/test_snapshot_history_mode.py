@@ -137,7 +137,7 @@ def test_history_mode_writes_no_live_file_and_marks_its_origin(tmp_path, uw):
     dated_here = {snap._FILENAMES[n] for n in snap.HISTORY_ENDPOINTS}
     undated = snap.LIVE_FILES - dated_here
     assert undated == {"option_chain.json", "skew_chain_1m.json", "skew_chain_3m.json", "target_chain.json",
-                       "spy_ohlc_30m.json", "economic_calendar.json", "iv_rank.json",
+                       "spy_ohlc_30m.json", "iv_rank.json",
                        "options_volume.json"}
     assert not on_disk & undated, f"live files written into a past day: {sorted(on_disk & undated)}"
     assert not any(n.startswith("strike_expiry_") for n in on_disk), "history mode fetched the all-expiry ladder"
@@ -271,4 +271,5 @@ def test_history_mode_asks_no_live_vix_or_cot_and_writes_neither(tmp_path, uw):
     assert "vix_family.json" not in manifest["files"] and "cftc_tff.json" not in manifest["files"]
     assert not {"vix_family.json", "cftc_tff.json"} & set(spx_store.raw_files(DAY))
     # PR 3: neither is fetched by any mode; the render reads them from the market store for the day
-    assert set(manifest["input_sources"]) == {"vix", "cftc", "candles", "zero_one_dte", "greek_grid"}
+    assert set(manifest["input_sources"]) == {"vix", "cftc", "candles", "zero_one_dte", "greek_grid",
+                                             "economic_calendar"}
