@@ -191,3 +191,20 @@ def test_a_company_whose_document_the_cutter_may_still_cut_is_cut_again(sec, edg
     sidecar.parent.mkdir(parents=True, exist_ok=True)
     sidecar.write_text(json.dumps({"tries": cutter.MAX_TRIES}), "utf-8")
     assert MSFT not in forms.held()[1], "given up: our own cut is the answer, nothing to re-cut"
+
+
+def test_a_confident_cut_under_a_tenth_of_a_clean_cut_of_ours_is_not_served(monkeypatch):
+    """AstraZeneca's 20-F, 24 Nov 2026: edgartools served 3,820 chars of a cash-flow statement as Item 4 (ours
+    114,937) at confidence 0.95. A cut of ours that is not clean is still replaced, and Bitfarms' 0.18 still wins."""
+    ours = {"quality": "ok"}
+    monkeypatch.setattr(forms.sec_sections, "cut_item", lambda text, form, version: ("x" * 114_937, "ok"))
+    monkeypatch.setattr(forms, "_flag", lambda quality, text, item, form, aif=False: ours["quality"])
+
+    def served(chars: int) -> list[str]:
+        rows = forms.sections_of("<p>x</p>", "20-F", edgartools=("y" * chars, "ok"))
+        return [r[3] for r in rows if r[0] == forms.BUSINESS]
+
+    assert served(3_820) == [forms.HEADER]
+    assert served(36_209) == [forms.EDGARTOOLS]
+    ours["quality"] = "overrun"
+    assert served(3_820) == [forms.EDGARTOOLS]
