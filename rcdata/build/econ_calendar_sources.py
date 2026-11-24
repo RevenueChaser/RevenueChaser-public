@@ -9,8 +9,8 @@ stand side by side while UW still answers, and ``rcdata.read`` prefers these row
   23 Nov 2026 from homesrv: HTTP 200, 411 US rows for 16 Nov-5 Dec; 14 of UW's 17 events of 17-20 Nov had a row at the
   same time under another name ("Initial Jobless Claims" for UW's "Weekly Jobless Claims").
 - **The Fed** (``source = 'fed'``): ``GET federalreserve.gov/json/calendar.json``, the Board's own calendar, for what
-  TradingView does not carry: speeches and testimony (``fed-speaker``), the FOMC meeting, minutes and press conference
-  (``fomc``) and the Beige Book (``report``). Its times are New York times. It lists the Board's own members only, so a
+  TradingView does not carry: speeches and testimony (``fed-speaker``), the FOMC meeting and press conference
+  (``fomc``), the minutes and the Beige Book (``report``). Its times are New York times. It lists the Board's own members only, so a
   regional bank president's speech has no source here (3 of UW's 17 events of 17-20 Nov).
 
 **Both in one run, on purpose.** The News board retires every event its newest fetch no longer lists

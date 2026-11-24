@@ -214,6 +214,12 @@ def test_sec_requests_go_through_the_shared_sec_pace(http_mock, monkeypatch):
     # A date before the word that is the filing's own day is not a target.
     ("On November 3, 2026, the FDA accepted the NDA for relutrigine; PDUFA review is underway.", "2026-11-03",
      date(2026, 11, 3), None),
+    # A period before the word is judged by its end: Q4 2026 has not ended on 3 November.
+    ("A decision in the fourth quarter of 2026 under PDUFA is expected for relutrigine.", "2026-11-03",
+     date(2026, 11, 3), date(2026, 10, 1)),
+    # The earliest words win: the period after PDUFA, not the day the company said it.
+    ("The PDUFA date is in Q3 2027, the Company said on November 20, 2026.", "2026-11-20", date(2026, 11, 24),
+     date(2027, 7, 1)),
     # The same shape with a date after the filing is a target.
     ("A decision on March 15, 2027 under PDUFA is expected for relutrigine.", "2026-11-03", date(2026, 11, 3),
      date(2027, 3, 15)),

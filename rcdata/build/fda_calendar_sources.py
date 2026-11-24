@@ -101,30 +101,31 @@ def partition_path(day: date) -> Path:
 def target(text: str) -> tuple[date | None, str | None, str | None]:
     """The first date ``text`` names, as ``(day, precision, the words that said it)``; Nones when it names none.
 
-    A day beats a period when both are there ("on March 15, 2027, in the first half of 2027" is the day)."""
-    m = _DAY_RE.search(text)
-    if m:
+    The earliest words win, day or period: "PDUFA date in Q3 2027, the Company said on November 20, 2026" is Q3 2027,
+    and "on March 15, 2027, in the first half of 2027" is the day."""
+    found = []
+    for m in _DAY_RE.finditer(text):
         try:
             month = [n[:3] for n in _MONTHS].index(m.group(1)[:3].lower()) + 1
-            return (date(int(m.group(3)), month, int(m.group(2))), DAY,
-                    m.group(0))
+            found.append((m.start(), date(int(m.group(3)), month, int(m.group(2))), DAY, m.group(0)))
+            break
         except ValueError:
-            pass
+            continue
     m = _QUARTER_RE.search(text)
     if m:
         q, year = (_ORD[m.group(1).lower()], m.group(2)) if m.group(1) else (int(m.group(3)), m.group(4))
-        return date(int(year), 3 * (q - 1) + 1, 1), QUARTER, m.group(0)
+        found.append((m.start(), date(int(year), 3 * (q - 1) + 1, 1), QUARTER, m.group(0)))
     m = _HALF_RE.search(text)
     if m:
         h, year = (_ORD[m.group(1).lower()], m.group(2)) if m.group(1) else (int(m.group(3)), m.group(4))
-        return date(int(year), 1 if h == 1 else 7, 1), HALF, m.group(0)
+        found.append((m.start(), date(int(year), 1 if h == 1 else 7, 1), HALF, m.group(0)))
     m = _MID_RE.search(text)
     if m:
-        return date(int(m.group(1)), 7, 1), MID, m.group(0)
+        found.append((m.start(), date(int(m.group(1)), 7, 1), MID, m.group(0)))
     m = _LATE_RE.search(text)
     if m:
-        return date(int(m.group(1)), 10, 1), LATE, m.group(0)
-    return None, None, None
+        found.append((m.start(), date(int(m.group(1)), 10, 1), LATE, m.group(0)))
+    return min(found, key=lambda f: f[0])[1:] if found else (None, None, None)
 
 
 def period_end(when: date, precision: str | None) -> date:
@@ -176,7 +177,7 @@ def sec_rows(hits: list[dict], sentences: dict[str, list[str]], day: date) -> tu
             if when is None:
                 when, precision, words = target(sentence)
                 # A date before the word is only a target when it lies after the filing (not "On May 1, we...").
-                if when is not None and str(when) <= str(hit.get("file_date") or ""):
+                if when is not None and str(period_end(when, precision)) <= str(hit.get("file_date") or ""):
                     continue
             # A period target stays until its span ends ("Q4 2026" is still ahead on 20 November).
             if when is None or period_end(when, precision) < day - timedelta(days=KEEP_PAST_DAYS):
