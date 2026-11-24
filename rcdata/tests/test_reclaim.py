@@ -33,7 +33,7 @@ def _request(rid: int) -> dict:
 
 def test_a_running_request_whose_pid_is_gone_is_reclaimed_at_builder_start(monkeypatch):
     from revenuechaser.rcdata.build import due
-    monkeypatch.setattr(due, "enqueue_due", lambda datasets=None: [])   # this start is about the reclaim only
+    monkeypatch.setattr(due, "enqueue_due", lambda datasets=None, stage=None: [])   # this start is about the reclaim only
     dead = _dead_pid()
     rid = _taken_and_started("market_series", "dead-run", dead)
     assert cli.main(["run", "--once"]) == 0
