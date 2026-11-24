@@ -839,7 +839,7 @@ class OwnershipServe:
                 SELECT c.period FROM _closed c JOIN own_live.sec13f_periods p USING (period)
                 WHERE c.closed IS DISTINCT FROM p.closed OR c.data_set IS DISTINCT FROM p.data_set
                    OR c.data_set_seen IS DISTINCT FROM p.data_set_seen""").fetchall()}
-            keep = {shift(q, n) for q in changed if q >= start for n in (0, 1, 2)}
+            keep = {shift(q, n) for q in changed if q >= start for n in (-1, 0, 1, 2)}
             as_of = ctx.as_of or self.default_as_of()
             window = [r[0] for r in con.execute("""
                 SELECT d.period FROM _deadline d LEFT JOIN _closed c USING (period)
