@@ -48,7 +48,7 @@ def spine_tickers() -> set[str] | None:
     except serving.ServingFileMissing:
         return None
     try:
-        sql = "SELECT ticker FROM security" + (" UNION SELECT ticker FROM etf" if has_table(con, "etf") else "")
+        sql = "SELECT ticker FROM security" + (" UNION SELECT ticker FROM etf" if has_table(con, "etfs") else "")
         return {r[0] for r in con.execute(sql).fetchall()}
     finally:
         con.close()
