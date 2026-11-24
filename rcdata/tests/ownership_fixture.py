@@ -31,8 +31,9 @@ def make_spine(tickers=SPINE_TICKERS, ciks=SPINE_CIKS, history=(), sectors=None,
     """A live ``spine.duckdb`` whose ``security`` table holds ``tickers`` (the columns the ownership build reads).
 
     ``history`` adds a ``security_history`` table (the columns the ownership build reads) from
-    ``[(ticker, field, value, valid_from, valid_to)]``; with none, the file carries no such table, as a spine built
-    before #749's reader did. ``sectors`` (``{ticker: sector}``) adds the ``sector`` column. ``etfs`` adds an ``etf``
+    ``[(ticker, field, value, valid_from, valid_to)]`` (source ``sec/company_tickers``), a row of Compustat's
+    adding ``(gvkey, iid, source)``; with none, the file carries no such table, as a spine built before #749's reader
+    did. ``sectors`` (``{ticker: sector}``) adds the ``sector`` column. ``etfs`` adds an ``etf``
     table holding those tickers.
     """
     path = serving.live_path("spine")
@@ -50,9 +51,11 @@ def make_spine(tickers=SPINE_TICKERS, ciks=SPINE_CIKS, history=(), sectors=None,
             con.executemany("INSERT INTO etf VALUES (?)", [[t] for t in etfs])
         if history:
             con.execute("CREATE TABLE security_history (ticker TEXT, cik TEXT, field TEXT, value TEXT, "
-                        "valid_from DATE, valid_to DATE, source TEXT)")
-            con.executemany("INSERT INTO security_history VALUES (?, ?, ?, ?, ?, ?, 'sec/company_tickers')",
-                            [[t, v, f, v, fr, to] for t, f, v, fr, to in history])
+                        "valid_from DATE, valid_to DATE, source TEXT, gvkey TEXT, iid TEXT)")
+            rows = [(*h, None, None, "sec/company_tickers")[:8] for h in history]
+            con.executemany("INSERT INTO security_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            [[t, v, f, v, fr, to, src, g, i]
+                             for t, f, v, fr, to, g, i, src in rows])
     finally:
         con.close()
 
