@@ -37,7 +37,7 @@ FED = {"events": [
     {"month": "2026-11", "days": "25", "time": "2:00 p.m.", "title": "Beige Book", "description": None,
      "type": "Beige"},
     {"month": "2026-11", "days": "24", "time": "4:30 p.m.", "title": "H.4.1 Factors", "type": "Stat"},
-    {"month": "2026-12", "days": "30", "time": "2:00 p.m.", "title": "FOMC Minutes", "type": "FOMC"},
+    {"month": "2026-11", "days": "18", "time": "2:00 p.m.", "title": "FOMC Minutes", "type": "FOMC"},
     {"month": "2019-03", "days": "20", "time": "2:00 p.m.", "title": "FOMC Meeting", "type": "FOMC"}]}
 UW_PDUFA = {"ticker": "IOVA", "drug": "Lifileucel", "status": "NDA", "catalyst": "PDUFA Date",
             "start_date": "2026-12-04", "end_date": "2026-12-04", "indication": "Advanced Melanoma"}
