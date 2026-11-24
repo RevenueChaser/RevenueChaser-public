@@ -243,7 +243,7 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
 
 #: The local hours (the machine's zone, Europe/Amsterdam on homesrv) the storage fetch takes a kind's sources at, for a
 #: kind that is built on a timer of its own (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each just before its
-#: build at 08:25 and 23:25, not hourly). A fetch that failed tries once more the next hour.
+#: build at 09:25 and 00:25, not hourly). A fetch that failed tries once more the next hour, before that build.
 FETCH_HOURS = {"market": (7, 22)}
 
 
