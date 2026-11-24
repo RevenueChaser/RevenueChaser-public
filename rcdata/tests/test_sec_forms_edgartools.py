@@ -83,6 +83,19 @@ def test_no_section_a_short_one_or_a_form_without_vocabulary_is_handed_back(tmp_
     assert cut.business(a, "40-F") is None and cut.business(a, "10-KT") is None
 
 
+@pytest.mark.parametrize("ours, et_quality, served", [
+    ("ok", f"ok;{cut.SUSPECT}", forms.HEADER),          # doubtful edgartools never replaces a clean cut of ours
+    ("ok", "ok", forms.EDGARTOOLS),                     # a confident one does
+    ("ok;suspect:S1", f"ok;{cut.SUSPECT}", forms.EDGARTOOLS),   # and a doubtful one still beats a doubtful one of ours
+])
+def test_a_doubtful_edgartools_cut_does_not_replace_a_clean_cut_of_ours(monkeypatch, ours, et_quality, served):
+    """24 Nov 2026 full pass: confidence-0.5 cuts were a table of contents or a pointer."""
+    monkeypatch.setattr(forms.sec_sections, "cut_item", lambda text, form, version: ("our business " * 300, "ok"))
+    monkeypatch.setattr(forms, "_flag", lambda quality, text, item, form, aif=False: ours)
+    rows = forms.sections_of("<p>x</p>", "10-K", edgartools=(BODY, et_quality))
+    assert [r[3] for r in rows if r[0] == forms.BUSINESS] == [served]
+
+
 @pytest.fixture
 def sec(monkeypatch, http_mock):
     """As ``test_sec_forms_serving.sec``: the SEC at a test host and the spine on disk."""

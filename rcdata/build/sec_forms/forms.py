@@ -188,8 +188,8 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
     rule found no section (#843), so ``method`` names the cutter that ran and not a cut that was made.
 
     ``edgartools`` is edgartools' ``(text, quality)`` for this document's business section (:func:`cut.business`),
-    when it found one; it replaces our own cut of a 10-K or a 20-F. Its text is edgartools' own and not a substring
-    of ``strip_html``'s, so it has no span.
+    when it found one; it replaces our own cut of a 10-K or a 20-F, unless it is doubtful and ours is clean. Its text
+    is edgartools' own and not a substring of ``strip_html``'s, so it has no span.
     """
     text = sec_sections.strip_html(html)
     if release:
@@ -209,9 +209,6 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
         if aif:
             out.append((BUSINESS, aif, _flag("ok", text, aif, form, aif=True), AIF, *_span(text, aif)))
         return out
-    if edgartools is not None:
-        out.append((BUSINESS, edgartools[0], edgartools[1], EDGARTOOLS, None, None))
-        return out
     item, quality = sec_sections.cut_item(text, form, version=SECTIONS_VERSION)
     # An empty cut is a row too, with the cutter's own label -- as ``filing_item`` writes it (#843). ``crossref``
     # says "the section is in another document, do not look" and ``missing`` "nothing was found here"; with no row
@@ -220,7 +217,13 @@ def sections_of(html: str, form: str, *, exhibit: bool = False, by_name: object 
     # cuts of the 5,131 stored annual reports have an empty body (13 Nov 2026), so they are all of them that
     # reach a reader. The text is "" and not NULL, because ``chars`` is its length and the readers concatenate.
     item = item or ""
-    out.append((BUSINESS, item, _flag(quality, text, item, form), HEADER, *_span(text, item)))
+    ours = _flag(quality, text, item, form)
+    # A doubtful edgartools cut (low confidence or a warning) never replaces a clean cut of our own: the 24 Nov 2026
+    # full pass found confidence-0.5 cuts that were a table of contents or a pointer.
+    if edgartools is not None and not (cut.SUSPECT in edgartools[1] and ours == "ok"):
+        out.append((BUSINESS, edgartools[0], edgartools[1], EDGARTOOLS, None, None))
+        return out
+    out.append((BUSINESS, item, ours, HEADER, *_span(text, item)))
     return out
 
 
