@@ -374,7 +374,7 @@ def _spine(con: duckdb.DuckDBPyConnection) -> int:
                "NULL AS etf_iid) e ON false")
         # Plan v4 step 4 (#1413): a fund the security table keys only by CIK takes the etf table's Compustat
         # series, so it is served as gvkey:iid; the old cik: id is moved by the re-key guard (_move_rekeyed).
-        bare = "false" or ("nullif(s.gvkey, '') IS NULL AND nullif(s.composite_figi, '') IS NULL "
+        bare = ("nullif(s.gvkey, '') IS NULL AND nullif(s.composite_figi, '') IS NULL "
                 "AND nullif(e.etf_gvkey, '') IS NOT NULL AND nullif(e.etf_iid, '') IS NOT NULL")
         con.execute(f"INSERT INTO stg_spine SELECT ticker, cik, tier, security_type, gvkey, iid, composite_figi, "
                     f"{SPINE_ID}, cusip, is_etf, inception FROM (SELECT s.ticker, s.cik, s.tier, s.security_type, "
