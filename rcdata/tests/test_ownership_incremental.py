@@ -271,7 +271,8 @@ def test_restate_rewrites_a_row_whose_ticker_source_alone_moved():
 # ── Per quarter (avo, 23 Nov 2026): a sec/13f run derives only the quarters its filing days reach ──────────────────
 
 PRICE = {c: 10.0 * (n + 1) for n, c in enumerate(ox.SPINE_CUSIPS.values())}
-BOOKS = {1000001: tuple(ox.SPINE_CUSIPS.values()), 1000002: (MSFT, AAPL, GME), 1000003: (MSFT, AAPL, ox.SPINE_CUSIPS["BRK-B"])}
+BOOKS = {1000001: tuple(ox.SPINE_CUSIPS.values()), 1000002: (MSFT, AAPL, GME),
+         1000003: (MSFT, AAPL, ox.SPINE_CUSIPS["BRK-B"])}
 HISTORY = [serve.shift(date(2023, 6, 30), n) for n in range(13)]          # 2023 Q2 .. 2026 Q2
 
 
@@ -312,16 +313,16 @@ def test_an_amendment_of_an_old_quarter_derives_it_its_neighbours_and_the_flows_
     _13f("2026-10-28", [("0001000002-26-900001", 1000002, _book(1000002, 2, more=500.0))], date(2023, 12, 31),
          amendment="RESTATEMENT")
     row = _13f_run(monkeypatch)
+    want = _same_as_whole(monkeypatch, row)                          # first: the rows, then how few were derived
     assert "13F derived for 4 quarter(s) (2023-09-30..2024-06-30), read 7" in _note(row), _note(row)
-    want = _same_as_whole(monkeypatch, row)
     assert any(r[1] == date(2023, 12, 31) for r in want["sec13f_filer_period"])
 
 
 def test_a_new_filing_of_the_newest_quarter_derives_the_style_window_with_it(history, monkeypatch):
     _13f("2026-10-28", [("0001000004-26-000001", 1000004, [(MSFT, 50_000, 125)])])
     row = _13f_run(monkeypatch)
-    assert "13F derived for 9 quarter(s) (2024-09-30..2026-09-30)" in _note(row), _note(row)
     _same_as_whole(monkeypatch, row)
+    assert "13F derived for 9 quarter(s) (2024-09-30..2026-09-30)" in _note(row), _note(row)
 
 
 def test_a_13f_run_with_no_changed_quarter_keeps_every_one(history, monkeypatch):
