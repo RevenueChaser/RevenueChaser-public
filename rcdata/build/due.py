@@ -42,6 +42,10 @@ A dataset is due (``is_due``) when nothing holds it and its last run is old enou
   waits for the next night;
 - ``weekly`` / ``monthly`` / ``quarterly``: due 7 / 30 / 91 days after the last check's ``checked_on``. The cadence is the
   ``dataset_schedule`` row's, else the dataset's own ``cadence`` attribute (the spine's weekly sources), else daily.
+- a start time (``ops.dataset_slot``, avo 24 Nov 2026: "daily ise ne zaman başlayacağını, weekly ise gün ve saat"):
+  a daily or weekly dataset with one waits until its newest start (Amsterdam) has passed with no run since it. A
+  weekly one is then due; a daily one still needs its next session as above. A start that passed before it was set
+  is not owed, so setting Monday 22:00 on a Tuesday waits for the next Monday.
 
 The request goes in through ``ops.enqueue_once`` (check and insert in one ``BEGIN IMMEDIATE``), so a dataset that
 already has a request queued or running gets no second one, whoever queued the first.
@@ -49,7 +53,8 @@ already has a request queued or running gets no second one, whoever queued the f
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from ...core import calendar
 from .. import ops
@@ -63,6 +68,10 @@ CYCLE_DAYS = {"weekly": 7, "monthly": 30, "quarterly": 91}
 #: Under 60 so a pass that starts a few minutes early (timer jitter, a long pass before it) still finds it due.
 HOURLY_MIN = 55
 REQUESTED_BY = "schedule"
+#: A start time is an Amsterdam clock (avo's), for these cadences only; a weekly one names its day too.
+AMS = ZoneInfo("Europe/Amsterdam")
+SLOT_CADENCES = ("daily", "weekly")
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 ATTENDED_WHY = "attended: run from the CLI on the server (a person logs in; WRDS_USERNAME must be set)"
 WRDS_FAILED_WHY = ("the last WRDS run failed today: again on the next New York day (no hourly retry, so no hourly "
                    "login; the last snapshot stays); a run by a person (Fetch or CLI) that does not fail clears it")
@@ -87,6 +96,51 @@ BY_HAND_WHY = "starts by hand: not due until a first run from the CLI or a Fetch
 #: The stage notes a partial run leaves (``base.skip_note``), by the modes whose run they complete: a raw + Parquet
 #: run also completes a raw-only mode, a raw-only run does not complete a raw + Parquet one.
 STAGE_DONE = {"raw": (base.NO_PARQUET_NOTE, base.NO_DUCKDB_NOTE), "parquet": (base.NO_DUCKDB_NOTE,)}
+
+
+def last_slot(slot: dict | None, cadence: str, now: datetime) -> datetime | None:
+    """The newest start of ``slot`` (an ``ops.dataset_slot`` row) at or before ``now``, in Amsterdam; None without a
+    slot or for a cadence that has none. Day arithmetic on the local clock, so 22:00 stays 22:00 across a DST change."""
+    if not slot or not slot.get("at") or cadence not in SLOT_CADENCES:
+        return None
+    hour, minute = (int(x) for x in str(slot["at"]).split(":"))
+    local = now.astimezone(AMS)
+    at = datetime.combine(local.date(), time(hour, minute), tzinfo=AMS)
+    step = 7 if cadence == "weekly" else 1
+    if cadence == "weekly":
+        at -= timedelta(days=(local.weekday() - int(slot.get("weekday") or 0)) % 7)
+    return at if at <= now else at - timedelta(days=step)
+
+
+def first_slot(slot: dict | None, cadence: str, after: datetime) -> datetime | None:
+    """The first start of ``slot`` at or after ``after``; None as ``last_slot``."""
+    last = last_slot(slot, cadence, after)
+    if last is None or last == after:
+        return last
+    return last + timedelta(days=7 if cadence == "weekly" else 1)
+
+
+def slot_words(slot: dict, cadence: str) -> str:
+    """``Mon 22:00`` for a weekly start, ``22:00`` for a daily one (Amsterdam)."""
+    return (f"{DAYS[int(slot.get('weekday') or 0)]} " if cadence == "weekly" else "") + f"{slot['at']} Amsterdam"
+
+
+def _slot_waits(ds, check: dict, cadence: str) -> tuple[bool, str] | None:
+    """``is_due``'s answer from the start time: ``(False, why)`` before it, ``(True, why)`` for a weekly dataset
+    whose start passed with no run since; None when no start applies (or a daily one's passed: the session rule)."""
+    slot = ops.slot_get(ds.name) if cadence in SLOT_CADENCES else None
+    start = last_slot(slot, cadence, calendar._now())
+    if start is None:
+        return None
+    words = slot_words(slot, cadence)
+    if start.timestamp() < float(slot.get("set_at") or 0):
+        return False, f"starts {words}: set after the last one"
+    started = ops.run_started_at(check["run_id"]) if check.get("run_id") else None
+    ran = (float(started) >= start.timestamp() if started is not None
+           else str(check.get("checked_on"))[:10] >= start.astimezone(calendar.NY).date().isoformat())
+    if ran:
+        return False, f"starts {words}: ran since the last one"
+    return (True, f"{words} passed") if cadence == "weekly" else None
 
 
 def _stage_done(check: dict, mode: str) -> bool:
@@ -155,6 +209,9 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
         return True, f"the last check {'failed' if check['result'] == 'failed' else 'was skipped'}"
     cadence = schedule.get("cadence") if schedule.get("cadence") in CADENCES else getattr(ds, "cadence", None)
     cadence = cadence if cadence in CADENCES else DEFAULT_CADENCE
+    waits = _slot_waits(ds, check, cadence)
+    if waits is not None:
+        return waits
     if cadence == "daily":
         nxt = check.get("next_check_due")
         as_of = ds.default_as_of().isoformat()

@@ -1982,7 +1982,9 @@ def api_build_schedule(dataset: str, action: str):
     ``cadence`` takes a JSON body
     ``{"cadence": "daily|weekly|monthly", "next_due": "YYYY-MM-DD" | ""}``: the frequency the schedule reads
     (``due.py``) and a hold until that day, which an empty value clears. The three actions are separate, so
-    setting a frequency never resumes a dataset a person paused.
+    setting a frequency never resumes a dataset a person paused. A body with ``at`` also sets the start time
+    (avo, 24 Nov 2026): ``"HH:MM"`` Amsterdam, ``""`` any time, and ``day`` (``Mon`` ... ``Sun``) for a weekly one;
+    left out, the start stays as it is. An unchanged start keeps the time it was set at.
     """
     from revenuechaser.rcdata import ops
     from revenuechaser.rcdata.build import due
@@ -2004,13 +2006,26 @@ def api_build_schedule(dataset: str, action: str):
                 hold = date.fromisoformat(hold).isoformat()
             except ValueError:
                 return jsonify({"ok": False, "error": f"next_due {hold!r} is not a YYYY-MM-DD date"}), 400
+        slot = None
+        if "at" in body:
+            at = str(body.get("at") or "").strip()
+            if at and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", at):
+                return jsonify({"ok": False, "error": f"at {at!r} is not an HH:MM time"}), 400
+            day = str(body.get("day") or "Mon").strip()
+            if day not in due.DAYS:
+                return jsonify({"ok": False, "error": f"unknown day {day!r}; known: {', '.join(due.DAYS)}"}), 400
+            slot = (at or None, due.DAYS.index(day) if at and cadence == "weekly" else None)
         ops.schedule_set(dataset, cadence, hold or None)
+        was = ops.slot_get(dataset) or {}
+        if slot is not None and slot != (was.get("at"), was.get("weekday")):
+            ops.slot_set(dataset, *slot)
     elif action == "pause":
         # #492 PR (ii): the pause also cancels the queued request; a running fetch stops itself at its next call
         cancelled = ops.schedule_pause(dataset, by=_requested_by())
     else:
         ops.schedule_resume(dataset)
-    return jsonify({"ok": True, "dataset": dataset, "schedule": ops.schedule_get(dataset), "cancelled": cancelled})
+    return jsonify({"ok": True, "dataset": dataset, "schedule": ops.schedule_get(dataset), "slot": ops.slot_get(dataset),
+                    "cancelled": cancelled})
 
 
 @app.route("/api/build/automation-ds/<path:dataset>", methods=["POST"])

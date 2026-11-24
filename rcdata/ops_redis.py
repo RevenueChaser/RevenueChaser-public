@@ -905,6 +905,20 @@ def schedule_get(dataset: str) -> dict | None:
 read_schedule = schedule_get
 
 
+def slot_set(dataset: str, at: str | None, weekday: int | None) -> None:
+    if not at:
+        row = _one("dataset_slot", dataset)
+        if row is not None:
+            _transaction(["dataset_slot"], lambda: (None, lambda p: _delete(p, "dataset_slot", row)))
+        return
+    row = {"dataset": dataset, "at": at, "weekday": weekday, "set_at": ops.calendar._now().timestamp()}
+    _transaction(["dataset_slot"], lambda: (None, lambda p: _put(p, "dataset_slot", row)))
+
+
+def slot_get(dataset: str) -> dict | None:
+    return _one("dataset_slot", dataset)
+
+
 def kind_mode_set(kind: str, mode: str, *, by: str) -> None:
     row = {"kind": kind, "mode": ops._kind_mode(mode), "set_at": time.time(), "set_by": by}
     _transaction(["kind_automation"], lambda: (None, lambda p: _put(p, "kind_automation", row)))

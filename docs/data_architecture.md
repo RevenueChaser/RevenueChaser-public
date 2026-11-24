@@ -1306,6 +1306,7 @@ by `ALTER`, so nothing is rewritten and the builder's rows keep their values):
 | `provider_spend_daily` | What the **paid** writers cost, per provider, model and New York day (#166 item 3): `calls`, `tokens_in`, `tokens_out` and `usd_micros` (millionths of a USD, an integer so a day is a sum of exact numbers). Written by `core/llm_spend.py` after a paid answer, and read by its day cap, which refuses a paid call once the New York day's USD is spent. The money is a measured estimate until a per-token price is set in `core/llm_prices.py`, never the provider's invoice; tokens are recorded either way, so a day can be re-costed. `RC_LLM_SPEND=0` stops the writes and the gate. A counter, so it is not in the ops backup — see `docs/llm_spend.md` |
 | `watchlist_option`, `watchlist_stock`, `watchlist_option_changes`, `watchlist_stock_changes` | The two watch lists (D2): ticker, added at, added by (the board), note; and their history, one row per add or remove with an `id` that keeps its order (version 2 added `id` and `note` to the history). No longer read or written since plan v5 step 7g (18 Nov 2026): the two lists are rows of `boards/watchlists.duckdb`; the tables stay until avo retires them |
 | `dataset_schedule` | Cadence and pause state per dataset (Pause / Resume on Settings, PR 2) |
+| `dataset_slot` | The Amsterdam time a daily or weekly dataset starts at, and a weekly one's weekday (avo, 24 Nov 2026) |
 | `kind_automation` | The old file-level mode (Settings, 6 Nov 2026): kept, no longer read; `ops.copy_kind_modes` moved it onto each dataset (10 Nov 2026) |
 | `switch` | The board's two switches (#527): `fetch` stops every fetch, build and RC timer task but the backups and the IBKR login check; `backup` stops the three backups. No row, or `off_at` NULL, is on |
 | `dataset_automation` | One source's own automation (#527): `off`, `raw`, `parquet` or `full`; no row is `off`. The only mode the hourly pass reads (avo, 10 Nov 2026) |
@@ -1456,7 +1457,7 @@ under `<RAW_STORE_BACKUP_DIR>/weekly-v2/<step>/` and refuses an empty `RAW_STORE
 written). Its `duckdb` step copies each serving file from one open handle, verifies it by row count and
 `sum(hash(row))` per table before the rename, and writes the sha256 of every copy to the step's `.manifest.json`,
 the newest 4 kept per kind. Its `ops` step keeps only the needed tables (the watch lists and their changes,
-`dataset_schedule`, `switch`, `kind_automation`, `dataset_automation`, `job_runs2`; the queue, the read log and the
+`dataset_schedule`, `dataset_slot`, `switch`, `kind_automation`, `dataset_automation`, `job_runs2`; the queue, the read log and the
 counters are emptied in the copy) as `ops_<stamp>.sqlite`: on `ops.sqlite` through SQLite's online backup API, built
 on local storage and copied once finished; on Redis a snapshot of every table read by one Lua script, filtered,
 written into a new ops file in one transaction and compared with it row for row. It restores with
@@ -2563,7 +2564,7 @@ Two separate things, deliberately not conflated:
     `rawstore`'s peer-lock budget (a dashboard holding the file is waited out), so the `.wal` is in the main file,
     then copied and verified like a `duckdb` copy; the manifest records the file's `store_schema` version.
   - `ops` — the operational state, only the tables worth keeping: the watch lists (`watchlist_*` and their changes),
-    `dataset_schedule`, `switch`, `kind_automation`, `dataset_automation`, `job_runs2`. The queue, the read log, the
+    `dataset_schedule`, `dataset_slot`, `switch`, `kind_automation`, `dataset_automation`, `job_runs2`. The queue, the read log, the
     counters and the check rows are left empty in the copy. On `ops.sqlite` SQLite's online backup API, built on
     local storage and copied once finished; on Redis a filtered snapshot written in one transaction and compared row
     for row.

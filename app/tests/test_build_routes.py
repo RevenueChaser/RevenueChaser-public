@@ -289,6 +289,30 @@ def test_an_empty_hold_clears_the_one_that_was_there(client):
     assert row.get("cadence") == "monthly" and row.get("next_due") is None
 
 
+def test_the_cadence_action_sets_a_start_time_and_a_weekly_ones_day(client, monkeypatch):
+    """avo, 24 Nov 2026: daily starts at a time, weekly on a day and a time (Amsterdam); ``at`` left out keeps it."""
+    from datetime import datetime, timezone
+
+    url, head = "/api/build/schedule/market_series/cadence", {"X-RC-Panel": "settings"}
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, 13, 0, tzinfo=timezone.utc))
+    r = client.post(url, json={"cadence": "weekly", "next_due": "", "at": "22:00", "day": "Fri"}, headers=head)
+    assert r.status_code == 200, r.get_json()
+    assert {k: r.get_json()["slot"][k] for k in ("at", "weekday")} == {"at": "22:00", "weekday": 4}
+    set_at = ops.slot_get("market_series")["set_at"]
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 25, 13, 0, tzinfo=timezone.utc))
+    client.post(url, json={"cadence": "weekly", "next_due": "2026-12-01", "at": "22:00", "day": "Fri"}, headers=head)
+    assert ops.slot_get("market_series")["set_at"] == set_at, "an unchanged start keeps the time it was set at"
+    client.post(url, json={"cadence": "daily", "next_due": ""}, headers=head)
+    assert ops.slot_get("market_series")["at"] == "22:00", "a body without at leaves the start as it is"
+    for bad in ({"at": "25:00"}, {"at": "22:00", "day": "Funday"}):
+        r = client.post(url, json={"cadence": "monthly", **bad}, headers=head)
+        assert r.status_code == 400 and _sched().get("cadence") == "daily", bad
+    client.post(url, json={"cadence": "daily", "at": "07:30"}, headers=head)
+    assert {k: ops.slot_get("market_series")[k] for k in ("at", "weekday")} == {"at": "07:30", "weekday": None}
+    client.post(url, json={"cadence": "daily", "at": ""}, headers=head)
+    assert ops.slot_get("market_series") is None, "an empty at is any time of day"
+
+
 def test_the_cadence_action_needs_a_dataset_the_builder_knows(client):
     r = client.post("/api/build/schedule/not/a/dataset/cadence", json={"cadence": "daily"},
                     headers={"X-RC-Panel": "settings"})

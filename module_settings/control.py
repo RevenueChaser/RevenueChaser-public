@@ -607,13 +607,14 @@ def _pass_words(when: datetime, *, recurring: bool = False) -> str:
 
 def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, cadence: str | None, *,
                    attended: bool, starts_by_hand: bool, timer: dict | None, now: datetime,
-                   mode: str = "full", starts: time | None = None) -> str:
+                   mode: str = "full", starts: time | None = None, slot: dict | None = None) -> str:
     """When the hourly pass first runs a dataset, by the rules of ``rcdata.build.due.is_due``.
 
     ``check`` is the newest check (``result``, ``checked_on``, ``next_check_due``), None when it never built; ``kind``
     the dataset's ``as_of_kind``; ``timer`` the hourly builder timer (``view["timer"]``); ``mode`` its serving kind's
     automation (``ops.KIND_MODES``); ``starts`` the New York time its day starts at when the dataset names one
-    (``due_from_ny``: the SEC reads' night check)."""
+    (``due_from_ny``: the SEC reads' night check); ``slot`` its start time (``ops.dataset_slot``), which a daily or
+    weekly dataset waits for (``due._slot_waits``)."""
     from revenuechaser.core import calendar
     from revenuechaser.rcdata.build import due
     schedule = schedule or {}
@@ -635,10 +636,12 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
     starts = starts or (settle if kind == "latest_complete_session" else time(0, 0))
     cadence = cadence if cadence in due.CADENCES else due.DEFAULT_CADENCE
     day = None
-    if check is not None and (check.get("result") not in ("failed", "skipped") or due._stage_done(check, mode)):
+    ran = check is not None and (check.get("result") not in ("failed", "skipped") or due._stage_done(check, mode))
+    timed = ran and due.last_slot(slot, cadence, now) is not None
+    if ran:
         if cadence == "daily":
             day = _day(check.get("next_check_due"))
-            if day is None:
+            if day is None and not timed:
                 at = datetime.combine(now.astimezone(NY).date(), starts, tzinfo=NY)
                 return prefix + _pass_words(_first_pass(at, minute), recurring=True)
         elif cadence == "hourly":                  # due.is_due: due again within the hour of its last run
@@ -646,10 +649,16 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
         else:
             checked = _day(check.get("checked_on"))
             day = checked + timedelta(days=due.CYCLE_DAYS[cadence]) if checked else None
-    if day is not None:
-        at = datetime.combine(day, starts, tzinfo=NY)
-        if at > now:
-            return prefix + _pass_words(_first_pass(at, minute))
+    at = datetime.combine(day, starts, tzinfo=NY) if day is not None else None
+    if timed:
+        # the first start after the last run and after the start was set; a daily one also after its next session
+        from revenuechaser.rcdata import ops
+        started = ops.run_started_at(check["run_id"]) if check.get("run_id") else None
+        since = max(float(slot.get("set_at") or 0), float(started or 0))
+        owed = due.first_slot(slot, cadence, datetime.fromtimestamp(since, timezone.utc) + timedelta(microseconds=1))
+        at = owed if cadence == "weekly" or at is None else max(owed, due.first_slot(slot, cadence, at))
+    if at is not None and at > now:
+        return prefix + _pass_words(_first_pass(at, minute))
     return prefix + "due · " + _pass_words(_first_pass(now, minute))
 
 
