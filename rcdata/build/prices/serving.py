@@ -364,11 +364,24 @@ def _spine(con: duckdb.DuckDBPyConnection) -> int:
     try:
         has_etf = con.execute("SELECT count(*) FROM duckdb_tables() WHERE database_name = 'live_spine' "
                               "AND table_name = 'etf'").fetchone()[0]
-        etf = ("LEFT JOIN (SELECT ticker AS etf_ticker, inception FROM live_spine.etf) e ON e.etf_ticker = ticker"
-               if has_etf else "LEFT JOIN (SELECT NULL AS etf_ticker, CAST(NULL AS DATE) AS inception) e ON false")
+        etf_ids = has_etf and con.execute(
+            "SELECT count(*) FROM duckdb_columns() WHERE database_name = 'live_spine' AND table_name = 'etf' "
+            "AND column_name IN ('gvkey', 'iid')").fetchone()[0] == 2
+        ids = "gvkey AS etf_gvkey, iid AS etf_iid" if etf_ids else "NULL AS etf_gvkey, NULL AS etf_iid"
+        etf = (f"LEFT JOIN (SELECT ticker AS etf_ticker, inception, {ids} FROM live_spine.etf) e "
+               "ON e.etf_ticker = ticker" if has_etf else
+               "LEFT JOIN (SELECT NULL AS etf_ticker, CAST(NULL AS DATE) AS inception, NULL AS etf_gvkey, "
+               "NULL AS etf_iid) e ON false")
+        # Plan v4 step 4 (#1413): a fund the security table keys only by CIK takes the etf table's Compustat
+        # series, so it is served as gvkey:iid; the old cik: id is moved by the re-key guard (_move_rekeyed).
+        bare = ("nullif(s.gvkey, '') IS NULL AND nullif(s.composite_figi, '') IS NULL "
+                "AND nullif(e.etf_gvkey, '') IS NOT NULL AND nullif(e.etf_iid, '') IS NOT NULL")
         con.execute(f"INSERT INTO stg_spine SELECT ticker, cik, tier, security_type, gvkey, iid, composite_figi, "
-                    f"{SPINE_ID}, nullif(cusip, ''), e.etf_ticker IS NOT NULL, e.inception "
-                    f"FROM live_spine.security {etf}")
+                    f"{SPINE_ID}, cusip, is_etf, inception FROM (SELECT s.ticker, s.cik, s.tier, s.security_type, "
+                    f"CASE WHEN {bare} THEN e.etf_gvkey ELSE s.gvkey END AS gvkey, "
+                    f"CASE WHEN {bare} THEN e.etf_iid ELSE s.iid END AS iid, s.composite_figi, "
+                    f"nullif(s.cusip, '') AS cusip, e.etf_ticker IS NOT NULL AS is_etf, e.inception "
+                    f"FROM live_spine.security s {etf})")
         if has_etf:
             con.execute("INSERT INTO stg_etf SELECT ticker, aum, is_etn, is_cef FROM live_spine.etf")
         has_mine = con.execute("SELECT count(*) FROM duckdb_tables() WHERE database_name = 'live_spine' "
