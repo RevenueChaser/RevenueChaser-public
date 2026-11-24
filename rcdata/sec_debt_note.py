@@ -22,7 +22,11 @@ import math
 import re
 from datetime import date
 
-PROMPT_VERSION = "debt.note-1"
+#: ``debt.note-2`` (avo, 24 Nov 2026 23:49, card D5 "A"): ``-1``'s answers agreed with Compustat ``dltt + dlc`` within
+#: 2 % for 13 of 54 companies (review plan step 4, homesrv 25 Nov 2026). Two faults: the scale (IPGP's "$21,723" of a
+#: note in thousands read as dollars, CMTL's thousands read as millions) and one facility read as the whole (CAL's
+#: revolver alone). Version 2 says where the scale is and that every borrowing is summed.
+PROMPT_VERSION = "debt.note-2"
 
 #: The note blocks read, by exact local name (the 13 Nov census, review §2). us-gaap first, then IFRS.
 DISCLOSURES = (
@@ -62,6 +66,13 @@ SYSTEM = (
     "carrying amount is given. When the note already gives a total, use it; do not add its lines again.\n"
     "Give money exactly as the note displays it, with its scale (1, 1000, 1000000 or 1000000000 for \"in thousands\", "
     "\"in millions\" and so on). Never multiply, never estimate.\n"
+    "The scale is stated once for the whole note or table, in its heading or caption, e.g. \"(in thousands)\", "
+    "\"($ in millions)\", \"(000s)\". It applies to every number under it, including a number written as \"$7,000\". "
+    "Use scale 1 only when the text states no scale and writes amounts in whole dollars. \"$7.0 million\" is 7.0 "
+    "with scale 1000000.\n"
+    "total_debt is the sum of EVERY borrowing the note lists at balance_date: term loans, drawn revolvers, notes, "
+    "bonds, convertibles, finance leases. A sentence about one facility is the total only when the note lists no "
+    "other borrowing.\n"
     "Fields:\n"
     "  status: \"stated\" (a total is readable), \"none_stated\" (the note says nothing is outstanding) or "
     "\"not_in_text\" (the text gives no balances)\n"

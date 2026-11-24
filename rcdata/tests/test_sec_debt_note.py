@@ -129,7 +129,9 @@ def world(monkeypatch):
     monkeypatch.setattr(debt_note, "_ready", lambda: None)
     monkeypatch.setattr(company_profile, "companies", lambda: {
         "1": {"name": "Acme", "sector": "Industrials"}, "2": {"name": "Paid Up", "sector": "Industrials"},
-        "3": {"name": "A Bank", "sector": "Financial Services"}, "4": {"name": "No Note", "sector": "Technology"}})
+        "3": {"name": "A Bank", "sector": "Financial Services"}, "4": {"name": "No Note", "sector": "Technology"},
+        "5": {"name": "Debt Free", "sector": "Technology"}, "6": {"name": "Long Line", "sector": "Technology"},
+        "7": {"name": "Small Interest", "sector": "Technology"}})
 
     def statements(ciks, years, quarters):
         assert (years, quarters) == (1, 0)
@@ -137,6 +139,11 @@ def world(monkeypatch):
                 for c in ciks]
         rows.append({"cik": "2", "period_type": "annual", "fiscal_year": 2025, "field": "total_debt", "value": 9.0})
         rows.append({"cik": "1", "period_type": "annual", "fiscal_year": 2024, "field": "total_debt", "value": 9.0})
+        # Decision 1 (16 Nov 2026): a current line only, or interest above 100,000; a long-term line waits for #830.
+        rows += [{"cik": c, "period_type": "annual", "fiscal_year": 2025, "field": f, "value": v} for c, f, v in (
+            ("1", "lt_debt_current", 5.0), ("4", "interest_expense", 250_000.0), ("6", "lt_debt", 7.0),
+            ("6", "interest_expense", 250_000.0), ("7", "interest_expense", 100_000.0),
+            ("3", "lt_debt_current", 5.0))]
         return [r for r in rows if r["cik"] in ciks]
 
     def notes(ciks=(), local_name=None, kind=None, text=True):
@@ -149,8 +156,20 @@ def world(monkeypatch):
     monkeypatch.setattr(read, "form_notes", notes)
 
 
-def test_the_scope_is_every_company_whose_newest_year_has_no_total_outside_the_two_sectors(world):
-    assert debt_note.scope() == ["1", "4"]          # 2 has a total, 3 is a bank; 1's total is an older year's
+def test_the_scope_is_decision_1_outside_the_two_sectors(world):
+    """avo, 16 Nov 2026 decision 1, kept 24 Nov 2026 (card D2 "A"): no total, and a current line only or interest
+    above 100,000. 2 has a total, 3 is a bank, 5 tags nothing and pays nothing (its missing note is the right
+    answer), 6 has a long-term line (#830), 7's interest is at the floor; 1's total is an older year's."""
+    assert debt_note.scope() == ["1", "4"]
+
+
+def test_a_short_term_or_fallback_current_line_alone_is_in_scope():
+    """Grok r2/r3: CUE tags only ``other_loans_payable_current`` and a filer may tag only ``short_term_bank_loans``;
+    neither gives a total, so both are decision 1's "current line only"."""
+    for f in ("other_loans_payable_current", "short_term_bank_loans", "short_term_borrowings"):
+        assert debt_note._in_scope({"revenue": 1.0, f: 3.0})
+    assert not debt_note._in_scope({"revenue": 1.0})
+    assert not debt_note._in_scope({"senior_notes_noncurrent": 3.0, "debt_current": 1.0})
 
 
 def test_an_input_is_the_chosen_note_with_its_filing_and_a_company_without_one_has_none(world):
@@ -162,3 +181,10 @@ def test_an_input_is_the_chosen_note_with_its_filing_and_a_company_without_one_h
     assert (inp.accession, inp.form, inp.report_date) == ("0001-25-1", "10-K", END)
     assert inp.kind == "note:DebtDisclosureTextBlock@2025-12-31"
     assert debt_note.DEBT_NOTE.messages(inp) == [inp.text]
+
+
+def test_prompt_2_says_where_the_scale_is_and_that_every_borrowing_is_summed():
+    """avo, 24 Nov 2026 23:49 (card D5 "A"): version 1 read IPGP's "$21,723" in thousands as dollars and CAL's
+    revolver as the whole debt (review plan step 4). Version 2 names both rules, so its answers are a new version."""
+    assert note.PROMPT_VERSION == "debt.note-2"
+    assert "heading or caption" in note.SYSTEM and "EVERY borrowing" in note.SYSTEM
