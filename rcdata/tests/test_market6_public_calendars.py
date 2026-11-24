@@ -38,6 +38,8 @@ FED = {"events": [
      "type": "Beige"},
     {"month": "2026-11", "days": "24", "time": "4:30 p.m.", "title": "H.4.1 Factors", "type": "Stat"},
     {"month": "2019-03", "days": "20", "time": "2:00 p.m.", "title": "FOMC Meeting", "type": "FOMC"}]}
+UW_PDUFA = {"ticker": "IOVA", "drug": "Lifileucel", "status": "NDA", "catalyst": "PDUFA Date",
+            "start_date": "2026-12-04", "end_date": "2026-12-04", "indication": "Advanced Melanoma"}
 UW_CPI = {"event": "CPI", "type": "report", "time": "2026-12-10T13:30:00Z", "forecast": "0.3%", "prev": "0.4%",
           "reported_period": "November"}
 EFTS = {"hits": {"total": {"value": 1}, "hits": [
@@ -157,6 +159,17 @@ def test_pdufa_dates_from_an_8k_and_a_meeting_from_the_federal_register_land_in_
     assert meeting["source"] == "federalregister"
 
 
+def test_a_day_with_the_keyless_fda_sources_leaves_uws_rows_of_that_day_out(http_mock):
+    """The FDA twin of the economic rule: UW's row of a day reads only until the SEC or the Federal Register has one."""
+    http_mock.add("/market/fda-calendar", {"data": [UW_PDUFA]}, headers=UW_HEADERS)
+    assert _run(uw_fda_calendar.NAME)["result"] == "changed"
+    assert [(r["ticker"], r["source"]) for r in read.fda_calendar()] == [("IOVA", "uw")]
+    _fda_routes(http_mock)
+    assert _run(fda.NAME)["result"] == "changed"
+    assert all(r["source"] != "uw" for r in read.fda_calendar()), "a keyless day hides UW's rows of that day"
+    assert all(r["source"] != "uw" for r in read.fda_events())
+
+
 def test_a_filed_document_is_fetched_once(http_mock):
     _fda_routes(http_mock)
     _run(fda.NAME)
@@ -199,3 +212,17 @@ def test_market_6_keys_both_calendars_with_their_source_and_registers_the_two_ne
         assert DATASETS[ds.name] is ds and ds.kind == "market" and ds.cadence == "hourly" and ds.tables == ()
         assert ds.starts_by_hand, "a new dataset starts by hand (decision F4)"
     assert econ.DATASET.feeds == (uw_economic_calendar.TABLE,) and fda.DATASET.feeds == (uw_fda_calendar.TABLE,)
+
+
+def test_spx_gammas_week_calendar_reads_the_store_and_not_uw(http_mock):
+    """#1433: SPX Gamma's volatility calendar (A8) is the market store's, so the board asks UW for nothing here."""
+    from revenuechaser.module_spx_gamma import snapshot as spx_snap, store_reads, vol_calendar
+    assert store_reads.vol_calendar(date(2026, 11, 23))["stored"] is False, "nothing stored yet: says so"
+    _econ_routes(http_mock)
+    assert _run(econ.NAME)["result"] == "changed"
+    out = store_reads.vol_calendar(date(2026, 11, 24))          # no snapshot of the 24th yet: the newest before it
+    assert out["stored"] is True and out["source_as_of"] == "2026-11-23"
+    week = vol_calendar.week_events(out["payload"], "2026-11-23")   # through Fri 27 Nov
+    assert [r["event"] for r in week] == ["Initial Jobless Claims", "Beige Book"]
+    assert week[0]["forecast"] == "222" and week[0]["local"] == "Wed 25 Nov 14:30"
+    assert "economic_calendar" not in spx_snap.BASE_ENDPOINTS

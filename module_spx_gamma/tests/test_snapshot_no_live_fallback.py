@@ -25,8 +25,9 @@ UW_HOST = "uw.test"
 
 # The UW requests of a Fetch of 26 Oct 2026 with the fixture's SPX closes (spot 6749 = the 26 Oct close), captured
 # on the code before PR 3 (snapshot.py at ee29e0a, its candles handed in with the same closes) and unchanged by it.
-# The count is 21 + one all-expiry strike-expiry call per expiry the expiry answer lists (two here; SPX lists dozens
-# live), plus the ~10-day GEX history backfill run() starts afterwards.
+# The count is 20 + one all-expiry strike-expiry call per expiry the expiry answer lists (two here; SPX lists dozens
+# live), plus the ~10-day GEX history backfill run() starts afterwards. The economic calendar left the list with
+# #1433: the board reads it from the market store.
 TODAYS_UW_REQUESTS = [
     ("/api/stock/SPX/gex-levels", [("date", DAY), ("source", "oi")]),
     ("/api/stock/SPX/gex-levels", [("date", DAY), ("source", "vol")]),
@@ -40,7 +41,6 @@ TODAYS_UW_REQUESTS = [
     ("/api/stock/SPX/volatility/variance-risk-premium", []),
     ("/api/stock/SPX/volatility/realized", []),
     ("/api/stock/SPX/greek-flow", [("date", DAY)]),
-    ("/api/market/economic-calendar", []),
     ("/api/stock/SPX/flow-per-strike", [("date", DAY)]),
     ("/api/stock/SPX/spot-exposures/strike",
      [("date", DAY), ("limit", "500"), ("max_strike", "6749"), ("min_strike", "5061")]),
@@ -106,9 +106,9 @@ def _uw_requests(http_mock):  # noqa: F811
 def test_the_uw_requests_of_a_fetch_are_todays(uw, http_mock, rcdata_market, tmp_path):  # noqa: F811
     snap.fetch_snapshot(uw, DAY, data_root=tmp_path / "staging", fetch_all_expiries=True)
     assert _uw_requests(http_mock) == TODAYS_UW_REQUESTS
-    assert len(TODAYS_UW_REQUESTS) == 24, ("18 before, plus greek-flow (§4.1), the VIX option book (§17), the "
-                                           "economic calendar (A8) and the SPY 30m bars (A5); the skew and target "
-                                           "chains need listed expiries")
+    assert len(TODAYS_UW_REQUESTS) == 23, ("18 before, plus greek-flow (§4.1), the VIX option book (§17) and the "
+                                           "SPY 30m bars (A5); the economic calendar (A8) is the market store's "
+                                           "since #1433; the skew and target chains need listed expiries")
 
 
 def test_a_fetch_with_nothing_stored_asks_no_live_source_and_says_not_stored(uw, http_mock, yfinance_calls,  # noqa: F811
@@ -138,13 +138,14 @@ def test_a_fetch_reads_vix_cot_and_candles_from_the_store(uw, http_mock, yfinanc
     assert s["candle_source"].startswith("rcdata:market_series")
     inputs = s["store_inputs"]
     assert {k: v["stored"] for k, v in inputs.items()} == {"vix": True, "cftc": True, "candles": True, "greek_grid": True,
-                                                           "zero_one_dte": True}
+                                                           "zero_one_dte": True, "economic_calendar": False}
     manifest = spx_store.raw_manifest(DAY)
     assert manifest["input_sources"]["candles"]["source"] == "rcdata:market_series"
     assert manifest["input_sources"]["candles"]["status"] == "changed"
     assert not any(n in manifest["sha256"] for n in ("vix_family.json", "cftc_tff.json", "ohlc_8wk.json"))
     latest = spx_store.latest()
-    assert set(latest["input_sources"]) == {"vix", "cftc", "candles", "zero_one_dte", "greek_grid"}
+    assert set(latest["input_sources"]) == {"vix", "cftc", "candles", "zero_one_dte", "greek_grid",
+                                            "economic_calendar"}
     assert latest["input_sources"]["greek_grid"]["source"] == "rcdata:spx_greek_expiry_strike"
     assert latest["input_sources"]["zero_one_dte"]["source"] == "rcdata:spx_gamma_expiry_strike"
 
