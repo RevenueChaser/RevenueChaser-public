@@ -755,7 +755,7 @@ class SpineSecurity:
             SELECT e.ticker, e.cik, h.gvkey, h.iid, lower(h.item), h.itemvalue, h.efffrom, h.effthru + 1,
                    '{SEC_IDHIST.name}'
             FROM stg_wrds_idhist h
-            JOIN {etf.TABLE} e ON e.gvkey = h.gvkey AND e.iid <> h.iid
+            JOIN {etf.TABLE} e ON e.gvkey = h.gvkey AND e.iid = h.iid
             WHERE h.gvkey NOT IN (SELECT gvkey FROM security_history
                                   WHERE source = '{SEC_IDHIST.name}' AND gvkey IS NOT NULL)
             ORDER BY h.gvkey, h.iid, h.item, h.efffrom""")
