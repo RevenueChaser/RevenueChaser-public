@@ -206,7 +206,8 @@ def _take_the_turn(stack: contextlib.ExitStack, wait: float) -> tuple[bool, str 
         time.sleep(min(WAIT_POLL_S, max(0.0, deadline - time.monotonic())))
 
 
-def _claim_kind(req: dict, *, skip=(), only=None, by=None, fetch_only: bool = False) -> list[dict]:
+def _claim_kind(req: dict, *, skip=(), only=None, by=None, fetch_only: bool = False,
+                or_by: str | None = None) -> list[dict]:
     """``req`` and every other request of its kind queued now, in registry order (PR A): the pass builds the
     kind's file once for all of them. A request queued after this moment waits for the next turn of its kind.
 
@@ -227,7 +228,7 @@ def _claim_kind(req: dict, *, skip=(), only=None, by=None, fetch_only: bool = Fa
     try:
         while names:
             try:
-                more = ops.next_request(only=names, by=by, fetch_only=fetch_only)
+                more = ops.next_request(only=names, by=by, fetch_only=fetch_only, or_by=or_by)
             except ops.BUSY_ERRORS as e:
                 # a locked ops store while claiming: run what is claimed; the rest waits for the next turn
                 print(f"{ds.kind}: ops store busy while claiming: {e}", file=sys.stderr, flush=True)
@@ -264,7 +265,8 @@ def _build_line(batch: list[dict], rows: list[dict], seconds: float) -> str | No
 
 
 def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
-               attended_ok: bool = False, fetch_only: bool = False, reasons: list[str] | None = None) -> int:
+               attended_ok: bool = False, fetch_only: bool = False, or_by: str | None = None,
+               reasons: list[str] | None = None) -> int:
     """Drain the queue: one batch per turn, and **one heavy dataset per process** (#812).
 
     After a batch that ran a heavy dataset (``base.heavy``), the rest of this process leaves every heavy request
@@ -279,7 +281,7 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
         # ``next_request`` takes skip or only, never both; the attended runner is the only caller with ``only``.
         skip_now = tuple({*skip, *base.heavy_names()}) if ran_heavy and only is None and dataset is None else skip
         try:
-            req = ops.next_request(dataset, skip=skip_now, only=only, by=by, fetch_only=fetch_only)
+            req = ops.next_request(dataset, skip=skip_now, only=only, by=by, fetch_only=fetch_only, or_by=or_by)
         except ops.BUSY_ERRORS as e:
             # ops.sqlite held past busy_timeout (a long backup, a stuck writer), or Redis not answering: wait and ask
             # again, never die.
@@ -294,7 +296,7 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
             time.sleep(POLL_S)
             continue
         batch = [req] if dataset is not None else _claim_kind(req, skip=skip_now, only=only, by=by,
-                                                              fetch_only=fetch_only)
+                                                              fetch_only=fetch_only, or_by=or_by)
         from . import DATASETS as registry          # read here, so a test's registry is this loop's too
         mine = [r["dataset"] for r in batch if base.heavy(registry.get(r["dataset"]))]
         if mine and not ran_heavy:
@@ -597,8 +599,10 @@ def main(argv: list[str] | None = None) -> int:
         # Without --dataset this is the hourly pass, which leaves the attended requests queued for the terminal
         # that may run them.
         skip = () if args.dataset else base.attended_names()
+        # The storage fetch also takes the schedule's own requests (a full one from before the split included) and
+        # stages them only; a person's full Fetch waits for the storage build (avo, 24 Nov 2026)
         code = max(_run_queue(args.dataset, args.once, skip=skip, by=mine, fetch_only=fetch_only or fetch_pass,
-                              reasons=reasons),
+                              or_by=due.REQUESTED_BY if fetch_pass else None, reasons=reasons),
                    due_failed)
         if code:
             _say_failed(reasons)
