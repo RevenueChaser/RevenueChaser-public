@@ -27,12 +27,13 @@ SPINE_CUSIPS = {"MSFT": "594918104", "BF-A": "115637100", "BF-B": "115637209", "
                 "AAPL": "037833100", "GME": "36467W109"}
 
 
-def make_spine(tickers=SPINE_TICKERS, ciks=SPINE_CIKS, history=(), sectors=None) -> None:
+def make_spine(tickers=SPINE_TICKERS, ciks=SPINE_CIKS, history=(), sectors=None, etfs=()) -> None:
     """A live ``spine.duckdb`` whose ``security`` table holds ``tickers`` (the columns the ownership build reads).
 
     ``history`` adds a ``security_history`` table (the columns the ownership build reads) from
     ``[(ticker, field, value, valid_from, valid_to)]``; with none, the file carries no such table, as a spine built
-    before #749's reader did. ``sectors`` (``{ticker: sector}``) adds the ``sector`` column.
+    before #749's reader did. ``sectors`` (``{ticker: sector}``) adds the ``sector`` column. ``etfs`` adds an ``etf``
+    table holding those tickers.
     """
     path = serving.live_path("spine")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,6 +45,9 @@ def make_spine(tickers=SPINE_TICKERS, ciks=SPINE_CIKS, history=(), sectors=None)
         if sectors is not None:
             con.execute("ALTER TABLE security ADD COLUMN sector TEXT")
             con.executemany("UPDATE security SET sector = ? WHERE ticker = ?", [[s, t] for t, s in sectors.items()])
+        if etfs:
+            con.execute("CREATE TABLE etf (ticker TEXT PRIMARY KEY)")
+            con.executemany("INSERT INTO etf VALUES (?)", [[t] for t in etfs])
         if history:
             con.execute("CREATE TABLE security_history (ticker TEXT, cik TEXT, field TEXT, value TEXT, "
                         "valid_from DATE, valid_to DATE, source TEXT)")
