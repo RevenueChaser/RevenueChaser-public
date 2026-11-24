@@ -21,12 +21,6 @@ def from_service(world, monkeypatch):  # noqa: F811
     return world
 
 
-def test_before_the_service_has_an_answer_there_is_no_profile_and_no_call(from_service):
-    board, mock = from_service
-    assert engine.build_profiles(["MSFT"], usd_cap=1.0) == {}
-    assert board == [] and mock.calls("/chat/completions") == []
-
-
 def test_the_services_answer_is_the_boards_profile_and_nothing_is_copied(from_service):
     board, mock = from_service
     ask_the_service()                                       # the service reads the filing: one call, its own
@@ -56,9 +50,13 @@ def test_no_tickers_reads_the_whole_board(from_service):
     assert store.load_profiles([]) == {}
 
 
-def test_a_row_only_in_the_old_table_is_not_read(from_service):
-    """The board's own table is no longer a source on the service path."""
+def test_a_row_only_in_the_old_table_is_not_read_and_no_model_is_asked(from_service):
+    """The board's own table is no longer a source on the service path: before the service has an answer there is
+    no profile, whatever the table still holds, and nobody is asked for one."""
+    board, mock = from_service
     rawstore.write_rows("relatedness_profiles", [{"ticker": "MSFT", "cik": MSFT, "model": "m",
                                                   "prompt_version": config.PROMPT_VERSION, "fetched_at": 1.0,
                                                   "cache_key": "k", "status": "ok"}])
+    assert engine.build_profiles(["MSFT"], usd_cap=1.0) == {}
     assert store.profile_rows(["MSFT"]) == [] and store.load_profiles(["MSFT"]) == {}
+    assert board == [] and mock.calls("/chat/completions") == []
