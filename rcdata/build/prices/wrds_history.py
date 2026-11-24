@@ -90,6 +90,13 @@ START_YEAR = COMPUSTAT_START.year
 # ``comp.secd``'s exchanges: NYSE, NYSE American, Nasdaq (11, 12, 14, the spine's ``US_EXCHG``), NYSE Arca (17) and
 # BATS BZX (21), where the ETFs the old filter dropped are filed (comp_na_daily_all.r_ex_codes, master plan item 1).
 COMPUSTAT_EXCHG = (11, 12, 14, 17, 21)
+# The exchanges whose days are served (``SECD_LISTED``): the asked ones and 24, read as NYSE Texas. Measured on
+# homesrv, 24 Nov 2026: DDS, ET, SUN, USAC, CECO, IBOC, OBK, TXCP, SUNC and CFR (Texas companies, Tier A) moved to
+# 24 on 5-19 Oct 2026 and had no served bar since (review of the prices day, 24 Nov 2026). Compustat's code list is
+# not stored here, so 24's name is a reading of those ten, not a lookup.
+# shortcut: the pull still asks only COMPUSTAT_EXCHG (a change of it re-asks every secd year): a name listed only
+# on 24, with no earlier history on a listed exchange, is not fetched; add 24 there with the next monthly refresh.
+SERVED_EXCHG = COMPUSTAT_EXCHG + (24,)
 # The added exchanges' secd rows over every year (the coordinator's WRDS access inventory, 3 Nov 2026, from
 # comp_na_daily_all.r_ex_codes and a count): the dry run prints them beside its own estimate.
 ARCA_BATS = {17: ("NYSE Arca", 7_500_000), 21: ("BATS BZX", 1_700_000)}
@@ -151,6 +158,7 @@ REVISION = [("source", "TEXT"), ("security_key", "TEXT"), ("session_date", "DATE
             ("fetched_at", "DOUBLE"), ("run_id", "TEXT"), ("revised_at", "DOUBLE"), ("revised_by", "TEXT")]
 
 _EXCHG = ", ".join(str(e) for e in COMPUSTAT_EXCHG)
+_SERVED = ", ".join(str(e) for e in SERVED_EXCHG)
 # table -> its spec. ``date``: the column a year's query ranges over (None: asked whole, as a snapshot).
 # ``needed``: the columns the store's numbers come from (an answer with rows and none of them is a run issue).
 # ``bar``: the source label and the (security key, symbol, open, high, low, close, volume) columns of a bar
@@ -766,7 +774,7 @@ COMP_BARS = f"""
       AND {_COMP_BAR_ID} IN (SELECT security_id FROM _universe)
     WINDOW w AS (PARTITION BY gvkey, iid ORDER BY datadate)"""
 
-# Each ``comp.secd`` row with ``listed``: whether the security was on one of ``COMPUSTAT_EXCHG`` that day
+# Each ``comp.secd`` row with ``listed``: whether the security was on one of ``SERVED_EXCHG`` that day
 # (``serving`` makes it the temp table ``_secd_listed``; ``COMP_BARS`` serves the listed rows). homesrv, 3 Nov 2026:
 # ``secd.exchg`` is the security's current code, so the day's exchange comes from ``comp.sec_idhist``'s EXCHG
 # periods (``stg_wrds_exchg``, the spine's ``wrds/sec_idhist`` snapshot, from 1998; avo, 3 Nov 2026: "Evet kurali
@@ -781,8 +789,8 @@ SECD_LISTED = f"""
     SELECT s.*, coalesce(CASE WHEN s.datadate <= coalesce(e.effthru, DATE '9999-12-31')
                                 OR s.datadate < f.last_from THEN e.exchg END,
                          CASE WHEN e.efffrom IS NULL THEN f.first_exchg END, s.exchg)
-                IN ({_EXCHG}) AS listed,
-           s.exchg IN ({_EXCHG}) AS listed_today,
+                IN ({_SERVED}) AS listed,
+           s.exchg IN ({_SERVED}) AS listed_today,
            -- the day's cash distribution: the row's own, else comp.sec_divid's (review SHOULD 4 of #382)
            CASE WHEN {SECD_DIV} > 0 THEN {SECD_DIV} ELSE coalesce(v.amount, 0) END AS div_day
     FROM stg_wrds_secd s
