@@ -23,6 +23,10 @@ from revenuechaser.core import econ_importance as ei
     ("FOMC rate decision", "fomc"),
     ("Fed interest rate decision", "report"),
     ("Fed Chair speaks", "fed-speaker"),
+    # TradingView's and the Fed's own names (#1433): payrolls is "Non Farm Payrolls", the chair a Board speech.
+    ("Non Farm Payrolls", "report"),
+    ("Speech - Chair Jerome H. Powell", "fed-speaker"),
+    ("FOMC Meeting", "fomc"),
 ])
 def test_high(event, kind):
     assert ei.importance(event, kind) == 3
