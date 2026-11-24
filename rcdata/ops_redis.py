@@ -324,7 +324,7 @@ read_queue = queue_view
 
 def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
                  only: Iterable[str] | None = None, by: str | None = None,
-                 fetch_only: bool = False) -> dict | None:
+                 fetch_only: bool = False, or_by: str | None = None) -> dict | None:
     skip = tuple(skip)
     if skip and only is not None:
         raise ValueError("next_request takes skip or only, not both")
@@ -334,7 +334,8 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
         for r in _active():
             if (r["status"] == "queued" and dataset in (None, r["dataset"]) and r["dataset"] not in skip
                     and by in (None, r["requested_by"]) and (names is None or r["dataset"] in names)
-                    and (not fetch_only or ops.is_fetch_only(r.get("params")))):
+                    and (not fetch_only or ops.is_fetch_only(r.get("params"))
+                         or (or_by is not None and r["requested_by"] == or_by))):
                 row = {**r, "status": "running", "started_at": time.time()}
                 return ops._request(row), lambda p: _put(p, "build_requests", row)
         return None, None

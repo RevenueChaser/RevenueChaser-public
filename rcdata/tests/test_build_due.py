@@ -282,3 +282,14 @@ def test_the_fetch_pass_stages_a_full_source_and_leaves_a_full_request_for_the_b
     assert cli.main(["run", "--once", "--build-only"]) == 0
     assert [r["dataset"] for r in ran] == [MS, UW]          # the build drains the person's request
     assert [r for r in _queue() if r["status"] == "queued"] == []
+
+
+def test_the_fetch_pass_stages_the_schedule_s_own_full_request(clock, ran, monkeypatch):
+    """avo, 24 Nov 2026 ("A"): a full request the hourly pass queued before the split is the fetch's to stage."""
+    from revenuechaser.rcdata.build import base
+    # the two market requests are claimed as one batch: each through the fixture's fake run
+    monkeypatch.setattr(base, "run_batch", lambda reqs, **kw: [base.run_request(r) for r in reqs])
+    ops.enqueue(UW, None, by=due.REQUESTED_BY)
+    assert cli.main(["run", "--once", "--fetch-only"]) == 0
+    assert UW in [r["dataset"] for r in ran]
+    assert [r for r in _queue() if r["status"] == "queued"] == []

@@ -455,7 +455,7 @@ def _request(row: sqlite3.Row | None) -> dict | None:
 @_routed
 def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
                  only: Iterable[str] | None = None, by: str | None = None,
-                 fetch_only: bool = False) -> dict | None:
+                 fetch_only: bool = False, or_by: str | None = None) -> dict | None:
     """Take the oldest queued request (of ``dataset``, when given) and mark it running; None when none is queued.
 
     ``skip`` leaves those datasets' requests in the queue, and ``only`` claims nothing else: that is how a request
@@ -469,6 +469,8 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
 
     ``fetch_only`` claims only requests that build no serving file (``FETCH_ONLY_PARAMS``): a fetch-only process
     holds no builder lock, so an ordinary request it drained would build and swap beside the real builder (#502).
+    ``or_by`` lets ``fetch_only`` claim that requester's requests too: the storage fetch takes the schedule's own,
+    whatever they asked, and stages them only (``base.FETCH_ONLY_PASS``; avo, 24 Nov 2026).
     """
     skip = tuple(skip)
     if skip and only is not None:
@@ -486,7 +488,11 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
             sql += " AND requested_by = ?"
             args += (by,)
         if fetch_only:
-            sql += " AND (" + " OR ".join(f"coalesce(json_extract(params, '$.{k}'), 0)" for k in FETCH_ONLY_PARAMS) + ")"
+            sql += " AND (" + " OR ".join(f"coalesce(json_extract(params, '$.{k}'), 0)" for k in FETCH_ONLY_PARAMS)
+            if or_by is not None:
+                sql += " OR requested_by = ?"
+                args += (or_by,)
+            sql += ")"
         if only is not None:
             names = tuple(only)
             if not names:
