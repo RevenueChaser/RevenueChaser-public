@@ -213,6 +213,9 @@ TYPE_FLOW = [("tag", "TEXT"), ("period", "DATE"), ("bought", "DOUBLE"), ("sold",
 STYLE = [("cik", "TEXT"), ("period", "DATE"), ("filer_name", "TEXT"), ("quarters", "INTEGER"), ("names", "INTEGER"),
          ("value", "DOUBLE"), ("turnover", "DOUBLE"), ("top10_share", "DOUBLE"), ("held_share", "DOUBLE")]
 STYLE_QUARTERS = 8
+# The style ratios are sums of doubles whose order follows how many quarters a derive read; rounded, a per-quarter
+# derive serves the same digits as a whole one.
+STYLE_DIGITS = 10
 # #928 (avo, 16 Nov 2026, Q16 of the 13F plan): each filer's largest names per quarter, for one investor's holdings
 # over time; the rest of its book is one row with no ticker, so a quarter's weights add up to 100.
 FILER_HOLDINGS = [("cik", "TEXT"), ("period", "DATE"), ("ticker", "TEXT"), ("shares", "DOUBLE"), ("value", "DOUBLE"),
@@ -269,7 +272,7 @@ _CLOSED = ", ".join(f"DATE '{d}'" for d in sorted(set().union(
 VIEWS = {
     "sec13f_totals": (
         "SELECT ticker, CAST(json_group_object(strftime(period, '%Y-%m-%d'), json_object("
-        + ", ".join(f"'{m}', {m}" for m in METRICS) + ")) AS JSON) AS entry "
+        + ", ".join(f"'{m}', {m}" for m in METRICS) + ") ORDER BY period) AS JSON) AS entry "
         "FROM sec13f_ticker_period GROUP BY ticker"),
     "short_interest": f"""
         WITH f0 AS (
@@ -701,7 +704,7 @@ class OwnershipServe:
     providers: tuple[str, ...] = ()
     # The spine Parquet it reads (_owners, _figi): dirty.read_dirs packs and tracks it (rc-github-rebuild, 18 Nov 2026).
     parquet_reads = ("wrds/sec_idhist", "openfigi/map")
-    tables = (*TABLES, FAMILY_TABLE)
+    tables = TABLES
     feeds: tuple[str, ...] = ()       # it builds every 13F table itself
     cadence = "daily"
     backfill_needs_from = False
@@ -1476,9 +1479,10 @@ class OwnershipServe:
                  k AS (SELECT s.cik, s.cusip FROM _swt s JOIN q ON q.cik = s.cik GROUP BY s.cik, s.cusip, q.quarters
                        HAVING count(DISTINCT s.period) = q.quarters),
                  tm AS (SELECT cik, median(turn) AS turn FROM _sturn GROUP BY cik)
-            SELECT n.cik, ?, max(f.filer_name), any_value(q.quarters), count(*), sum(n.value), any_value(tm.turn),
-                   sum(n.value) FILTER (WHERE n.rk <= 10) / sum(n.value),
-                   sum(n.value) FILTER (WHERE k.cusip IS NOT NULL) / sum(n.value)
+            SELECT n.cik, ?, max(f.filer_name), any_value(q.quarters), count(*), sum(n.value),
+                   round(any_value(tm.turn), {STYLE_DIGITS}),
+                   round(sum(n.value) FILTER (WHERE n.rk <= 10) / sum(n.value), {STYLE_DIGITS}),
+                   round(sum(n.value) FILTER (WHERE k.cusip IS NOT NULL) / sum(n.value), {STYLE_DIGITS})
             FROM n JOIN q ON q.cik = n.cik
             LEFT JOIN tm ON tm.cik = n.cik
             LEFT JOIN k ON k.cik = n.cik AND k.cusip = n.cusip

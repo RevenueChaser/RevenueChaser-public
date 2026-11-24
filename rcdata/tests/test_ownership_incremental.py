@@ -82,7 +82,7 @@ def _13f(day: str, filings: list[tuple[str, int, list[tuple[str, float, float]]]
     """``filings``: (accession, filer CIK, [(CUSIP, value, shares)]) for ``period`` (the September quarter), each a
     13F-HR/A of ``amendment`` type when one is given."""
     d = date.fromisoformat(day)
-    fs = [{"accession": a, "cik": str(cik), "filer_name": f"MANAGER {cik}",
+    fs = [{"accession": a, "cik": str(cik), "filer_name": NAMES.get(cik, f"MANAGER {cik}"),
            "form": "13F-HR/A" if amendment else "13F-HR", "period": period, "filed": d, "index_day": d,
            "is_amendment": amendment is not None, "amendment_type": amendment, "amendment_no": 1 if amendment else None,
            "holdings": len(h), "value_scale": 1, "confidential_omitted": False, "status": "ok", "origin": "edgar",
@@ -96,6 +96,8 @@ def _13f(day: str, filings: list[tuple[str, int, list[tuple[str, float, float]]]
     _part(folder / "managers" / f"day={day}" / "part-0.parquet", sec13f.MANAGERS, [])
 
 
+# Two sibling filers of one firm: a filer family (serve.FAMILY_FIRMS), so the family map is never empty.
+NAMES = {1000001: "VANGUARD CAPITAL MANAGEMENT LLC", 1000002: "VANGUARD PORTFOLIO MANAGEMENT LLC"}
 MSFT, AAPL, GME = ox.SPINE_CUSIPS["MSFT"], ox.SPINE_CUSIPS["AAPL"], ox.SPINE_CUSIPS["GME"]
 
 
@@ -330,7 +332,8 @@ def test_a_13f_run_with_no_changed_quarter_keeps_every_one(history, monkeypatch)
 
 def test_a_filer_family_that_changes_in_a_kept_quarter_derives_everything(history, monkeypatch):
     with duckdb.connect(str(serving.live_path(KIND))) as con:
-        con.execute(f"INSERT INTO {serve.FAMILY_TABLE} VALUES ('1000002', '1000001'), ('1000001', '1000001')")
+        assert con.execute(f"SELECT count(*) FROM {serve.FAMILY_TABLE}").fetchone()[0] == 2
+        con.execute(f"DELETE FROM {serve.FAMILY_TABLE}")             # as if the two were apart when it was built
     _13f("2026-10-28", [("0001000004-26-000001", 1000004, [(MSFT, 50_000, 125)])])
     row = _13f_run(monkeypatch)
     assert "13F derived whole: a filer family changed" in _note(row), _note(row)
