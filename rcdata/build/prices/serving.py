@@ -590,7 +590,8 @@ ACTION_KIND = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split', 
 # The ratio and the amount ``corporate_action`` serves of an Alpaca action, over its raw rates.
 ACTION_RATIO = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split') AND {a}.old_rate > 0 "
                 "AND {a}.new_rate > 0 THEN {a}.new_rate / {a}.old_rate "
-                                "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 0 THEN 1 + {a}.rate END")
+                "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 1 THEN {a}.rate "
+                "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 0 THEN 1 + {a}.rate END")
 # Alpaca writes a stock dividend's ``rate`` as the share ratio (new over old): all 8 in the tree on 24 Nov 2026 lie
 # between 1 and 1.5 (SCCO 1.0106 = Compustat's ajexdi step), so ``1 + rate`` doubled every factor (#1413).
 # shortcut: a rate at or below 1 is still read as a fraction (no live example of one), revisit when Alpaca shows one.
@@ -1002,6 +1003,8 @@ class PricesServing:
         restated_by = ("(SELECT max(r.crsp_ex_date) FROM _split_restated_by_crsp r "
                        "WHERE r.security_id = a.security_id AND r.dup_ex_date = a.ex_date)")
         why = f"""CASE
+            WHEN {ALPACA_CASH_TWIN_OF_STOCK_DIV}
+                THEN 'the same rate as Alpaca''s stock dividend that day: a mislabelled copy of it, not cash (#1413)'
             WHEN {ALPACA_STOCK_DIV_BESIDE}
                 THEN 'Compustat records this step within {SPLIT_SAME_DAYS} days and its row is the applied one '
                      || '(an Alpaca stock dividend never stands in for it, #1413)'
