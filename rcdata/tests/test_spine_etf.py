@@ -580,3 +580,21 @@ def test_nport_fills_only_what_the_earlier_sources_left_null(with_nport):
     assert rows["SOXL"]["asset_class"] == "equity"           # leveraged: the class of its equity swaps
     assert rows["SPY"]["asset_class"] == "equity"            # TickerInside's, as before
 
+
+
+def test_a_series_the_sec_fund_file_lists_under_a_new_ticker_takes_that_ticker(built, http_mock):
+    """N-CEN is annual and keeps the ticker of its filing day. SEC's fund file is current: a series it lists under one
+    other ETF ticker was renamed, and the etf row moves to that ticker (SPLG -> SPYM, 24 Nov 2026). A series the file
+    still lists under N-CEN's ticker, or does not list at all, keeps N-CEN's."""
+    mf = {"fields": ["cik", "seriesId", "classId", "symbol"],
+          "data": [[1415726, "S000099001", "C000990011", "CCOP"],          # CCOI's series, renamed
+                   [1424958, "S000024908", "C000249081", "SOXL"]]}         # SOXL's series, unchanged
+    http_mock.add("company_tickers_mf.json", mf)
+    base.run_request({"dataset": sec_tickers_mf.NAME, "params": {"as_of": "2026-11-02"}})
+    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-02"}})
+    rows = _etf()
+    assert "CCOI" not in rows
+    assert (rows["CCOP"]["series_id"], rows["CCOP"]["source"]) == ("S000099001", "ncen")
+    assert rows["CCOP"]["name"] == "Example Covered Call Option Income ETF"
+    assert rows["SOXL"]["series_id"] == "S000024908"
+    assert rows["LEVX"]["source"] == "ncen"                                 # not in the fund file: N-CEN's ticker

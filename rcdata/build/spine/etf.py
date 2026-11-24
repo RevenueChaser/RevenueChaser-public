@@ -415,9 +415,19 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
         WITH av AS (SELECT ticker, name, ipo_date, source_as_of, fetched_at FROM {AV}
                     WHERE asset_type = 'ETF' AND status = 'Active'
                     QUALIFY row_number() OVER (PARTITION BY ticker ORDER BY ipo_date DESC NULLS LAST, symbol) = 1),
-             nc AS (SELECT * FROM {NCEN} WHERE is_etf AND ticker IS NOT NULL
-                    QUALIFY row_number() OVER (PARTITION BY ticker
-                                               ORDER BY filing_date DESC NULLS LAST, accession DESC, series_id) = 1),
+             -- N-CEN is annual and writes the ticker of its filing day; SEC's fund file is current. A series the
+             -- fund file lists under one ETF ticker, none of them N-CEN's, was renamed: it takes that ticker
+             -- (SPLG -> SPYM, PHB -> IFLN: 15 of 16 such funds on 24 Nov 2026, each with bars under the new one).
+             mf AS (SELECT series_id, min(ticker) AS ticker FROM stg_sec_mf WHERE is_etf AND series_id IS NOT NULL
+                    GROUP BY series_id HAVING count(DISTINCT ticker) = 1),
+             nc AS (SELECT n.* REPLACE (CASE WHEN EXISTS (SELECT 1 FROM stg_sec_mf s WHERE s.series_id = n.series_id
+                                                          AND s.ticker = n.ticker) THEN n.ticker
+                                             ELSE coalesce(mf.ticker, n.ticker) END AS ticker)
+                    FROM {NCEN} n LEFT JOIN mf ON mf.series_id = n.series_id
+                    WHERE n.is_etf AND n.ticker IS NOT NULL
+                    QUALIFY row_number() OVER (PARTITION BY coalesce(mf.ticker, n.ticker)
+                                               ORDER BY n.filing_date DESC NULLS LAST, n.accession DESC,
+                                                        n.series_id) = 1),
              etp AS (SELECT ticker, cik, name, source_as_of, fetched_at FROM security WHERE security_type = 'etp'),
              cef AS (SELECT ticker FROM security WHERE security_type = 'cef'),
              -- a fund record counts only under the security's own CIK (CORZ: N-CEN files Tradr's 2x ETF under it)
