@@ -604,7 +604,7 @@ YAHOO_BARS = f"""
     SELECT coalesce(s.security_id, y.security_id) AS security_id, y.session_date, y.ticker AS symbol, y.cik,
            y.open, y.high, y.low, y.close, y.volume, CAST(NULL AS DOUBLE) AS vwap, CAST(NULL AS BIGINT) AS trade_count,
            CAST(NULL AS DOUBLE) AS shares_outstanding, '{yahoo_bars.NAME}' AS source, y.source_as_of, y.fetched_at,
-           y.run_id, 0 AS priority, coalesce(s.security_id, y.security_id) AS series
+           y.run_id, 3 AS priority, coalesce(s.security_id, y.security_id) AS series
     FROM {yahoo_bars.STAGING} y LEFT JOIN stg_spine s ON s.ticker = y.ticker AND s.cik IS NOT DISTINCT FROM y.cik
     WHERE y.session_date <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')
       AND coalesce(s.security_id, y.security_id) IN (SELECT security_id FROM _universe)
