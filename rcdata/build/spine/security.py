@@ -748,6 +748,18 @@ class SpineSecurity:
         found += member_issues
         counts["index_membership"] = _create(con, "index_membership", members)
         counts[etf.TABLE] = _create(con, etf.TABLE, etf.rows(ctx, con, found))  # reads ``security``: after it
+        # A fund from the fund file is linked to no SEC equity row, so its Compustat history (ticker renames: PHB ->
+        # IFLN) came in only through ``_linked``. Its own gvkey/iid brings it in under its current ticker (avo, 24 Nov
+        # 2026, the ticker rename research); a gvkey already copied above is not copied twice.
+        con.execute(f"""INSERT INTO security_history
+            SELECT e.ticker, e.cik, h.gvkey, h.iid, lower(h.item), h.itemvalue, h.efffrom, h.effthru + 1,
+                   '{SEC_IDHIST.name}'
+            FROM stg_wrds_idhist h
+            JOIN {etf.TABLE} e ON e.gvkey = h.gvkey AND e.iid = h.iid
+            WHERE h.gvkey NOT IN (SELECT gvkey FROM security_history
+                                  WHERE source = '{SEC_IDHIST.name}' AND gvkey IS NOT NULL)
+            ORDER BY h.gvkey, h.iid, h.item, h.efffrom""")
+        counts["security_history"] = stage.count(con, "security_history")
         mine, changes, mine_issues = my_universe.rows(ctx, con)                # reads both of them: after both
         found += mine_issues
         counts[my_universe.TABLE] = _create(con, my_universe.TABLE, mine)

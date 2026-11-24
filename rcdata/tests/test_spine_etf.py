@@ -437,6 +437,32 @@ def test_an_etf_takes_its_gvkey_iid_and_cusip_from_the_series_the_spine_already_
     assert "compustat_secd" in rows["XLK"]["identity_source"]
 
 
+def test_an_etf_s_compustat_ticker_history_is_in_security_history(request):
+    """avo, 24 Nov 2026 (ticker rename research): Compustat's ``sec_idhist`` holds an ETF's ticker changes (PHB ->
+    IFLN, SPLG -> SPYM), but the spine copied it only for the companies the SEC equity file links, so a fund from the
+    fund file had none. The ETF's own gvkey/iid now brings its history in, under its current ticker."""
+    import duckdb
+    from revenuechaser.rcdata.build.spine import wrds
+    folder = wrds.parquet_dir(wrds.SEC_IDHIST.name) / "delta=9999-12-31"
+    folder.mkdir(parents=True)
+    con = duckdb.connect()
+    try:
+        con.execute("COPY (SELECT '131856' AS gvkey, '01' AS iid, 'TIC' AS item, 'XLKOLD' AS itemvalue, "
+                    "DATE '2010-01-04' AS efffrom, DATE '2020-03-01' AS effthru, DATE '2026-11-01' AS source_as_of, "
+                    "CAST(1.0 AS DOUBLE) AS fetched_at, 'r' AS run_id "
+                    "UNION ALL SELECT '131856', '01', 'TIC', 'XLK', DATE '2020-03-02', NULL, DATE '2026-11-01', 1.0, "
+                    "'r') "
+                    f"TO {base.sql_path(folder / 'sec_idhist.parquet')} (FORMAT parquet)")
+    finally:
+        con.close()
+    request.getfixturevalue("identity")
+    with serving.open_read("spine") as con:
+        got = con.execute("SELECT ticker, field, value, valid_from, valid_to FROM security_history "
+                          "WHERE gvkey = '131856' ORDER BY valid_from").fetchall()
+    assert got == [("XLK", "tic", "XLKOLD", date(2010, 1, 4), date(2020, 3, 2)),
+                   ("XLK", "tic", "XLK", date(2020, 3, 2), None)]
+
+
 def test_tickerinside_gives_the_figi_expense_ratio_and_asset_class_where_its_cik_agrees(identity):
     rows = _etf()
     xlk, spy = rows["XLK"], rows["SPY"]
