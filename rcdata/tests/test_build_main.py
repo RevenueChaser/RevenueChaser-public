@@ -496,3 +496,18 @@ def test_attended_closes_a_request_a_killed_run_left_running(monkeypatch, capsys
     assert "closed 1 request(s) whose run was killed" in err
     assert _request(rid)["status"] == "failed"
     assert ops.enqueue_once("delisted/serving", None, by="settings") is not None
+
+
+def test_a_reread_that_names_questions_is_queued_as_their_list(monkeypatch):
+    """25 Nov 2026: ``--reread debt.note`` is the owner's word for that question only; a bare ``--reread`` stays the
+    word for every question, and no flag sends none."""
+    seen: list = []
+
+    def run(req, **kw):
+        seen.append((req.get("params") or {}).get("reread"))
+        return _fake_run([])(req, **kw)
+    monkeypatch.setattr(cli.base, "run_request", run)
+    _nothing_due()
+    for argv, want in ((["--reread", "debt.note"], ["debt.note"]), (["--reread"], True), ([], None)):
+        assert cli.main(["run", "--dataset", "sec/reads", "--once", *argv]) == 0
+        assert seen[-1] == want

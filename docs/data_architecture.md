@@ -2498,7 +2498,7 @@ live table holds more `ok` answers than the Parquet tree (a lost tree must not s
 re-read without the owner's word:** a run asks by itself only a company's new filing and a retry; a DeepSeek question at most
 200 companies a day (`RC_SEC_READS_DAY_CAP`; the owner's number, 16 Nov 2026), going on the next day, and an
 EVREN question with no day cap, because EVREN has no quota; a changed prompt, a re-cut text, a question's first pass and more than `NEW_COMPANY_LIMIT` (100) companies with no answer at all in one run (a change of scope, not a company's first report) wait for a request that says `"reread": true` (the
-CLI's `--reread`). The run writes and converts every answer inside the ask lock and hands the builder no raw file.
+CLI's `--reread`), or `"reread": ["debt.note"]` (`--reread debt.note`) for the named questions only. The run writes and converts every answer inside the ask lock and hands the builder no raw file.
 **The daily check runs at night:** the dataset's day starts at 19:00 New York (`reads.DUE_FROM_NY`), so the hourly
 pass that finds it due is 19:05 New York, 01:05 Amsterdam (the owner, 16 Nov 2026), once its file's automation is on
 and a first run was started by hand. The Settings page and the Grafana RC Fetch board show that next pass and the
