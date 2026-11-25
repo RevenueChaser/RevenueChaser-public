@@ -1,7 +1,7 @@
 """``python -m revenuechaser.rcdata.build`` — the builder CLI.
 
     run [--once] [--fetch-only | --build-only]
-        [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread] [--no-duckdb] [--no-parquet]
+        [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread [Q ...]] [--no-duckdb] [--no-parquet]
                   [--tiers A,B] [--names KO,MSFT]]
                                         --fetch-only / --build-only (no --dataset): the two hourly timers (avo, 24
                                         Nov 2026), the storage fetch (raw and Parquet, never DuckDB) and the
@@ -370,9 +370,10 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--allow-shrink-table", dest="shrink_tables", action="append", metavar="TABLE",
                      help="with --dataset: let only this table of the dataset's shrink (repeatable); every other "
                           "guard stays on, unlike --allow-shrink")
-    run.add_argument("--reread", action="store_true",
+    run.add_argument("--reread", nargs="*", metavar="QUESTION", default=None,
                      help="with --dataset sec/reads: the owner's word for a mass re-read. Without it a run asks only "
-                          "new filings and retries, up to the day cap; with it every stale company is asked")
+                          "new filings and retries, up to the day cap; with it every stale company is asked. Named "
+                          "questions (--reread debt.note) limit the word to those; the others run as usual")
     scope_help = ("with --dataset: ask only these spine tiers (A,B,C,D) / only these tickers, instead of the "
                   "dataset's own set; a dataset that cannot narrow its fetch says so on its check row (#265)")
     group_help = ("the extra groups to ask besides the tiers and names: anchors (the benchmarks and rotation "
@@ -433,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
         print("--no-build is deprecated: it is --no-duckdb (fetch and Parquet, no serving build). "
               "--no-parquet is the raw-only mode.", file=sys.stderr)
     if args.cmd == "run" and not args.dataset and (args.as_of or args.allow_shrink or args.shrink_tables
-                                                   or args.reread or args.no_duckdb or args.tiers
+                                                   or args.reread is not None or args.no_duckdb or args.tiers
                                                    or args.names or args.include):
         # They only shape the request queued for --dataset; without it they would be dropped silently (F5).
         p.error("--as-of, --allow-shrink, --allow-shrink-table, --reread, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
@@ -570,12 +571,12 @@ def main(argv: list[str] | None = None) -> int:
             return worst
         mine = _own_requests_only(args.dataset) if args.dataset else None
         tables = getattr(args, "shrink_tables", None)
-        if args.dataset and (args.as_of or args.allow_shrink or tables or args.reread or args.no_duckdb
+        if args.dataset and (args.as_of or args.allow_shrink or tables or args.reread is not None or args.no_duckdb
                              or scope or not ops.queued(args.dataset, by=mine)):
             params = {**({"as_of": args.as_of} if args.as_of else {}),
                       **({"allow_shrink": True} if args.allow_shrink else {}),
                       **({"allow_shrink_tables": tables} if tables else {}),
-                      **({"reread": True} if args.reread else {}),
+                      **({"reread": args.reread or True} if args.reread is not None else {}),
                       **({"no_duckdb": True, "no_build": True} if args.no_duckdb else {}),
                       **({"no_parquet": True} if args.no_parquet else {}), **scope}
             ops.enqueue(args.dataset, params or None, by="cli")

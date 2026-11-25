@@ -306,7 +306,9 @@ class RunContext:
     #: relaxed (a kind's own guards, ``prices``'s per-security bar check, stay on). The 24 Nov 2026 prices build:
     #: ``security_symbol`` lost 186 bar-less placeholder rows of ETPs the spine moved to Tier B, 1.47 %.
     shrink_tables: tuple[str, ...] = ()
-    reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
+    #: A request's ``"reread"`` (sec/reads): ``true`` re-reads every question, a list of question ids only those
+    #: (25 Nov 2026: debt.note's 316 without company.profile's 4,769).
+    reread: bool | tuple[str, ...] = False
     full: bool = False                                              # a request's explicit "full": true (wrds/*)
     #: Whether this run is the hourly pass's own request (``_scheduled``: ``requested_by`` ``due.REQUESTED_BY``).
     #: A pass of nothing but these does not start a whole build of a kind that holds one
@@ -1198,6 +1200,14 @@ def feeds(ds) -> tuple[str, ...]:
     return tuple(getattr(ds, "feeds", ()))
 
 
+def _reread(params: dict) -> bool | tuple[str, ...]:
+    """A request's ``"reread"``: ``true``, or a list of question ids; anything else is no word at all."""
+    named = params.get("reread")
+    if named is True:
+        return True
+    return tuple(q for q in named if isinstance(q, str)) if isinstance(named, list) else False
+
+
 def _tables(params: dict) -> tuple[str, ...]:
     """A request's ``"allow_shrink_tables"`` (a list of table names), else none."""
     named = params.get("allow_shrink_tables")
@@ -1359,7 +1369,7 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     run_id = new_run_id()
     ctx = RunContext(run_id=run_id, dataset=req["dataset"], trigger=trigger, sleep=sleep, clock=clock,
                      allow_shrink=params.get("allow_shrink") is True, shrink_tables=_tables(params),
-                     reread=params.get("reread") is True, full=params.get("full") is True,
+                     reread=_reread(params), full=params.get("full") is True,
                      scheduled=_scheduled(req))
     ops.start_run(run_id, req["dataset"], trigger, params)
     try:
@@ -1556,7 +1566,7 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             params = req.get("params") or {}
             ctx = RunContext(run_id=new_run_id(), dataset=req["dataset"], trigger=trigger,
                              allow_shrink=params.get("allow_shrink") is True, shrink_tables=_tables(params),
-                             reread=params.get("reread") is True, full=params.get("full") is True,
+                             reread=_reread(params), full=params.get("full") is True,
                              scheduled=_scheduled(req))
             ops.start_run(ctx.run_id, req["dataset"], trigger, params)
             started.append((req, ctx))
