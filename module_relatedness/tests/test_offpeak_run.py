@@ -1,15 +1,14 @@
-"""Relatedness off-peak boundary, $ cap, and CLI (no HTTP)."""
+"""Relatedness off-peak boundary and CLI (no HTTP).
+
+The $ cap test went with the board's own profile writer (#1520): the board calls no model now, so there is
+nothing here for a cap to limit. The off-peak gate and the CLI are still the board's own.
+"""
 from __future__ import annotations
 
 import pytest
 
-from datetime import datetime, timezone
-
-from revenuechaser.core import rawstore
 from revenuechaser.core.providers import deepseek
-from revenuechaser.module_relatedness import config
 from revenuechaser.module_relatedness import engine
-from revenuechaser.module_relatedness.tests.test_relatedness import long_body
 
 
 @pytest.fixture(autouse=True)
@@ -18,34 +17,6 @@ def _deepseek_board(monkeypatch):
     from revenuechaser.core.providers import deepseek as _ds
     from revenuechaser.module_relatedness import settings as rel_settings
     monkeypatch.setattr(rel_settings, "writer", lambda: ("deepseek", _ds.MODEL))
-
-
-def _seed_filings(n):
-    rawstore.write_rows("chain_filings", [
-        {"ticker": f"T{i}", "cik": str(i), "form": "10-K", "filed": "2026-01-01",
-         "accession": "a", "primary_doc": "u", "item_text": long_body("we make things"),
-         "quality": "ok"} for i in range(n)])
-
-
-def _no_cik(monkeypatch):
-    monkeypatch.setattr(engine, "_cik_for", lambda ts: {t: "" for t in ts})
-
-
-def test_usd_cap_limits_calls(rawstore_tmp_db, monkeypatch):
-    _no_cik(monkeypatch)
-    monkeypatch.setattr(engine.config, "EST_USD_PER_CALL", 0.001)
-    _seed_filings(5)
-    calls = {"n": 0}
-
-    def fake_profile(ticker, name, text, **k):
-        calls["n"] += 1
-        return {f: ["x"] for f in config.PROFILE_FIELDS}
-
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", fake_profile)
-    engine.build_profiles([f"T{i}" for i in range(5)], usd_cap=0.003)  # -> 3 calls
-    assert calls["n"] == 3
-
-
 
 
 def test_cli_status(rawstore_tmp_db, capsys):

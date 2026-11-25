@@ -94,11 +94,13 @@ class TestReplaceGroups:
         rawstore.write_rows("comov_nodes", [{"as_of": "D2", "cut": 20, "cluster_id": "z"}])
         assert rawstore.count("comov_nodes") == 2
 
-    def test_a_profile_rewrite_drops_old_fields(self, rawstore_tmp_db):
-        rawstore.write_rows("relatedness_attributes", [
-            {"ticker": "A", "field": f, "value": "[]"} for f in ("x", "y")])
-        rawstore.write_rows("relatedness_attributes", [{"ticker": "A", "field": "x", "value": "[]"}])
-        assert rawstore.count("relatedness_attributes") == 1
+    def test_a_group_rewrite_drops_the_members_that_disappeared(self, rawstore_tmp_db):
+        """``relatedness_attributes`` was this case's table until #1520 retired it; ``relatedness_theme_etfs``
+        clears a group the same way (``group_by`` one column of a two-column key)."""
+        rawstore.write_rows("relatedness_theme_etfs", [
+            {"theme_id": "t", "etf": e, "rank": i} for i, e in enumerate(("SMH", "SOXX"))])
+        rawstore.write_rows("relatedness_theme_etfs", [{"theme_id": "t", "etf": "SMH", "rank": 0}])
+        assert rawstore.count("relatedness_theme_etfs") == 1
 
 
 # ── bulk writes store exactly what row-by-row writes stored ──────────────────

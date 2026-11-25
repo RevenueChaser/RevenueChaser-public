@@ -71,9 +71,10 @@ N-valued typed children:
   carry `theme_run_id='legacy-keyword'`, `level='legacy'`.
 - `index_constituents(slug, ticker)` — reference; `index_tickers` = view.
 - `comov_*`, `chain_filings`/`chain_mentions`.
-- `relatedness_profiles(ticker, cik, model, prompt_version, fetched_at, cache_key,
-  status, profile_json, label_source)` + `relatedness_attributes(ticker, field, value TEXT, value_num DOUBLE)`
-  + `relatedness_scores(ticker, peer, score)` + `relatedness_embeddings(ticker, model, dim, vector BLOB)` (v2, #401).
+- `relatedness_scores(ticker, peer, score)` + `relatedness_embeddings(ticker, model, dim, vector BLOB)`
+  (v2, #401). The **profile** itself is not a table of this board: it is the SEC reading service's
+  `company.profile` answer, read where it is (#894 step 3b), and the board's own `relatedness_profiles` /
+  `relatedness_attributes` are retired (#1520).
 - `relatedness_themes(theme_id, level, parent_id, label, size)` +
   `relatedness_theme_tags(theme_id, tag, rank)` +
   `relatedness_theme_members(ticker, theme_id, weight, rank)` + `theme_runs`; the members' `rank` is the

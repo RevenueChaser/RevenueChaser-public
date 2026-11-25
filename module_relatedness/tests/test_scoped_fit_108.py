@@ -18,7 +18,8 @@ import pytest
 from revenuechaser.core import rawstore
 from revenuechaser.rcdata.tests import universe_store
 from revenuechaser.module_relatedness import __main__ as cli
-from revenuechaser.module_relatedness import config, engine, store, themes
+from revenuechaser.module_relatedness import engine, themes
+from revenuechaser.module_relatedness.tests import service_fixture
 from revenuechaser.module_relatedness.tests.test_themes import _profiles4 as _profiles
 
 
@@ -49,8 +50,7 @@ def stored(rawstore_tmp_db, monkeypatch):
     _seed({t: 1e10 for t in profs} | {SMALL: 1e8})
     profs[SMALL] = dict(profs["G0"])
     profs[STRAY] = dict(profs["B0"])
-    for t, p in profs.items():
-        store.save_profile(t, "", p, "k", config.PROMPT_VERSION)
+    service_fixture.seed_profiles(monkeypatch, profs)
     monkeypatch.setattr(themes, "build_shadow", functools.partial(
         themes.build_shadow, candidates=(2, 3), k_medium=2, k_coarse=2))
     return profs

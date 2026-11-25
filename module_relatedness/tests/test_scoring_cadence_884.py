@@ -8,12 +8,11 @@ server (measured 20 Nov 2026, #884), not the ~2 h the cadence options were sized
 
 What that needs of ``engine.score`` (``--score``), on top of what ``test_weekly_scoring_884.py`` already pins:
 
-- on the service path its gate reads the service's ``company.profile`` answers where they are, the whole board,
-  inside the job lock (#894 step 3b: it copied them into the board's tables until then). Each answer carries the
-  time the service asked, so a new answer is seen the day it lands;
+- its gate reads the service's ``company.profile`` answers where they are, the whole board, inside the job lock
+  (#894 step 3b: it copied them into the board's tables until then, and #1520 retired those). Each answer carries
+  the time the service asked, so a new answer is seen the day it lands;
 - reading them is free: no model call and no SEC request, so a week the service read nothing really is a week with
-  nothing to do, and an unchanged week writes nothing;
-- on the own-writer path (``PROFILES_FROM == "own"``) the gate reads the board's own table.
+  nothing to do, and an unchanged week writes nothing.
 
 And the row itself (``RC-Relatedness-Score``): weekly Saturday 07:30, chained on the SEC reads, no cap and
 no writer. Its sibling ``RC-Relatedness-OffPeak`` (the writer run) is weekly too, Sunday 22:15 -- what the
@@ -52,7 +51,7 @@ def _answers(monkeypatch, seen: list, fetched_at):
     """The service's answers, as ``engine.service_rows`` reads them: one company, asked at ``fetched_at``."""
     monkeypatch.setattr(engine, "service_rows",
                         lambda tickers=None: seen.append(tickers) or [{"ticker": "AAA", "fetched_at": fetched_at}])
-    monkeypatch.setattr(rawstore, "get_all", lambda *a, **k: pytest.fail("the board's own table was read"))
+    monkeypatch.setattr(rawstore, "get_all", lambda *a, **k: pytest.fail("a board table was read for a profile"))
 
 
 def _fake_run(monkeypatch, calls: list):
@@ -68,7 +67,6 @@ def _fake_run(monkeypatch, calls: list):
 def test_a_new_answer_from_the_service_is_scored(saved_payload, monkeypatch):
     """The gate reads the whole board's answers from the service; one newer than the payload is work."""
     seen, calls = [], []
-    monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
     _answers(monkeypatch, seen, (NOW + timedelta(minutes=5)).timestamp())
     _fake_run(monkeypatch, calls)
     payload = engine.score()
@@ -79,7 +77,6 @@ def test_a_new_answer_from_the_service_is_scored(saved_payload, monkeypatch):
 
 def test_a_week_the_service_answered_nothing_is_skipped(saved_payload, monkeypatch):
     seen = []
-    monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
     _answers(monkeypatch, seen, (NOW - timedelta(days=1)).timestamp())
     monkeypatch.setattr(engine, "_run", lambda *a, **k: pytest.fail("nothing to rescore"))
     monkeypatch.setattr("revenuechaser.module_relatedness.store.save_scores",
@@ -91,7 +88,6 @@ def test_a_week_the_service_answered_nothing_is_skipped(saved_payload, monkeypat
 
 def test_force_scores_even_when_the_service_answered_nothing(saved_payload, monkeypatch):
     seen, calls = [], []
-    monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
     _answers(monkeypatch, seen, (NOW - timedelta(days=1)).timestamp())
     _fake_run(monkeypatch, calls)
     assert "skipped" not in engine.score(only_if_new=False)
@@ -101,7 +97,6 @@ def test_force_scores_even_when_the_service_answered_nothing(saved_payload, monk
 def test_the_gate_waits_for_the_lock(saved_payload, monkeypatch):
     """A Fetch holds the board: the scoring step reads nothing and writes nothing."""
     seen = []
-    monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
     _answers(monkeypatch, seen, (NOW + timedelta(minutes=5)).timestamp())
     monkeypatch.setattr(engine, "_run", lambda *a, **k: pytest.fail("the lock was not honoured"))
     with job_lock.acquire("relatedness", wait=0) as got:
@@ -109,17 +104,6 @@ def test_the_gate_waits_for_the_lock(saved_payload, monkeypatch):
         with pytest.raises(engine.AlreadyRunning):
             engine.score()
     assert seen == []
-
-
-def test_the_own_writer_path_reads_its_own_table(saved_payload, monkeypatch):
-    calls = []
-    monkeypatch.setattr(engine.config, "PROFILES_FROM", "own")
-    monkeypatch.setattr(engine, "service_rows", lambda tickers=None: pytest.fail("the service was read"))
-    monkeypatch.setattr(rawstore, "get_all",
-                        lambda *a, **k: [{"ticker": "AAA", "fetched_at": (NOW + timedelta(minutes=5)).timestamp()}])
-    _fake_run(monkeypatch, calls)
-    assert "skipped" not in engine.score()
-    assert len(calls) == 1
 
 
 # ── the row the server installs ─────────────────────────────────────────────

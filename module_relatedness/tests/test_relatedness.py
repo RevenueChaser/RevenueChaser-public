@@ -1,14 +1,13 @@
 """Relatedness core — profiles, similarity, engine (no network)."""
 from __future__ import annotations
 
-import json
-
 import numpy as np
 import pandas as pd
 
 from revenuechaser.core import rawstore
 from revenuechaser.module_comovement.tests import prices_bars
-from revenuechaser.module_relatedness import config, engine, profiles, similarity
+from revenuechaser.module_relatedness import config, engine, profile_v3, similarity
+from revenuechaser.module_relatedness.tests import service_fixture
 from revenuechaser.rcdata.tests import spine_fixture, universe_store
 
 
@@ -17,7 +16,7 @@ def test_parse_profile_cleans_and_limits():
     """The v3 reply (#400) as the board's attribute rows: lower-cased, de-duplicated, a wrong type dropped."""
     raw = v3_reply(["AI Accelerators", "gpu ", "GPU", ""], ["Data Center", "gaming"], business_model=7,
                    keywords=["cuda"])
-    p = profiles.parse_profile(raw)
+    p = profile_v3.to_attributes(profile_v3.parse(raw))
     assert p["products"] == ["ai accelerators", "gpu"]     # lowercased, de-duped
     assert p["end_markets"] == ["data center", "gaming"]
     assert p["business_model"] == []                       # wrong type -> empty
@@ -26,7 +25,7 @@ def test_parse_profile_cleans_and_limits():
 
 
 def test_parse_profile_bad_json_is_empty():
-    p = profiles.parse_profile("not json")
+    p = profile_v3.to_attributes(profile_v3.parse("not json"))
     assert all(p[f] == [] for f in config.PROFILE_FIELDS)
 
 
@@ -66,8 +65,8 @@ def _seed_universe(tickers):
                                    "industry": "Semiconductors"} for t in tickers], replace=True)
 
 
-# Item 1 texts a test seeds have to clear the profile floor (#313, ``config.MIN_INPUT_CHARS``): the engine never
-# sends a shorter one to the writer. ``long_body`` pads a distinctive sentence past it; an empty text stays empty,
+# Item 1 texts a test seeds have to clear the profile floor (#313,
+# ``rcdata.sec_profile_input.MIN_INPUT_CHARS``): the service never sends a shorter one to its writer. ``long_body`` pads a distinctive sentence past it; an empty text stays empty,
 # because that is the ``no_text`` case.
 _PAD = "This annual report describes the company's business in detail. " * 40
 
@@ -134,14 +133,11 @@ def test_run_no_fetch_reads_cached_profiles(rawstore_tmp_db, monkeypatch, tmp_pa
     _seed_universe(tickers)
     _seed_filings(tickers)
     monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
-    # pre-cache profiles in the durable store
-    from revenuechaser.module_relatedness import store
-    for t, prof in {
-        "NVDA": _prof(products=["gpu"], end_markets=["data center"]),
-        "AMD": _prof(products=["gpu"], end_markets=["data center"]),
-        "TSM": _prof(products=["foundry"], end_markets=["semiconductors"]),
-    }.items():
-        store.save_profile(t, "cik-" + t, prof, "k", "m")
+    # the service's answers, which is where the board's profiles are (#1520)
+    service_fixture.seed(monkeypatch, [
+        service_fixture.row("NVDA", _prof(products=["gpu"], end_markets=["data center"]), cik="cik-NVDA"),
+        service_fixture.row("AMD", _prof(products=["gpu"], end_markets=["data center"]), cik="cik-AMD"),
+        service_fixture.row("TSM", _prof(products=["foundry"], end_markets=["semiconductors"]), cik="cik-TSM")])
     monkeypatch.setattr(engine.vc_engine, "fetch_corpus",
                         lambda *a, **k: {"no_fetch": True})
 
@@ -189,10 +185,10 @@ def test_peer_move_from_ohlc(rawstore_tmp_db):
     assert float(p["beyond_spy"]) > 0.3
 
 
-def test_companies_carry_theme_levels(rawstore_tmp_db):
+def test_companies_carry_theme_levels(rawstore_tmp_db, monkeypatch):
     from revenuechaser.module_relatedness import store
     _seed_universe(["NVDA"])
-    store.save_profile("NVDA", "cik-NVDA", _prof(products=["gpu"]), "k", "m")
+    service_fixture.seed_profiles(monkeypatch, {"NVDA": _prof(products=["gpu"])}, cik="cik-NVDA")
     rawstore.write_rows("theme_runs", [{
         "id": "nmf-test", "created_at": "2026-01-01T00:00:00Z", "k_fine": 1,
         "k_medium": 1, "k_coarse": 1, "jaccard": 1.0, "is_current": 1}])
@@ -331,23 +327,24 @@ def test_no_filter_set_keeps_every_name_and_the_first_one_focal(tmp_path):
     assert got == {"pool": 2, "n": 2, "focal": "MSFT", "count": "2 names", "active": False}
 
 
-def test_companies_carry_the_filter_path_and_theme_ids(rawstore_tmp_db):
+def test_companies_carry_the_filter_path_and_theme_ids(rawstore_tmp_db, monkeypatch):
     """#383 C1b: each company is a kit row (``gics`` + ``theme_ids``) and the payload carries the theme catalog."""
     from revenuechaser.module_relatedness import store
     _seed_universe(["NVDA"])
-    store.save_profile("NVDA", "cik-NVDA", _prof(products=["gpu"]), "k", "m")
+    service_fixture.seed_profiles(monkeypatch, {"NVDA": _prof(products=["gpu"])}, cik="cik-NVDA")
     payload = engine._payload(store.load_profiles(["NVDA"]), {})
     row = payload["companies"][0]
     assert row["gics"] == [row["sector"], row["industry"]] and row["theme_ids"] == []
     assert payload["theme_catalog"] == {}             # no pinned run in a fresh store
 
 
-def test_two_share_classes_are_one_row_and_never_each_others_peer(rawstore_tmp_db):
+def test_two_share_classes_are_one_row_and_never_each_others_peer(rawstore_tmp_db, monkeypatch):
     """Decision C (avo, 16 Nov 2026; #408): one row per CIK; the kept class lists the other on its row."""
     from revenuechaser.module_relatedness import store
     _seed_universe(["GOOG", "GOOGL", "MSFT"])
-    for t, cik in (("GOOG", "0001652044"), ("GOOGL", "1652044"), ("MSFT", "789019")):
-        store.save_profile(t, cik, _prof(products=["search", "cloud"]), "k", "m")
+    service_fixture.seed(monkeypatch, [
+        service_fixture.row(t, _prof(products=["search", "cloud"]), cik=cik)
+        for t, cik in (("GOOG", "0001652044"), ("GOOGL", "1652044"), ("MSFT", "789019"))])
     payload = engine._payload(store.load_profiles(["GOOG", "GOOGL", "MSFT"]), {})
     rows = {c["ticker"]: c["also"] for c in payload["companies"]}
     kept = "GOOGL" if "GOOGL" in rows else "GOOG"
@@ -355,21 +352,21 @@ def test_two_share_classes_are_one_row_and_never_each_others_peer(rawstore_tmp_d
     assert all(p["peer"] in rows for ps in payload["peers"].values() for p in ps)
 
 
-def test_companies_with_an_unknown_sector_read_unclassified(rawstore_tmp_db):
+def test_companies_with_an_unknown_sector_read_unclassified(rawstore_tmp_db, monkeypatch):
     """R3 (#86): the legacy vendor ``Other`` and a missing sector both read as the unknown bucket."""
     from revenuechaser.module_relatedness import store
     universe_store.replace([
         {"ticker": t, "name": t, "market_cap": 1e9, "sector": sec, "price": 1.0, "industry": "x",
          "quote": {}}
         for t, sec in (("LEG", "Other"), ("NUL", None), ("OKK", "Energy"))])
-    for t in ("LEG", "NUL", "OKK"):
-        store.save_profile(t, f"cik-{t}", _prof(products=["x"]), "k", "m")
+    service_fixture.seed(monkeypatch, [service_fixture.row(t, _prof(products=["x"]), cik=f"cik-{t}")
+                                       for t in ("LEG", "NUL", "OKK")])
     payload = engine._payload(store.load_profiles(["LEG", "NUL", "OKK"]), {})
     assert {c["ticker"]: c["sector"] for c in payload["companies"]} == {
         "LEG": "Unclassified", "NUL": "Unclassified", "OKK": "Energy"}
 
 
-def test_companies_carry_the_sector_and_the_industry_not_the_gics_levels(rawstore_tmp_db):
+def test_companies_carry_the_sector_and_the_industry_not_the_gics_levels(rawstore_tmp_db, monkeypatch):
     """#266: a card is ``sector`` (Morningstar name) + ``industry`` (the provider text), nothing deeper.
 
     ``OLD`` is a row the identity master has not re-applied yet: it still holds the GICS spelling.
@@ -380,8 +377,8 @@ def test_companies_carry_the_sector_and_the_industry_not_the_gics_levels(rawstor
     universe_store.replace([
         {"ticker": t, "name": t, "market_cap": 1e9, "sector": sec, "industry": ind, "price": 1.0,
          "quote": {}} for t, sec, ind in rows])
-    for t, _sec, _ind in rows:
-        store.save_profile(t, f"cik-{t}", _prof(products=["x"]), "k", "m")
+    service_fixture.seed(monkeypatch, [service_fixture.row(t, _prof(products=["x"]), cik=f"cik-{t}")
+                                       for t, _sec, _ind in rows])
     payload = engine._payload(store.load_profiles([r[0] for r in rows]), {})
     cards = {c["ticker"]: c for c in payload["companies"]}
     assert {t: (c["sector"], c["industry"]) for t, c in cards.items()} == {
@@ -405,8 +402,8 @@ def test_the_payload_reads_the_universe_once_for_the_company_fields(rawstore_tmp
     universe_store.replace([
         {"ticker": t, "name": name, "market_cap": cap, "sector": sec, "industry": ind, "price": 1.0,
          "quote": {}} for t, name, sec, ind, cap in rows])
-    for t, _name, _sec, _ind, _cap in rows:
-        store.save_profile(t, f"cik-{t}", _prof(products=["x"]), "k", "m")
+    service_fixture.seed(monkeypatch, [service_fixture.row(t, _prof(products=["x"]), cik=f"cik-{t}")
+                                       for t, _name, _sec, _ind, _cap in rows])
 
     reads = []
     real = core_universe.filter_fields

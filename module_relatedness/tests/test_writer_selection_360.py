@@ -4,27 +4,22 @@
 - An option whose key or login is absent is greyed with the variable NAME, never a value.
 - The CLI and the dashboard run the board's writer when no ``--provider`` is given; the off-peak gate and the USD cap
   are DeepSeek's only; EVREN and Grok have no call cap (avo, 2 Nov).
-- One writer per board: a profile of another writer is stale and stays out of the peer matrix.
-- Every profile and every run names its provider and model.
+- Every run names its provider and model.
 
-Offline, temp store: the EVREN HTTP client and ``deepseek.complete`` are fakes.
+The two bullets about a stored profile's writer went with the board's own profile writer (#1520): the profile is
+the SEC reading service's answer now, and the service names its own writer. Offline, temp store.
 """
 from __future__ import annotations
 
 import json
-import re
 
 import pytest
 
-from revenuechaser.core import board_settings, rawstore
-from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
-from revenuechaser.core.providers import deepseek, evren
+from revenuechaser.core.providers import deepseek
 from revenuechaser.module_relatedness import __main__ as cli
 from revenuechaser.core import llm_writers as writers
-from revenuechaser.module_relatedness import engine, settings, store
-from revenuechaser.module_relatedness.tests.test_relatedness import long_body
+from revenuechaser.module_relatedness import settings
 
-TICKERS = ["AAA", "BBB", "CCC"]
 EVREN_KEY = "sentinel-evren-key-360"
 DS_KEY = "sentinel-deepseek-key-360"
 
@@ -38,42 +33,6 @@ class _Resp:
 
     def json(self):
         return self._payload
-
-
-class _EvrenHttp:
-    def __init__(self):
-        self.posts: list[dict] = []
-
-    def post(self, url, **k):
-        body = k.get("json")
-        self.posts.append({"url": url, "json": body})
-        name = re.match(r"Company: (.+)\n", body["messages"][-1]["content"]).group(1).lower()
-        content = v3_reply([f"{name} gpu"], ["data center"])
-        return _Resp(200, {"choices": [{"message": {"content": content}}], "usage": {"total_tokens": 5}})
-
-    def close(self):
-        pass
-
-
-def _seed_filings(texts: dict[str, str]) -> None:
-    rawstore.write_rows("chain_filings", [
-        {"ticker": t, "cik": "", "form": "10-K", "filed": "2026-01-01", "accession": "a-" + t,
-         "primary_doc": "u", "item_text": long_body(text), "quality": "ok", "fetched_at": 1.0}
-        for t, text in texts.items()])
-
-
-
-
-@pytest.fixture
-def deepseek_calls(monkeypatch):
-    seen: list[str] = []
-
-    def fake(system, user, **k):
-        seen.append(user)
-        return v3_reply(["deepseek gpu"], ["data center"])
-
-    monkeypatch.setattr(deepseek, "complete", fake)
-    return seen
 
 
 # ── the setting ─────────────────────────────────────────────────────────────
@@ -90,21 +49,13 @@ def test_the_default_writer_is_evren(rawstore_tmp_db):
 # This folder's ``_deepseek_default`` fixture pins the writer to DeepSeek, because its tests drive that writer;
 # these two are about the default itself, so they put the registry's own back.
 
-def test_a_module_call_without_a_writer_runs_on_the_free_one(monkeypatch):
+def test_a_module_call_without_a_writer_runs_on_the_free_one():
+    """The board's own writer and its stored profile are gone (#1520), so the two tests that drove them are too.
+    What is still the board's is the default a call that names no writer gets: the registry's free one."""
     from revenuechaser.module_relatedness import config as rel_config
-    from revenuechaser.module_relatedness import profiles as profiles_mod
     assert writers.DEFAULT == "evren" and not writers.get(writers.DEFAULT).paid
-    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
-    assert profiles_mod.llm() is profiles_mod._writers().client("evren")
-    assert profiles_mod.llm() is not deepseek
-
-
-def test_a_profile_saved_without_a_writer_names_the_free_one(rawstore_tmp_db, monkeypatch):
-    from revenuechaser.module_relatedness import config as rel_config
-    monkeypatch.setattr(rel_config, "default_writer", lambda: writers.DEFAULT)
-    store.save_profile("ZZZ", "1", {}, "{}", "a-model")
-    rows = [r for r in rawstore.get_all("relatedness_profiles") if r["ticker"] == "ZZZ"]
-    assert [r.get("provider") for r in rows] == ["evren"]
+    assert rel_config.default_writer() == writers.DEFAULT
+    assert writers.client(rel_config.default_writer()) is not deepseek
 
 
 def test_the_naming_cli_banner_names_the_free_writer(rawstore_tmp_db, monkeypatch, capsys):

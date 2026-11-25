@@ -1,5 +1,10 @@
-"""Relatedness data safety (#114): atomic theme cutover, no up-front profile
-wipe, empty-profile retry. Offline, synthetic data."""
+"""Relatedness data safety (#114): atomic theme cutover, the stale badge, the atomic payload write. Offline,
+synthetic data.
+
+The empty-profile retry (C3) was the board's own writer's rule and went with it (#1520): the attempts, the shell
+and the "an empty answer never overwrites a good profile" rule are the SEC reading service's now, and
+``rcdata/tests/test_sec_reads.py`` holds them.
+"""
 from __future__ import annotations
 
 import json
@@ -8,8 +13,9 @@ import pytest
 
 from revenuechaser.rcdata.tests import universe_store
 from revenuechaser.core import rawstore
-from revenuechaser.module_relatedness import config, engine, profiles as profiles_mod
+from revenuechaser.module_relatedness import config, engine, profile_v3
 from revenuechaser.module_relatedness import store, themes
+from revenuechaser.module_relatedness.tests import service_fixture
 from revenuechaser.module_relatedness.tests.test_themes import _profiles
 
 
@@ -130,27 +136,16 @@ def test_cutover_does_not_copy_legacy_keyword(rawstore_tmp_db):
     assert _live("legacy-keyword") == 1      # the legacy rows themselves stay
 
 
-# ── C2: no up-front wipe, stale badge ───────────────────────────────────────
-@pytest.fixture
-def _quiet(monkeypatch):
-    monkeypatch.setattr(engine, "_cik_for", lambda ts: {t: "" for t in ts})
-    # Long enough to profile (#313): the engine never sends a text under ``config.MIN_INPUT_CHARS``.
-    monkeypatch.setattr(engine, "_filing_text", lambda t: (t, "text " * 500))
+# ── C2: the stale badge ─────────────────────────────────────────────────────
+def _old_mode_row(ticker, **kw):
+    """A service answer written under an older prompt version: what the board badges as stale."""
+    return service_fixture.row(ticker, _prof(**kw), model="old-model", prompt_version="v0")
 
 
-def _old_mode_profile(ticker, **kw):
-    ck = store.cache_key("old-model", False, "", "v0", ticker, "h")
-    store.save_profile(ticker, "", _prof(**kw), ck, "old-model", prompt_version="v0")
-
-
-
-
-def test_stale_profiles_are_flagged_until_reprofiled(rawstore_tmp_db):
-    _old_mode_profile("A", products=["x"])
+def test_stale_profiles_are_flagged_until_reprofiled(rawstore_tmp_db, monkeypatch):
     fresh = store.mode_stamp()
-    ck = store.cache_key(fresh["model"], fresh["thinking"], fresh["effort"],
-                         fresh["prompt_version"], "B", "h")
-    store.save_profile("B", "", _prof(products=["y"]), ck, fresh["model"])
+    service_fixture.seed(monkeypatch, [_old_mode_row("A", products=["x"]),
+                                       service_fixture.row("B", _prof(products=["y"]), model=fresh["model"])])
     assert store.stale_tickers(["A", "B"]) == {"A"}
 
 
@@ -169,67 +164,32 @@ def test_report_shows_stale_badge():
     assert '"stale": true' in html and '"stale": false' in html
 
 
-def test_payload_marks_stale(rawstore_tmp_db):
-    _old_mode_profile("A", products=["x"])
+def test_payload_marks_stale(rawstore_tmp_db, monkeypatch):
+    service_fixture.seed(monkeypatch, [_old_mode_row("A", products=["x"])])
     store.save_scores({})
     payload = engine._payload({"A": store.load_profiles(["A"])["A"]}, stale={"A"})
     assert payload["companies"][0]["stale"] is True
 
 
-# ── C3: empty answers ───────────────────────────────────────────────────────
+# ── C3: a reply the service could not use ───────────────────────────────────
 def test_fenced_json_parses():
     from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
-    assert profiles_mod.parse_profile("```json\n" + v3_reply(["gpu"]) + "\n```")["products"] == ["gpu"]
-    assert profiles_mod.parse_profile("```\n" + v3_reply(["a"]) + "\n```")["products"] == ["a"]
+    parse = lambda raw: profile_v3.to_attributes(profile_v3.parse(raw))      # noqa: E731
+    assert parse("```json\n" + v3_reply(["gpu"]) + "\n```")["products"] == ["gpu"]
+    assert parse("```\n" + v3_reply(["a"]) + "\n```")["products"] == ["a"]
 
 
 def test_string_valued_fields_are_accepted():
-    p = profiles_mod.parse_profile(json.dumps(
-        {"segments": [{"name": "Chips", "products": "GPU, accelerators"}], "business_model": "Fabless"}))
+    p = profile_v3.to_attributes(profile_v3.parse(json.dumps(
+        {"segments": [{"name": "Chips", "products": "GPU, accelerators"}], "business_model": "Fabless"})))
     assert p["products"] == ["gpu", "accelerators"] and p["business_model"] == ["fabless"]
-
-
-def test_empty_profile_is_not_done_and_retried_at_most_3_times(
-        rawstore_tmp_db, monkeypatch, _quiet):
-    calls = []
-    monkeypatch.setattr(engine.profiles_mod, "profile_for",
-                        lambda *a, **k: calls.append(1) or _prof())
-    for _ in range(5):
-        got = engine.build_profiles(["A"], use_llm=True)
-    assert len(calls) == 3
-    row = rawstore.get("relatedness_profiles", "A")
-    assert row["status"] == "empty" and row["attempts"] == 3
-    assert not any(got["A"].values())
-
-
-def test_empty_retry_then_success_is_done(rawstore_tmp_db, monkeypatch, _quiet):
-    answers = iter([_prof(), _prof(products=["gpu"])])
-    monkeypatch.setattr(engine.profiles_mod, "profile_for",
-                        lambda *a, **k: next(answers))
-    engine.build_profiles(["A"], use_llm=True)
-    engine.build_profiles(["A"], use_llm=True)
-    assert rawstore.get("relatedness_profiles", "A")["status"] == "ok"
-    calls = []
-    monkeypatch.setattr(engine.profiles_mod, "profile_for",
-                        lambda *a, **k: calls.append(1) or _prof(products=["z"]))
-    engine.build_profiles(["A"], use_llm=True)
-    assert calls == []                                    # done: not re-called
-
-
-def test_empty_answer_never_overwrites_a_stale_good_profile(
-        rawstore_tmp_db, monkeypatch, _quiet):
-    _old_mode_profile("A", products=["x"])
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", lambda *a, **k: _prof())
-    engine.build_profiles(["A"], use_llm=True)
-    assert store.load_profiles(["A"])["A"]["products"] == ["x"]
-    assert store.stale_tickers(["A"]) == {"A"}
 
 
 def test_profiled_count_excludes_empty(rawstore_tmp_db, monkeypatch, tmp_path):
     monkeypatch.setattr(engine.config, "RELATEDNESS_JSON", tmp_path / "r.json")
     monkeypatch.setattr(engine.vc_engine, "fetch_corpus", lambda *a, **k: {})
-    store.save_profile("A", "", _prof(products=["gpu"]), "k", "m")
-    store.save_profile("B", "", _prof(), "k", "m", status="empty")
+    service_fixture.seed(monkeypatch, [service_fixture.row("A", _prof(products=["gpu"])),
+                                       service_fixture.row("B", _prof(), status="empty")])
     payload = engine.run(no_fetch=True, tickers=["A", "B"])
     assert payload["n"] == 1 and payload["pending"] == 1
 

@@ -1,161 +1,29 @@
-"""#118 PR C — Relatedness job and math.
+"""#118 PR C — the Relatedness job's messages and exit codes, and the one current-theme-run reader.
 
-C12 similarity percentile, C14/N4 cost cap, P6 stop event, P2 cached reply,
-C13/P5 job messages, C22/C23 cache key and hygiene. Offline; fake LLM clients only.
+C13/P5 the CLI's and the dashboard runner's messages, C24 one reader of the current theme run. Offline, no call.
+
+What this file held until #1520: the cost cap (C14/N4), the stop event (P6), the unparseable cached reply (P2),
+the prompt-version cache miss (C22) and the EVREN pool cap. Every one of them was a rule of the board's own
+profile writer, which is gone; the SEC reading service carries them and ``rcdata/tests/test_sec_reads.py`` tests
+them. The CLI's own handling of a ``stopped_reason`` stays, because the payload keys stay.
 """
 from __future__ import annotations
 
 import pytest
 
 from revenuechaser.core import rawstore
-from revenuechaser.module_relatedness.tests.test_relatedness import v3_reply
-from revenuechaser.core.providers import deepseek
-from revenuechaser.module_relatedness import config, engine, profiles, similarity, store
-from revenuechaser.module_relatedness.tests.test_relatedness import long_body
+from revenuechaser.module_relatedness import engine
 
 
 @pytest.fixture(autouse=True)
 def _deepseek_board(monkeypatch):
-    """These CLI runs are DeepSeek's: the board's writer is DeepSeek here (#360 made EVREN the default)."""
+    """These CLI runs name DeepSeek as the board's writer (#360 made EVREN the default). It reaches no model:
+    since #1520 the writer is a label on the payload, not a call this board makes."""
     from revenuechaser.core.providers import deepseek as _ds
     from revenuechaser.module_relatedness import settings as rel_settings
     monkeypatch.setattr(rel_settings, "writer", lambda: ("deepseek", _ds.MODEL))
 
 
-def _prof(**kw):
-    out = {f: [] for f in config.PROFILE_FIELDS}
-    out.update(kw)
-    return out
-
-
-
-
-# ── C12: similarity percentile ───────────────────────────────────────────────
-
-
-
-
-# ── C14 + N4: cost cap ───────────────────────────────────────────────────────
-def _count_complete(monkeypatch, content):
-    calls = {"n": 0}
-
-    def fake(system, user, **kw):
-        calls["n"] += 1
-        return content
-
-    monkeypatch.setattr(profiles.deepseek, "complete", fake)
-    return calls
-
-
-def _one_group_per_ticker(monkeypatch):
-    monkeypatch.setattr(engine, "_cik_for", lambda ts: {t: t for t in ts})
-    monkeypatch.setattr(engine, "_filing_text", lambda t: (t, long_body("we make things")))
-
-
-def test_cap_zero_makes_no_llm_calls(rawstore_tmp_db, monkeypatch):
-    _one_group_per_ticker(monkeypatch)
-    calls = _count_complete(monkeypatch, "{}")
-    engine.build_profiles([f"T{i}" for i in range(5)], use_llm=True, usd_cap=0.0)
-    assert calls["n"] == 0
-
-
-def test_cap_counts_calls_including_the_retry(rawstore_tmp_db, monkeypatch):
-    _one_group_per_ticker(monkeypatch)
-    monkeypatch.setattr(config, "EST_USD_PER_CALL", 0.001)
-    # An unusable reply makes ``profile_for`` retry once per group: without the
-    # call budget the cap of 3 would still make 6 calls.
-    calls = _count_complete(monkeypatch, "{}")
-    engine.build_profiles([f"T{i}" for i in range(10)], use_llm=True,
-                          usd_cap=0.003, workers=1)
-    assert calls["n"] == 3
-
-
-def test_empty_content_reply_counts_an_attempt_and_stops_after_three_runs(
-        rawstore_tmp_db, monkeypatch):
-    _one_group_per_ticker(monkeypatch)
-
-    def empty(*a, **k):
-        raise deepseek.DeepSeekError("DeepSeek returned no content")
-
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", empty)
-    for _ in range(4):
-        engine.build_profiles(["A"], use_llm=True)
-    row = rawstore.get("relatedness_profiles", "A")
-    assert row["status"] == "empty" and row["attempts"] == 3
-
-
-# ── P6: one stop event ───────────────────────────────────────────────────────
-def test_an_auth_failure_stops_the_pool_after_the_first_wave(rawstore_tmp_db, monkeypatch):
-    _one_group_per_ticker(monkeypatch)
-    calls = {"n": 0}
-
-    def auth(*a, **k):
-        calls["n"] += 1
-        raise deepseek.DeepSeekAuthError("DeepSeek rejected the API key (HTTP 401)")
-
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", auth)
-    with pytest.raises(engine.RunStopped) as exc:
-        engine.build_profiles([f"T{i}" for i in range(40)], use_llm=True, workers=4)
-    assert exc.value.reason == "auth"
-    assert 0 < calls["n"] <= 4          # at most one wave, never one call per group
-
-
-def test_repeated_transient_failures_stop_the_run(rawstore_tmp_db, monkeypatch):
-    _one_group_per_ticker(monkeypatch)
-    calls = {"n": 0}
-
-    def transient(*a, **k):
-        calls["n"] += 1
-        raise deepseek.DeepSeekTransientError("DeepSeek HTTP 503")
-
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", transient)
-    with pytest.raises(engine.RunStopped) as exc:
-        engine.build_profiles([f"T{i}" for i in range(40)], use_llm=True, workers=1)
-    assert exc.value.reason == "transient"
-    assert calls["n"] == engine.MAX_TRANSIENT_FAILURES
-
-
-# ── P2: an unparseable cached reply is not re-used ───────────────────────────
-class _FakeClient:
-    def __init__(self, content):
-        self._content = content
-        self.calls = 0
-
-    def post(self, *a, **k):
-        self.calls += 1
-
-        class _Resp:
-            status_code = 200
-
-            def json(self_inner):
-                return {"choices": [{"message": {"content": self._content}}],
-                        "usage": {}}
-
-        return _Resp()
-
-
-def _seed_cached_reply(ticker, name, text, content):
-    """A cached reply under the key a v3 call makes (#400: no thinking, no effort)."""
-    from revenuechaser.module_relatedness import profiles as prof_mod
-    key = deepseek._cache_key(prof_mod.system_prompt(), prof_mod.build_user(name, text),
-                              False, deepseek.MODEL, None)
-    rawstore.write_rows("llm_cache", [{
-        "cache_key": key, "ticker": ticker, "cik": "", "model": deepseek.MODEL,
-        "thinking": 0, "effort": "",
-        "prompt_version": config.PROMPT_VERSION, "input_hash": key,
-        "response": {"content": content, "usage": {}}, "fetched_at": 1.0,
-        "status": "ok"}])
-    return key
-
-
-def test_an_unparseable_cached_reply_is_ignored_and_the_live_one_wins(rawstore_tmp_db, monkeypatch):
-    monkeypatch.setenv("RC_DEEPSEEK_OFF_PEAK_ONLY", "0")
-    monkeypatch.setattr(deepseek, "key_for", lambda slug: "k")
-    _seed_cached_reply("AAA", "A Corp", "text", "not json")
-    client = _FakeClient(v3_reply(["gpu"]))
-    prof = profiles.profile_for("AAA", "A Corp", "text", client=client)
-    assert prof["products"] == ["gpu"]      # the live reply, not the cached junk
-    assert client.calls == 1
 
 
 # ── C13 + P5 + C-F1: job messages and exit codes ─────────────────────────────
@@ -284,46 +152,3 @@ def test_one_current_theme_run_reader_and_one_coarse_label(rawstore_tmp_db):
     catalog = theme_focus.coarse_theme_catalog()
     assert "Regional Banks" in catalog
     assert "Financials (2)" not in catalog
-
-
-# ── C22: a prompt_version bump misses the LLM cache ──────────────────────────
-def test_a_prompt_version_bump_misses_the_llm_cache(rawstore_tmp_db, monkeypatch):
-    monkeypatch.setenv("RC_DEEPSEEK_OFF_PEAK_ONLY", "0")
-    monkeypatch.setattr(deepseek, "key_for", lambda slug: "k")
-    monkeypatch.setattr(config, "PROMPT_VERSION", "v1")
-    client = _FakeClient(v3_reply(["gpu"]))
-    profiles.profile_for("AAA", "A", "text", thinking=False, client=client)
-    assert client.calls == 1
-    profiles.profile_for("AAA", "A", "text", thinking=False, client=client)
-    assert client.calls == 1                       # same version -> cache hit
-    monkeypatch.setattr(config, "PROMPT_VERSION", "v2")
-    profiles.profile_for("AAA", "A", "text", thinking=False, client=client)
-    assert client.calls == 2                       # version bump -> cache miss
-
-
-
-
-
-
-
-
-def test_an_evren_pool_never_opens_more_than_the_account_allows(rawstore_tmp_db, monkeypatch):
-    """EVREN refuses a 5th concurrent request (HTTP 429, 15 Nov 2026): the pool is capped at evren.MAX_WORKERS."""
-    from revenuechaser.core.providers import evren
-    _one_group_per_ticker(monkeypatch)
-    import concurrent.futures
-    seen = {}
-    real_pool = concurrent.futures.ThreadPoolExecutor
-
-    def pool(*a, **k):
-        seen["max_workers"] = k.get("max_workers")
-        return real_pool(*a, **k)
-
-    def auth(*a, **k):
-        raise deepseek.DeepSeekAuthError("EVREN rejected the API key (HTTP 401)")
-
-    monkeypatch.setattr(concurrent.futures, "ThreadPoolExecutor", pool)   # engine imports it at call time
-    monkeypatch.setattr(engine.profiles_mod, "profile_for", auth)
-    with pytest.raises(engine.RunStopped):
-        engine.build_profiles([f"T{i}" for i in range(8)], use_llm=True, workers=8, provider="evren")
-    assert seen["max_workers"] == evren.MAX_WORKERS == 1

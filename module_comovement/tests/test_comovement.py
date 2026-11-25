@@ -955,7 +955,7 @@ def test_relatedness_cluster_levels_reads_the_comovement_default_run(monkeypatch
         seen.append((sql, list(params or [])))
         return []
 
-    monkeypatch.setattr(rel_engine.rawstore, "query", _q)
+    monkeypatch.setattr(rawstore, "query", _q)  # the one module both boards read (#1520 trimmed engine's import)
     monkeypatch.setattr(comov_settings, "effective",
                         lambda window=None: SimpleNamespace(default_window=189))
     assert rel_engine._cluster_levels() == {}

@@ -7,7 +7,8 @@ import json
 
 from revenuechaser.core import rawstore
 from revenuechaser.module_relatedness import __main__ as cli
-from revenuechaser.module_relatedness import config, naming, store, themes
+from revenuechaser.module_relatedness import naming, themes
+from revenuechaser.module_relatedness.tests import service_fixture
 from revenuechaser.rcdata.tests import spine_fixture
 
 
@@ -23,11 +24,10 @@ def _profiles():
     return out
 
 
-def _seed(monkeypatch):
-    profs = _profiles()
+def _seed(monkeypatch, extra: dict | None = None):
+    profs = {**_profiles(), **(extra or {})}
     spine_fixture.write_security([{"ticker": t, "name": t + " Inc", "sector": "Technology"} for t in profs])
-    for t, p in profs.items():
-        store.save_profile(t, "", p, "k", config.PROMPT_VERSION)
+    service_fixture.seed_profiles(monkeypatch, profs)
     spine_fixture.write_etf_holdings({"XLK": list(profs)[:20]})
     monkeypatch.setattr(themes, "build_shadow", functools.partial(
         themes.build_shadow, candidates=(2, 3), k_medium=2, k_coarse=2))
@@ -151,9 +151,7 @@ def test_rebuild_of_the_current_run_id_is_refused(rawstore_tmp_db, monkeypatch, 
 
 
 def test_rebuild_summary_reports_unthemed_names(rawstore_tmp_db, monkeypatch, capsys):
-    _seed(monkeypatch)
-    for t in ("LONE1", "LONE2"):
-        store.save_profile(t, "", {"products": [f"only {t}"]}, "k", config.PROMPT_VERSION)
+    _seed(monkeypatch, {t: {"products": [f"only {t}"]} for t in ("LONE1", "LONE2")})
     # In the universe, so the scoped fit (#108 S0) keeps them and they reach the unthemed count.
     spine_fixture.write_security([{"ticker": t, "name": t, "sector": "Technology"} for t in ("LONE1", "LONE2")])
     cli.main(["--rebuild-themes", "--run-id", "rb8"])
