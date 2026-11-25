@@ -223,7 +223,7 @@ def _with_old_series(etfs: list[tuple[str, str]]) -> list[tuple[str, str]]:
     shortcut: should N-CEN list the new series before its first N-PORT is out, the holdings go until it is."""
     ncen_of = _ncen_series()
     taken = {s for _, s in etfs}
-    want = {t: p for t, s in etfs if (p := ncen_of.get(t)) and p not in taken}
+    want = {t: p for t, s in etfs if (p := ncen_of.get(t))}  # MUTATION: guard dropped
     asked = list(want.values())
     want = {t: p for t, p in want.items() if asked.count(p) == 1}
     if not want:
