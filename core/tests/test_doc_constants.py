@@ -351,7 +351,9 @@ def test_the_prices_section_states_what_the_code_owns():
         assert f"`{kind}`" in section, kind
     assert f"the last {bars.WINDOW} complete sessions" in section and f"{bars.CHUNK} symbols a request" in section
     assert f"from {actions.LOOKBACK.days} days back to {actions.AHEAD.days} days ahead" in section
-    assert f"{floats.SLICE} Tier A names a run, {floats.INTERVAL_S} s apart" in section
+    # avo 23 Nov 2026 (#1473): Yahoo's float asks every Tier A name, with no pause or window of ours
+    assert not hasattr(floats, "SLICE") and not hasattr(floats, "INTERVAL_S")
+    assert "every Tier A name a run, not paced" in section
     assert f"{serving.GAP_FACTOR} times" in section and f"at most {serving.CLOSE_BEFORE_DAYS} days" in section
     assert f"over {serving.FLOAT_OVER} times" in section and f"{serving.FLOAT_DISAGREE:.0%} apart" in section
     assert f"`comp.secd` from {wrds_history.START_YEAR}" in section

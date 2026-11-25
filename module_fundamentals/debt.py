@@ -104,6 +104,11 @@ INFERRED_NONE = "inferred_none"  # no total in the facts; this module read it as
 
 #: A note's balance date and the record's balance sheet date may differ by this much (a 52/53-week year end).
 NOTE_DAYS = 7
+#: A note total whose year's interest expense is more than this share of it is a scale error, not a loan (avo,
+#: 24 Nov 2026 23:49, card D5 "A"). Measured 25 Nov 2026 (review plan step 4): IPGP's note read as 1,060 USD for a
+#: debt Compustat puts at 17.2 m, REED 9,182 for 10.0 m, both passing every other guard. A year that repaid most of
+#: its debt before year end can exceed it too; it then stays unknown, which is a reading lost, not a wrong one.
+NOTE_MAX_RATE = 0.25
 
 
 def _float(v):
@@ -155,7 +160,8 @@ def note_debt(rec: dict | None, note: dict | None) -> float | None:
       borrowings" answer has no ``total_usd`` and never becomes 0 (decision 4);
     * the note's balance date is the record's balance sheet date, within :data:`NOTE_DAYS` (the debt lines are read
       on the ``total_assets`` end, ``rcdata/build/fundamentals/facts.py``);
-    * not below any debt line the filer did tag on the record, and not above its total assets.
+    * not below any debt line the filer did tag on the record, and not above its total assets;
+    * the year's interest expense not above :data:`NOTE_MAX_RATE` of it (a scale error, review plan step 4).
     """
     if not rec or not note:
         return None
@@ -173,5 +179,8 @@ def note_debt(rec: dict | None, note: dict | None) -> float | None:
     lines = [v for f in tag_fields() + PRESENCE_ONLY_FIELDS if (v := _float(rec.get(f))) is not None]
     assets = _float(rec.get("total_assets"))
     if lines and total < max(lines) * 0.99 or assets is not None and total > assets:
+        return None
+    interest = max((v for f in INTEREST_FIELDS if (v := _float(rec.get(f))) is not None), default=None)
+    if interest is not None and interest > total * NOTE_MAX_RATE:
         return None
     return total

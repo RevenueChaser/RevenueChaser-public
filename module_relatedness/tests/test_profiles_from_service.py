@@ -1,5 +1,6 @@
-"""A Relatedness profile run mirrors the SEC reading service's ``company.profile`` answers and calls no model
-(avo, 16 Nov 2026; #894, plan §12.3 step 4).
+"""Relatedness reads the SEC reading service's ``company.profile`` answers where they are, as Value Chain does,
+and copies none into its own tables (#894 step 3b; avo, 24 Nov 2026: "Relatedness da Value chain gibi olsun, ek
+kopyalamaya gerek yok"). No model call either (avo, 16 Nov 2026).
 """
 from __future__ import annotations
 
@@ -20,14 +21,7 @@ def from_service(world, monkeypatch):  # noqa: F811
     return world
 
 
-def test_a_run_before_the_service_has_an_answer_changes_nothing_and_calls_no_model(from_service):
-    board, mock = from_service
-    engine.build_profiles(["MSFT"], usd_cap=1.0)
-    assert board == [] and mock.calls("/chat/completions") == []
-    assert not rawstore.get("relatedness_profiles", "MSFT")
-
-
-def test_the_services_answer_becomes_the_boards_profile(from_service):
+def test_the_services_answer_is_the_boards_profile_and_nothing_is_copied(from_service):
     board, mock = from_service
     ask_the_service()                                       # the service reads the filing: one call, its own
     (answer,) = read.sec_reads([MSFT], cp.PROFILE_ID)
@@ -35,14 +29,47 @@ def test_the_services_answer_becomes_the_boards_profile(from_service):
     profiles = engine.build_profiles(["MSFT"], usd_cap=1.0)
     assert board == [] and len(mock.calls("/chat/completions")) == 1      # the board asked nobody
     assert profiles["MSFT"] == profile_v3.to_attributes(answer["answer"]) and any(profiles["MSFT"].values())
-    row = rawstore.get("relatedness_profiles", "MSFT")
+    assert rawstore.get_all("relatedness_profiles") == []                # the point of the step
+    assert rawstore.get_all("relatedness_attributes") == []
+
+    (row,) = store.profile_rows(["MSFT"])
     assert (row["status"], row["provider"], row["prompt_version"]) == ("ok", "evren", config.PROMPT_VERSION)
-    assert row["profile_json"] == answer["answer"]
+    assert row["fetched_at"] == answer["fetched_at"]                     # when the service asked: the scoring gate
     assert row["label_source"] == {"input": "item", "from": "sec/reads"}
     assert store.input_hash(row["cache_key"]) == answer["input_hash"]
     assert store.profile_source(row["cache_key"])["accession"] == answer["accession"]
-    assert row["accession"] == answer["accession"]         # the column Value Chain reads (#956)
+    assert store.load_profile_json(["MSFT"]) == {"MSFT": answer["answer"]}
     assert not store.is_stale(store.profile_meta(["MSFT"])["MSFT"], store.mode_stamp())
 
-    engine.build_profiles(["MSFT"], usd_cap=1.0)            # the same answer again: the row is left alone
-    assert rawstore.get("relatedness_profiles", "MSFT")["fetched_at"] == row["fetched_at"]
+
+def test_no_tickers_reads_the_whole_board(from_service):
+    """Themes and the Value Chain resolve-rate CLI ask for every profile: that is the board's universe."""
+    ask_the_service()
+    assert set(store.load_profiles()) == {"MSFT"}
+    assert set(store.load_profile_json()) == {"MSFT"}
+    assert store.load_profiles([]) == {}
+
+
+def test_a_row_only_in_the_old_table_is_not_read_and_no_model_is_asked(from_service):
+    """The board's own table is no longer a source on the service path: before the service has an answer there is
+    no profile, whatever the table still holds, and nobody is asked for one."""
+    board, mock = from_service
+    rawstore.write_rows("relatedness_profiles", [{"ticker": "MSFT", "cik": MSFT, "model": "m",
+                                                  "prompt_version": config.PROMPT_VERSION, "fetched_at": 1.0,
+                                                  "cache_key": "k", "status": "ok"}])
+    assert engine.build_profiles(["MSFT"], usd_cap=1.0) == {}
+    assert store.profile_rows(["MSFT"]) == [] and store.load_profiles(["MSFT"]) == {}
+    assert board == [] and mock.calls("/chat/completions") == []
+
+
+def test_a_company_the_service_found_no_text_for_is_no_text_not_pending(from_service):
+    """25 Nov 2026: 195 of the board's 199 "pending" were companies the service holds as ``no_text``. They are
+    counted apart, as the board's own ``no_text`` rows were, and they are not news for the scoring gate."""
+    from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import answer_row, serve_answers
+    serve_answers([answer_row(MSFT, None, status="no_text", attempts=0, fetched_at=9e9)], replace=True)
+    assert store.profile_meta(["MSFT"])["MSFT"]["status"] == "no_text"
+    assert not any(store.load_profiles(["MSFT"])["MSFT"].values())
+    assert store.load_profile_json(["MSFT"]) == {}
+
+    ask_the_service()                                       # a real answer later wins over the no_text row
+    assert store.profile_meta(["MSFT"])["MSFT"]["status"] == "ok"

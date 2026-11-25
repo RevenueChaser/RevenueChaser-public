@@ -45,6 +45,13 @@ or commodity pool (``etf.TRUST_SQL``: GLD, SLV, IBIT, ETHA) is kept with ``kind 
 floors as an ETF. Every reader that means "a fund" reads :data:`FUNDS`. A name that only changes kind (``etf`` to
 ``trust``) writes no ``my_universe_changes`` row: the diff is by ticker, as for any kind change.
 
+**One fund, one row** (avo's 2A, 24 Nov 2026). Two ``etf`` rows can carry one ``series_id`` (RPSA and RSPA: one
+fund under two tickers; ``etf`` reports them as ``etf_series_id_shared``); the list keeps one of them
+(:func:`_one_per_series`), and the other, if the live list held it, leaves as "the same fund as" the kept one. A fund
+whose live series is today on a ticker the live list does not hold was **renamed** (:func:`_renamed`, against the
+live ``etf`` table's series, because ``my_universe`` holds none): the new ticker keeps the live ``entered_on`` and
+the exit floor, the old one leaves as "renamed to" the new one, and the new one enters as "renamed from" the old.
+
 **Both kinds at once.** A ticker the stock rule and the ETF rule both claim is kept once, as the stock, and
 reported as ``my_universe_both_kinds``. It does not happen in a normal build (an ``etf`` row of the SEC equity
 file is typed ``etp``, so it is Tier B and no stock), which is why it is worth saying out loud when it does.
@@ -195,8 +202,8 @@ def _etfs(con: duckdb.DuckDBPyConnection, rules: Rules) -> list[dict]:
         out.append("NOT coalesce(is_etn, FALSE)")
     if rules.exclude_cef:
         out.append("NOT coalesce(is_cef, FALSE)")
-    return _rows(con, "SELECT ticker, name, aum, aum_as_of, adv_usd_20d, source, source_as_of, fetched_at "
-                      f"FROM {etf_mod.TABLE} WHERE {' AND '.join(out)} ORDER BY ticker")
+    return _rows(con, "SELECT ticker, name, aum, aum_as_of, adv_usd_20d, source, source_as_of, fetched_at, "
+                      f"series_id, gvkey FROM {etf_mod.TABLE} WHERE {' AND '.join(out)} ORDER BY ticker")
 
 
 def _rows(con: duckdb.DuckDBPyConnection, sql: str) -> list[dict]:
@@ -244,6 +251,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     for s in _stocks(con, rules):
         kept[s["ticker"]] = row(s, STOCK, "stock", f"tier {s['tier']}, {s['security_type']}")
     etfs = _etfs(con, rules)
+    renamed = _renamed(live, etfs)
     for e in etfs:
         aum, adv = e["aum"], e["adv_usd_20d"]
         if aum is not None and aum >= rules.etf_aum_floor:
@@ -263,6 +271,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
         kept[e["ticker"]] = row(e, ETF, rule, reason)
     # The exit floors (SP6): a fund the numeric rules let in stays until a present number is under both exit floors.
     was = {r["ticker"]: r["rule"] for r in live or [] if r.get("rule") in ("etf_aum", "etf_adv")}
+    was.update({new: was[old] for new, old in renamed.items() if old in was})     # a rename keeps its floor
     for e in etfs:
         aum, adv = e["aum"], e["adv_usd_20d"]
         if e["ticker"] in was and e["ticker"] not in kept and (
@@ -278,8 +287,9 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     known = {r["ticker"]: r for r in _rows(con, "SELECT ticker, security_type, name, exchange, tier, source, "
                                                 "source_as_of, fetched_at FROM security")}
     known_etf = {r["ticker"]: r for r in _rows(con, "SELECT ticker, name, aum, aum_as_of, adv_usd_20d, source, "
-                                                    f"source_as_of, fetched_at FROM {etf_mod.TABLE}")}
-    vanished = _hold_vanished_row(live, known_etf, kept)
+                                                    f"source_as_of, fetched_at, series_id, gvkey "
+                                                    f"FROM {etf_mod.TABLE}")}
+    vanished = _hold_vanished_row(live, known_etf, kept, set(renamed.values()))
     removed = {r["ticker"] for r in removes}
     listed = listed if listed is not None else listed_etfs()
     # rule E only ever adds: a fund that entered on a list and has since left it stays, on its live reason
@@ -320,6 +330,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
             issues.append(("my_universe_manual_unknown", ticker,
                            "a manual remove naming a ticker neither security nor etf holds"))
 
+    _one_per_series(con, kept, known_etf)
     # A trust is an ETF-rule name by its etf row today, whichever path kept it (rule, exit floor, list, hand, hold).
     trusts = {t for (t,) in con.execute(f"SELECT ticker FROM {etf_mod.TABLE} WHERE {etf_mod.TRUST_SQL}").fetchall()}
     for r in kept.values():
@@ -330,7 +341,70 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rules: Rules | No
     issues.extend(_held_issue(held, kept))
     issues.extend(_vanished_issue(vanished, kept))
     out = [kept[t] for t in sorted(kept)]
-    return out, _changes(out, live, as_of, ctx.run_id, by_hand), issues
+    same_fund = _same_fund(live, out, known_etf, renamed)
+    return out, _changes(out, live, as_of, ctx.run_id, by_hand, renamed, same_fund), issues
+
+
+def _live_series() -> dict[str, str]:
+    """``{ticker: series_id}`` of the live ``etf`` table: the series a live ``my_universe`` fund had yesterday
+    (``my_universe`` itself holds no series, and a schema change was not wanted for it)."""
+    return {r["ticker"]: r["series_id"] for r in stage.live_rows(etf_mod.TABLE, ["ticker", "series_id"]) or []
+            if r["series_id"]}
+
+
+def _renamed(live: list[dict] | None, etfs: list[dict]) -> dict[str, str]:
+    """``{new ticker: live ticker}`` of each live fund whose series is today on another ticker, and no longer on
+    its own (avo's 2A, 24 Nov 2026: SPLG -> SPYM). The new ticker takes the live one's ``entered_on`` and exit
+    floor, and the live one leaves as "renamed to" it. A new ticker the live list already holds is no rename."""
+    if not live:
+        return {}
+    series = _live_series()
+    now = {e["ticker"]: e["series_id"] for e in etfs if e["series_id"]}
+    on = {}
+    for t, s in sorted(now.items()):
+        on.setdefault(s, t)
+    held = {r["ticker"] for r in live}
+    return {on[series[r["ticker"]]]: r["ticker"] for r in sorted(live, key=lambda r: r["ticker"])
+            if r.get("kind") in FUNDS and series.get(r["ticker"]) in on and now.get(r["ticker"]) != series[r["ticker"]]
+            and on[series[r["ticker"]]] not in held}
+
+
+def _fund_file_etfs(con: duckdb.DuckDBPyConnection) -> set[str]:
+    """The SEC fund file's ETF tickers, where the build has staged it (``stg_sec_mf``); empty where it has not."""
+    if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE table_name = 'stg_sec_mf'").fetchone()[0]:
+        return set()
+    return {t for (t,) in con.execute("SELECT ticker FROM stg_sec_mf WHERE is_etf").fetchall()}
+
+
+def _one_per_series(con: duckdb.DuckDBPyConnection, kept: dict[str, dict], known_etf: dict[str, dict]) -> None:
+    """One ``my_universe`` row per ``series_id`` among the kept funds (avo's 2A, 24 Nov 2026: RPSA and RSPA, one
+    fund under two etf rows; ``etf_series_id_shared`` names them). The row kept is a hand-added one, else the one
+    with a Compustat series (``gvkey``), else the SEC fund file's ticker, else the first ticker."""
+    filed = _fund_file_etfs(con)
+    by_series: dict[str, list[str]] = {}
+    for t, r in kept.items():
+        s = (known_etf.get(t) or {}).get("series_id")
+        if r["kind"] == ETF and s:
+            by_series.setdefault(s, []).append(t)
+    for ts in by_series.values():
+        first = min(ts, key=lambda t: (kept[t]["rule"] != "manual", not known_etf[t].get("gvkey"), t not in filed, t))
+        for t in ts:
+            if t != first:
+                kept.pop(t)
+
+
+def _same_fund(live: list[dict] | None, out: list[dict], known_etf: dict[str, dict],
+               renamed: dict[str, str]) -> dict[str, str]:
+    """``{live ticker: kept ticker}`` of each live fund that left while a kept row carries its series under another
+    ticker, a rename aside: the same fund, kept once (:func:`_one_per_series`)."""
+    if not live:
+        return {}
+    series = _live_series()
+    now = {known_etf[r["ticker"]]["series_id"]: r["ticker"] for r in out
+           if r["ticker"] in known_etf and known_etf[r["ticker"]].get("series_id")}
+    kept, gone_by_rename = {r["ticker"] for r in out}, set(renamed.values())
+    return {r["ticker"]: now[series[r["ticker"]]] for r in live
+            if r["ticker"] not in kept and r["ticker"] not in gone_by_rename and series.get(r["ticker"]) in now}
 
 
 def _no_volume_source(con: duckdb.DuckDBPyConnection, live: list[dict] | None) -> None:
@@ -386,7 +460,8 @@ def _hold_lost_volume(live: list[dict] | None, etfs: list[dict], kept: dict[str,
     return held
 
 
-def _hold_vanished_row(live: list[dict] | None, known_etf: dict[str, dict], kept: dict[str, dict]) -> list[str]:
+def _hold_vanished_row(live: list[dict] | None, known_etf: dict[str, dict], kept: dict[str, dict],
+                       renamed: set[str] = frozenset()) -> list[str]:
     """Carry forward, in ``kept``, every live ``etf_adv`` fund the ``etf`` table holds no row for at all today, and
     return their tickers; :func:`_vanished_issue` turns them into the one issue that names them (avo's decision A,
     #432).
@@ -400,12 +475,13 @@ def _hold_vanished_row(live: list[dict] | None, known_etf: dict[str, dict], kept
 
     ``known_etf`` is the **whole** ``etf`` table, not the rule's filtered rows: a fund whose row is there and is
     today flagged an ETN or a CEF is answered by the rule and leaves as it always did. Only an ``etf_adv`` name is
-    held, as in :func:`_hold_lost_volume`.
+    held, as in :func:`_hold_lost_volume`. A ticker in ``renamed`` is no outage: its fund is on its new ticker.
     """
     if not live:
         return []
     gone = sorted(r["ticker"] for r in live
-                  if r.get("rule") == "etf_adv" and r["ticker"] not in kept and r["ticker"] not in known_etf)
+                  if r.get("rule") == "etf_adv" and r["ticker"] not in kept and r["ticker"] not in known_etf
+                  and r["ticker"] not in renamed)
     by_ticker = {r["ticker"]: r for r in live}
     for ticker in gone:
         kept[ticker] = {c: by_ticker[ticker].get(c) for c, _ in SCHEMA}
@@ -464,22 +540,31 @@ def _vanished_issue(gone: list[str], kept: dict[str, dict]) -> list[tuple[str, s
              + (f" and {len(named) - MANY} more" if len(named) > MANY else ""))]
 
 
-def _left_reason(ticker: str, was: dict, by_hand: dict[str, str]) -> str:
-    """Why a name left: the manual file took it out (with avo's own reason, when he wrote one), or the rules it
-    held under no longer hold. The build cannot know more than that: the row that fed it is simply gone."""
+def _left_reason(ticker: str, was: dict, by_hand: dict[str, str], renamed_to: dict[str, str] | None = None,
+                 same_fund: dict[str, str] | None = None) -> str:
+    """Why a name left: the manual file took it out (with avo's own reason, when he wrote one), its fund was renamed
+    or is kept once under another ticker (its live series, :func:`_renamed` and :func:`_same_fund`), or the rules it
+    held under no longer hold."""
     if ticker in by_hand:
         reason = (by_hand[ticker] or "").strip()
         return f"taken out by hand in {MANUAL_FILE.name}" + (f": {reason}" if reason else "")
+    if ticker in (renamed_to or {}):
+        return f"renamed to {renamed_to[ticker]}"
+    if ticker in (same_fund or {}):
+        return f"the same fund as {same_fund[ticker]}, kept once under it"
     return f"the rules no longer hold (was {was['rule']})"
 
 
 def _changes(out: list[dict], live: list[dict] | None, as_of: date, run_id: str,
-             by_hand: dict[str, str]) -> list[dict]:
+             by_hand: dict[str, str], renamed: dict[str, str] | None = None,
+             same_fund: dict[str, str] | None = None) -> list[dict]:
     """The live file's ``my_universe_changes`` rows, then today's entered and left; ``entered_on`` of a name the
     live list already held is set back to the live row's, in ``out`` itself.
 
     A name ``by_hand`` holds left because :data:`MANUAL_FILE` removed it, which is the one case where the rules were
     not applied at all, so it says that and carries avo's reason instead of "the rules no longer hold" (#444).
+    A rename (``renamed``, new ticker to live one) carries the live ``entered_on`` to the new ticker, and its two
+    rows say "renamed to" and "renamed from".
     """
     if live is None:
         return [{"ticker": r["ticker"], "kind": r["kind"], "change": ENTERED, "reason": r["reason"],
@@ -487,13 +572,16 @@ def _changes(out: list[dict], live: list[dict] | None, as_of: date, run_id: str,
     before = {r["ticker"]: r for r in live}
     carried = stage.live_rows(CHANGES, [c for c, _ in CHANGES_SCHEMA]) or []
     now = {r["ticker"]: r for r in out}
+    renamed = {new: old for new, old in (renamed or {}).items() if new in now and old not in now}
     for r in out:
-        was = before.get(r["ticker"])
+        was = before.get(r["ticker"]) or before.get(renamed.get(r["ticker"]))
         if was is not None and was["entered_on"] is not None:
             r["entered_on"] = was["entered_on"]
-    gone = [{"ticker": t, "kind": b["kind"], "change": LEFT, "reason": _left_reason(t, b, by_hand),
-             "as_of": as_of, "run_id": run_id}
+    renamed_to = {old: new for new, old in renamed.items()}
+    gone = [{"ticker": t, "kind": b["kind"], "change": LEFT,
+             "reason": _left_reason(t, b, by_hand, renamed_to, same_fund), "as_of": as_of, "run_id": run_id}
             for t, b in sorted(before.items()) if t not in now]
-    came = [{"ticker": r["ticker"], "kind": r["kind"], "change": ENTERED, "reason": r["reason"], "as_of": as_of,
-             "run_id": run_id} for r in out if r["ticker"] not in before]
+    came = [{"ticker": r["ticker"], "kind": r["kind"], "change": ENTERED,
+             "reason": (f"renamed from {renamed[r['ticker']]}; " if r["ticker"] in renamed else "") + r["reason"],
+             "as_of": as_of, "run_id": run_id} for r in out if r["ticker"] not in before]
     return list(carried) + gone + came

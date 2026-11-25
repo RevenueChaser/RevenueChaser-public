@@ -117,6 +117,8 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "market_series": "series, not names",
         "uw/economic_calendar": "a calendar, no names",
         "uw/fda_calendar": "a calendar, no names",
+        "public/economic_calendar": "two calendars, no names",
+        "public/fda_calendar": "a full-text search and a notice list, no names",
         "uw/institutions": "one list of every 13F institution at once, keyed by CIK, not by ticker",
         "openfigi/map": "the spine rows with no FIGI yet",
         "ownership/serve": "no fetch",
@@ -160,7 +162,7 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "yfinance/fx": "one request per currency, not per company",
     }
     honours = {n for n, d in DATASETS.items() if getattr(d, "honours_scope", False)}
-    assert honours == {"alpaca/bars", "yfinance/float", "uw/total_float", "funds/etf_holdings",
+    assert honours == {"alpaca/bars", "yfinance/float", "yfinance/bars", "tradingview/float", "funds/etf_holdings",
                        "alphavantage/earnings_transcripts"}, honours
     unnamed = sorted(set(DATASETS) - honours - set(ignores))
     assert not unnamed, (f"these datasets neither honour a scope nor are named as ignoring it: {unnamed}. "
@@ -341,39 +343,26 @@ def test_f4_a_scope_this_dataset_can_ask_nothing_for_is_skipped_not_failed(recor
     assert row["result"] == "skipped" and "a fund has no float" in row["note"]
 
 
-def test_f3_a_scoped_float_run_does_not_occupy_the_days_raw_file(spine, monkeypatch):
-    """F3. ``uw/total_float`` writes one raw file a day and returned it before looking at the scope, so a
-    ``names=["KO"]`` press wrote a one-row file and the day's later full run handed that same file back: the day
-    ended with a float for one name and a check row that looked normal."""
+def test_f3_a_scoped_float_run_does_not_occupy_the_days_raw_file(spine, monkeypatch, http_mock):
+    """F3. The float check (then ``uw/total_float``, now ``tradingview/float``) writes one raw file a day and returned
+    it before looking at the scope, so a ``names=["KO"]`` press wrote a one-row file and the day's later full run
+    handed that same file back: the day ended with a float for one name and a check row that looked normal."""
     from revenuechaser.rcdata.build.prices import floats
 
-    sent = []
-
-    class _Res:
-        status, error = "ok", None
-
-        def __init__(self, data):
-            self.data = data
-
-    class _Client:
-        def short_screener_result(self, names):
-            sent.append(sorted(names))
-            return _Res({n: {"total_float": 1_000.0} for n in names})
-
+    http_mock.add("/america/scan", {"data": [{"s": f"NASDAQ:{t}", "d": [t, 1_000.0, 2_000.0, "NASDAQ", "stock"]}
+                                             for t in ("AAPL", "BRK.B", "FLG", "GAPX")]})
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
-    monkeypatch.setattr(base.RunContext, "uw_client", lambda self: _Client())
     day = date(2026, 10, 28)
-    narrow = base.RunContext(run_id="t1", dataset=floats.UW, scope=base.Scope(names=("AAPL",)))
-    whole = base.RunContext(run_id="t2", dataset=floats.UW)
-    ds = floats.UW_FLOAT
+    narrow = base.RunContext(run_id="t1", dataset=floats.TV, scope=base.Scope(names=("AAPL",)))
+    whole = base.RunContext(run_id="t2", dataset=floats.TV)
+    ds = floats.TV_FLOAT
     assert ds.raw_path(day, narrow.scope) != ds.raw_path(day), "a scoped run writes the day's only file"
-    ds.fetch(narrow, day)
-    ds.fetch(whole, day)
-    assert sent == [["AAPL"], ["AAPL", "BRK-B", "FLG", "GAPX"]], \
-        "the day's full run was handed the narrow run's file and asked UW for nothing"
+    kept = [sorted(base.read_raw_json(ds.fetch(ctx, day)[0])["rows"]) for ctx in (narrow, whole)]
+    assert kept == [["AAPL"], ["AAPL", "BRK-B", "FLG", "GAPX"]], \
+        "the day's full run was handed the narrow run's file"
     # Asking the same narrow scope again is still a no-op: the raw file is that ask's own resume marker.
-    ds.fetch(base.RunContext(run_id="t3", dataset=floats.UW, scope=base.Scope(names=("AAPL",))), day)
-    assert len(sent) == 2
+    ds.fetch(base.RunContext(run_id="t3", dataset=floats.TV, scope=base.Scope(names=("AAPL",))), day)
+    assert len(http_mock.calls("/america/scan")) == 2
 
 
 def test_f5_the_name_cap_is_the_one_readers_own(monkeypatch):
@@ -408,9 +397,9 @@ def test_f4_the_float_refusal_names_the_scope_not_the_spine(spine, monkeypatch):
     from revenuechaser.rcdata.build.prices import floats
 
     monkeypatch.setattr(prices, "cover_classes", lambda rows: [])
-    ctx = base.RunContext(run_id="t", dataset=floats.UW, scope=base.Scope(tiers=("B",)))
+    ctx = base.RunContext(run_id="t", dataset=floats.TV, scope=base.Scope(tiers=("B",)))
     with pytest.raises(base.NothingInScope, match="a fund has no float"):
-        floats.UW_FLOAT.fetch(ctx, date(2026, 10, 28))
+        floats.TV_FLOAT.fetch(ctx, date(2026, 10, 28))
     with pytest.raises(base.NothingInScope, match="a fund has no float"):
         floats.YAHOO_FLOAT.fetch(base.RunContext(run_id="t", dataset=floats.YAHOO,
                                                  scope=base.Scope(tiers=("B",))), date(2026, 10, 28))
@@ -516,7 +505,7 @@ def test_d1_the_scoped_raw_file_keys_the_groups_too(spine):
     whichever ran first was handed back to the other."""
     from revenuechaser.rcdata.build.prices import floats
 
-    ds, day = floats.UW_FLOAT, date(2026, 10, 28)
+    ds, day = floats.TV_FLOAT, date(2026, 10, 28)
     paths = {ds.raw_path(day, s) for s in (base.Scope(include=("watchlist",)),
                                            base.Scope(include=("cover_classes",)),
                                            base.Scope(names=("KO",)),

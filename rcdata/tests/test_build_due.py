@@ -204,6 +204,7 @@ def ran(monkeypatch):
         ops.finish_request(req["id"], "done")
         return ops.latest_check(req["dataset"])
     monkeypatch.setattr(base, "run_request", fake)
+    monkeypatch.setattr(due, "FETCH_HOURS", {})       # the fetch's hours per kind are test_store_split's
     return seen
 
 
@@ -269,3 +270,82 @@ def test_a_dataset_with_an_earliest_hour_is_not_due_before_it_in_new_york(clock,
     assert [r["dataset"] for r in _queue()] == [UW]
     clock(datetime(2026, 10, 28, 10, 0, tzinfo=timezone.utc))       # 06:00 New York
     assert due.is_due(DATASETS[MS])[0] is True
+
+
+def test_the_fetch_pass_stages_a_full_source_and_leaves_a_full_request_for_the_build(clock, ran):
+    """avo, 24 Nov 2026: the storage fetch never builds; a person's full Fetch waits for the storage build."""
+    from revenuechaser.rcdata.build import base
+    ops.enqueue(UW, None, by="cli")
+    assert cli.main(["run", "--once", "--fetch-only"]) == 0
+    assert [(r["dataset"], (r.get("params") or {}).get("no_duckdb")) for r in ran] == [(MS, True)]
+    assert [r["dataset"] for r in _queue() if r["status"] == "queued"] == [UW]
+    assert base.FETCH_ONLY_PASS is False                   # the pass's guard does not outlive it
+    assert cli.main(["run", "--once", "--build-only"]) == 0
+    assert [r["dataset"] for r in ran] == [MS, UW]          # the build drains the person's request
+    assert [r for r in _queue() if r["status"] == "queued"] == []
+
+
+def test_the_fetch_pass_stages_the_schedule_s_own_full_request(clock, ran, monkeypatch):
+    """avo, 24 Nov 2026 ("A"): a full request the hourly pass queued before the split is the fetch's to stage."""
+    from revenuechaser.rcdata.build import base
+    # the two market requests are claimed as one batch: each through the fixture's fake run
+    monkeypatch.setattr(base, "run_batch", lambda reqs, **kw: [base.run_request(r) for r in reqs])
+    ops.enqueue(UW, None, by=due.REQUESTED_BY)
+    assert cli.main(["run", "--once", "--fetch-only"]) == 0
+    assert UW in [r["dataset"] for r in ran]
+    assert [r for r in _queue() if r["status"] == "queued"] == []
+
+
+def test_a_kind_s_build_queues_and_drains_only_that_kind(clock, ran):
+    """avo, 24 Nov 2026: market.duckdb builds on a timer of its own (RC-Build-Market, run --build-only --kind)."""
+    ops.enqueue("sec/13f", None, by="cli")                   # another kind's request stays for its own build
+    ops.enqueue(UW, None, by="cli")
+    assert cli.main(["run", "--once", "--build-only", "--kind", "market"]) == 0
+    assert [r["dataset"] for r in ran] == [UW]
+    assert [r["dataset"] for r in _queue() if r["status"] == "queued"] == ["sec/13f"]
+    with pytest.raises(SystemExit):
+        cli.main(["run", "--once", "--fetch-only", "--kind", "market"])
+
+
+# ── A start time (avo, 24 Nov 2026: "daily ise ne zaman başlayacağını, weekly ise gün ve saat olarak") ─────────────
+
+def _ran(monkeypatch, starts: dict) -> None:
+    monkeypatch.setattr(ops, "run_started_at", lambda run_id: starts.get(run_id))
+
+
+def test_a_daily_start_time_holds_the_dataset_until_it_passes_and_once_a_day(clock, monkeypatch):
+    clock(TUE_MORNING)                                     # 16:00 Amsterdam
+    ops.slot_set(MS, "22:00", None)
+    ops.record_check(MS, "changed", source_as_of="2026-10-26", next_check_due="2026-10-27", run_id="mon")
+    _ran(monkeypatch, {"mon": TUE_MORNING.timestamp() - 3600,
+                       "tue": datetime(2026, 10, 27, 21, 5, tzinfo=timezone.utc).timestamp()})
+    clock(datetime(2026, 10, 27, 20, 30, tzinfo=timezone.utc))           # 21:30 Amsterdam: before its start
+    assert due.is_due(DATASETS[MS]) == (False, "starts 22:00 Amsterdam: set after the last one")
+    clock(TUE_EVENING)                                     # 23:00 Amsterdam: started, the session rule decides
+    assert due.is_due(DATASETS[MS])[0] is True
+    ops.record_check(MS, "changed", source_as_of="2026-10-27", next_check_due="2026-10-28", run_id="tue")
+    assert due.is_due(DATASETS[MS]) == (False, "starts 22:00 Amsterdam: ran since the last one")
+
+
+def test_a_weekly_start_is_due_on_its_day_and_time_and_not_for_one_that_passed_before_it_was_set(clock, monkeypatch):
+    clock(TUE_MORNING)
+    ops.schedule_set(MS, "weekly", None)
+    ops.slot_set(MS, "10:00", 2)                           # Wednesday 10:00 Amsterdam
+    ops.record_check(MS, "changed", source_as_of="2026-10-26", checked_on="2026-10-26", run_id="mon")
+    _ran(monkeypatch, {"mon": datetime(2026, 10, 26, 12, 0, tzinfo=timezone.utc).timestamp()})
+    clock(TUE_EVENING)                                     # last Wednesday's start passed before it was set
+    assert due.is_due(DATASETS[MS]) == (False, "starts Wed 10:00 Amsterdam: set after the last one")
+    clock(datetime(2026, 10, 28, 8, 30, tzinfo=timezone.utc))            # Wed 09:30 Amsterdam
+    assert due.is_due(DATASETS[MS])[0] is False
+    clock(datetime(2026, 10, 28, 9, 30, tzinfo=timezone.utc))            # Wed 10:30: two days after the last run
+    assert due.is_due(DATASETS[MS]) == (True, "Wed 10:00 Amsterdam passed")
+    ops.slot_set(MS, None, None)                           # any time again: seven days from the last check
+    assert due.is_due(DATASETS[MS])[0] is False
+
+
+def test_a_start_keeps_its_wall_clock_across_the_dst_change():
+    slot = {"at": "22:00", "weekday": 6}
+    summer = due.last_slot(slot, "weekly", datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc))
+    winter = due.first_slot(slot, "weekly", datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc))
+    assert (summer.astimezone(due.AMS).hour, winter.astimezone(due.AMS).hour) == (22, 22)
+    assert winter.astimezone(timezone.utc).hour == 21 and summer.astimezone(timezone.utc).hour == 20

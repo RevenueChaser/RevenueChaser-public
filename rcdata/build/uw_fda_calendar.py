@@ -50,7 +50,12 @@ SCHEMA = [("snapshot_date", "DATE"), ("target_date", "DATE"), ("ticker", "TEXT")
           ("notes", "TEXT"), ("outcome", "TEXT"), ("outcome_brief", "TEXT"), ("source_link", "TEXT"),
           ("has_options", "BOOLEAN"), ("marketcap", "DOUBLE"),
           ("source", "TEXT"), ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
-KEY = ("snapshot_date", "target_date", "ticker", "drug")
+# Market 6 (#1433): ``source`` joined the key, because ``public/fda_calendar`` (``fda_calendar_sources.py``) stages
+# the SEC's and the Federal Register's rows in this table's shape and this dataset builds the table from both folders.
+KEY = ("snapshot_date", "target_date", "ticker", "drug", "source")
+#: The Parquet folders the table is built from (``parquet/<folder>/fda_calendar``) and the ``source`` values each
+#: one writes.
+FOLDERS = {"uw": ("uw",), "public": ("sec", "federalregister")}
 COMPARE = [c for c, _ in SCHEMA if c not in ("fetched_at", "run_id", "source_as_of")]
 
 #: What a target date's text says, and the day it resolves to. A quarter, a half year, "MID" and "LATE" resolve to
@@ -142,6 +147,7 @@ class UWFdaCalendar:
     kind = "market"
     providers = ("uw",)
     tables = (TABLE,)
+    parquet_reads = ("public/fda_calendar",)
     cadence = "hourly"
 
     def default_as_of(self) -> date:
@@ -224,11 +230,15 @@ class UWFdaCalendar:
         raise base.SourceError(f"{NAME} has no history: UW serves the calendar as it stands now")
 
     def dirty(self, ctx: base.RunContext):
-        return dirty_set.keyed(ctx, self, "date")
+        if getattr(ctx, "changed", None) is None:
+            return dirty_set.ALL
+        keys = {f"{folder}/{day}" for folder in FOLDERS
+                for day in dirty_set.keys_of(ctx.changed, _source_dir(folder), "date")}
+        return dirty_set.Dirty(keys=frozenset(keys)) if keys else dirty_set.CLEAN
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
-        parts = {p.parent.name.split("=", 1)[1]: p
-                 for p in (base.parquet_root() / "uw" / "fda_calendar").glob("date=*/part-0.parquet")}
+        parts = {f"{folder}/{p.parent.name.split('=', 1)[1]}": p
+                 for folder in FOLDERS for p in _source_dir(folder).glob("date=*/part-0.parquet")}
         return partitions.load(ctx, con, NAME, TABLE, SCHEMA, KEY, parts, _where)
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
@@ -240,8 +250,17 @@ class UWFdaCalendar:
                 "coverage": None}
 
 
+def _source_dir(folder: str) -> Path:
+    return base.parquet_root() / folder / "fda_calendar"
+
+
 def _where(key: str) -> str:
-    return f"snapshot_date = DATE '{date.fromisoformat(key).isoformat()}'"
+    """The served rows of partition ``<folder>/<snapshot day>``: that folder's sources on that day."""
+    folder, day = key.split("/")
+    if folder not in FOLDERS:
+        raise ValueError(f"not an fda_event folder: {folder!r}")
+    sources = ", ".join(f"'{s}'" for s in FOLDERS[folder])
+    return f"source IN ({sources}) AND snapshot_date = DATE '{date.fromisoformat(day).isoformat()}'"
 
 
 DATASET = UWFdaCalendar()

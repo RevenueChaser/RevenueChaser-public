@@ -106,17 +106,13 @@ def test_failures_in_a_row_stop_the_run(yf, monkeypatch):
     assert fx.q("SELECT DISTINCT ticker FROM estimate_latest ORDER BY 1") == [("HEI",), ("ORCL",), ("TM",)]
 
 
-def test_each_estimate_request_waits_for_the_yfinance_window(yf, monkeypatch):
+def test_no_estimate_request_waits_on_a_pacer(yf, monkeypatch):
+    """avo, 23 Nov 2026 (#1473): no rate limit of ours on Yahoo."""
     from revenuechaser.rcdata.build import base
-    waits, real = [], base.run_pacer
-
-    def run_pacer(ctx, provider):
-        p = real(ctx, provider)
-        monkeypatch.setattr(p, "wait", lambda: waits.append(provider))
-        return p
-    monkeypatch.setattr(base, "run_pacer", run_pacer)
+    asked = []
+    monkeypatch.setattr(base, "run_pacer", lambda ctx, provider: asked.append(provider))
     fx.run(estimates.NAME, "2026-10-28")
-    assert waits == ["yfinance"] * 4
+    assert asked == []
 
 
 @pytest.fixture

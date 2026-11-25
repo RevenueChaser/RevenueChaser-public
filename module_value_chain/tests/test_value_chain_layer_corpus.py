@@ -16,6 +16,7 @@ from revenuechaser.core.providers import sec_edgar
 from revenuechaser.module_value_chain import aliases, engine
 from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _profile
 from revenuechaser.rcdata.build.fundamentals import companyfacts, filings
+from revenuechaser.rcdata import sec_sections
 from revenuechaser.rcdata.build.sec_forms import forms
 from revenuechaser.rcdata.tests import fund_fixture as fx
 from revenuechaser.rcdata.tests.conftest import http_mock, market_roots  # noqa: F401  (fixtures)
@@ -89,11 +90,12 @@ def test_the_corpus_is_the_form_reader_and_not_filing_item(layer, monkeypatch):
 def test_a_row_cut_with_another_rules_version_is_read_and_logged(layer, monkeypatch, caplog):
     """The pin may sit ahead of the stored cut (``splitter``'s docstring). Such a row is the corpus all the same:
     dropping it would empty the board instead of showing what it has."""
-    monkeypatch.setattr(engine.splitter, "VERSION", "ours-9")
+    # The layer was cut on the header rollback (``ours-2``); the label ``sec/forms`` writes now is the edgartools one.
+    monkeypatch.setenv("RC_SEC_FORMS_CUTTER", "edgartools")
     with caplog.at_level("WARNING"):
         rows = engine._board_filings_rows()
     assert [r["ticker"] for r in rows] == ["MSFT"]
-    assert "not ours-9" in caplog.text
+    assert f"not {sec_sections.FORMS_ROWS_VERSION}" in caplog.text
 
 
 def test_a_fetch_downloads_nothing_on_the_layer(layer):

@@ -54,12 +54,12 @@ def test_every_uw_call_goes_through_get_result_with_a_core_path(tmp_path, monkey
     monkeypatch.setattr(httpx, "get", _no_http)
     uw, _ = _fetch(tmp_path)
     # Every call is the board's own ticker, except the one VIX call: the index's own option book (§17), which is
-    # a second ticker by design and the only one, the market-wide economic calendar (A8) and the SPY 30-minute
-    # bars of the hourly triggers (A5; UW sells no SPX index prices to this account).
-    assert uw.paths and all(p.startswith(("/stock/SPX/", "/stock/VIX/")) or p == "/market/economic-calendar"
-                            or p == "/stock/SPY/ohlc/30m" for p in uw.paths)
+    # a second ticker by design and the only one, and the SPY 30-minute bars of the hourly triggers (A5; UW
+    # sells no SPX index prices to this account). The economic calendar (A8) is the market store's since #1433.
+    assert uw.paths and all(p.startswith(("/stock/SPX/", "/stock/VIX/")) or p == "/stock/SPY/ohlc/30m"
+                            for p in uw.paths)
     assert uw.paths.count("/stock/SPY/ohlc/30m") == 1
-    assert uw.paths.count("/market/economic-calendar") == 1
+    assert "/market/economic-calendar" not in uw.paths
     assert [p for p in uw.paths if p.startswith("/stock/VIX/")] == ["/stock/VIX/greek-exposure/expiry"]
 
 

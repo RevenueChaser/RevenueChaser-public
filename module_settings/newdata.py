@@ -649,7 +649,9 @@ def _serving_facts(now: datetime | None = None
                 tables["price_bar_daily"]["sessions"] = _cached_sample(
                     "price_bar_daily#sessions", now, lambda name, c=con: _session_counts(c))
             if kind == "prices" and "wrds_price_diff" in names:
-                cur = con.execute("SELECT * FROM wrds_price_diff")
+                # The table keeps every report (one per comparison and ``as_of``); the card shows the newest.
+                cur = con.execute("SELECT * FROM wrds_price_diff "
+                                  "WHERE as_of IS NOT DISTINCT FROM (SELECT max(as_of) FROM wrds_price_diff)")
                 cols = [d[0] for d in cur.description]
                 tables["wrds_price_diff"]["report"] = [
                     {k: (v.isoformat() if isinstance(v, date) else v) for k, v in zip(cols, r)}
@@ -903,10 +905,10 @@ def _identity(counts: dict | None) -> dict:
                 **issues}
     c = counts
     steps = [{"key": "sec", "label": "In the SEC ticker and exchange file", "count": c["sec"], "out_of": None},
-             {"key": "listed", "label": "Listed on Nasdaq, NYSE or Cboe", "count": c["listed"], "out_of": c["sec"]},
+             {"key": "listed", "label": "Listed on an exchange (Tier A or B)", "count": c["listed"], "out_of": c["sec"]},
              {"key": "tier_a", "label": "Tier A (not a fund, SPAC, preferred, warrant or unit)", "count": c["tier_a"],
               "out_of": c["listed"]}]
-    for key, label in (("cusip", "With a CUSIP"), ("figi", "With a FIGI"), ("gics", "With a GICS classification"),
+    for key, label in (("cusip", "With a CUSIP"), ("figi", "With a FIGI"), ("gics", "With a GICS sub-industry"),
                        ("index", "In the S&P 500, 400, 600 or Nasdaq-100")):
         steps.append({"key": key, "label": label, "count": c[key], "out_of": c["tier_a"]})
     drops = [{"key": "otc", "label": "Over the counter (Tier C)", "count": c["otc"]},

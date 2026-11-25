@@ -13,13 +13,14 @@ and no ``active`` column** here; a board's thresholds (AUM, dollar volume) are i
 **What fills which column in this PR:** the ``is_*`` fund flags and ``aum`` (``DAILY_AVG_NET_ASSETS``, else
 ``MONTHLY_AVG_NET_ASSETS``, with the filing's report end as ``aum_as_of``) from the series' newest N-CEN, NULL for
 a row N-CEN does not hold (unknown, not false); ``inception`` from AV's ``ipoDate``; ``is_option_income`` by a name
-rule; ``asset_class`` ``commodity`` by the trust rule below, else (spine 11) TickerInside's category through
-:data:`CATEGORY_ASSET_CLASS`, else the fund's newest N-PORT holdings mix (:func:`nport_class`); ``expense_ratio`` and the identity columns (``gvkey``, ``iid``, ``cusip``, ``figi``,
-``composite_figi``, ``identity_source``) as :func:`rows` says. NULL until later PRs: ``focus`` and ``country``. ``adv_usd_20d`` is the
-20-session average daily dollar volume, read from the **raw** Compustat ``comp.secd`` Parquet
-(:func:`adv_usd_20d`); it is what decides a fund N-CEN gives no AUM for in ``my_universe`` (avo, 4 Nov 2026), and
-it is measured from the raw file rather than the live ``prices.duckdb`` because that store keeps only today's
-universe (#357, avo's decision B of 5 Nov 2026).
+rule; ``asset_class`` by the trust rule below (or the carbon name rule), else (spine 11) TickerInside's category
+through :data:`CATEGORY_ASSET_CLASS`, else the fund's newest N-PORT holdings mix (:func:`nport_class`), and (spine
+12) ``asset_class_source`` naming which of them (:data:`CLASS_SOURCES`); ``expense_ratio`` and the identity columns
+(``gvkey``, ``iid``, ``cusip``, ``figi``, ``composite_figi``, ``identity_source``) as :func:`rows` says. NULL until
+later PRs: ``focus`` and ``country``. ``adv_usd_20d`` is the 20-session average daily dollar volume, read from the
+**raw** Compustat ``comp.secd`` Parquet (:func:`adv_usd_20d`); it is what decides a fund N-CEN gives no AUM for in
+``my_universe`` (avo, 4 Nov 2026), and it is measured from the raw file rather than the live ``prices.duckdb``
+because that store keeps only today's universe (#357, avo's decision B of 5 Nov 2026).
 
 **The commodity rule.** An ``etp`` row of the spine that is no note, has no N-CEN series, and whose CIK filed no
 N-CEN at all is not a registered investment company: a grantor trust or commodity pool registered under the 1933
@@ -27,7 +28,16 @@ Act only (GLD, SLV, USO, the bitcoin trusts), so ``asset_class='commodity'``, or
 so (:data:`CRYPTO_NAME`: IBIT, FBTC, GBTC, ETHA; avo, 23 Nov 2026). A unit investment trust does file
 N-CEN (SPY and DIA as S-6 registrants, with no series row), so it is not caught. Until ``sec/ncen`` holds four
 quarters (a fund files once a fiscal year) the rule says nothing: one quarter holds a fraction of the filers.
-Such a row is a **trust** to ``my_universe`` (:data:`TRUST_SQL`), not an ETF.
+Such a row is a **trust** to ``my_universe`` (:data:`TRUST_SQL`), not an ETF. Its class is TickerInside's category
+where that maps to a trust class, else its name's (:func:`trust_class`; avo's 4A, 24 Nov 2026).
+
+**A renamed fund.** N-CEN is annual and keeps the ticker of its filing day; SEC's fund file is current but can lag
+as well. An N-CEN series the fund file lists under one other ETF ticker takes that ticker, unless Compustat
+disagrees or the ticker is another series' (:func:`_refuse_renames`, one ``etf_ticker_sources_disagree`` issue).
+Where N-CEN's series is none the fund file lists for the ticker, :func:`_settle_series` picks one by the funds' own
+N-PORT reports and Compustat's CUSIP (avo's option A, 24 Nov 2026), or marks the fund dead; a row it cannot settle
+is one ``etf_series_file_disagrees`` issue, two rows on one series one ``etf_series_id_shared``
+(:func:`_series_issues`).
 
 **A label on a security that is no fund** (avo, 23 Nov 2026). Alpha Vantage labels some operating companies and
 listed notes ``ETF`` (PAM, an ADR; PFX; SPAC units), and the spine's ``etp`` type reaches baby bonds through
@@ -55,7 +65,10 @@ TABLE = "etf"
 SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"), ("cik", "TEXT"),
           ("source", "TEXT"), ("is_etn", "BOOLEAN"),
           # is_cef: the spine types the ticker a closed-end fund (AV calls some CEFs ETF); kept, not counted as ETFs.
-          ("is_cef", "BOOLEAN"), ("asset_class", "TEXT"), ("focus", "TEXT"), ("country", "TEXT"),
+          ("is_cef", "BOOLEAN"), ("asset_class", "TEXT"),
+          # asset_class_source (spine 12, review M3, avo's 5A of 24 Nov 2026): which writer set asset_class
+          # (:data:`CLASS_SOURCES`), so a TickerInside re-categorisation is seen; NULL where asset_class is.
+          ("asset_class_source", "TEXT"), ("focus", "TEXT"), ("country", "TEXT"),
           ("is_index", "BOOLEAN"), ("is_lev_inverse", "BOOLEAN"), ("is_money_market", "BOOLEAN"),
           ("is_option_income", "BOOLEAN"), ("is_fund_of_funds", "BOOLEAN"), ("inception", "DATE"),
           # aum (spine 9, #357): the fund's own shares times its close on aum_as_of (``shares_x_close``), else N-CEN's
@@ -71,10 +84,11 @@ SCHEMA = [("ticker", "TEXT PRIMARY KEY"), ("name", "TEXT"), ("series_id", "TEXT"
           ("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 #: A note, by its name: ETN / ETRACS, a dated note, or a bank issuer's name (Alpha Vantage lists BMO's, UBS's,
-#: Barclays' and Deutsche Bank's products under the bank's name, and the spine's etp rows carry the SEC's).
+#: Barclays' and Deutsche Bank's products under the bank's name, and the spine's etp rows carry the SEC's, which for
+#: Deutsche Bank is "DEUTSCHE BANK AKTIENGESELLSCHAFT": ADZCF, DEENF, OLOXF; review L2, 24 Nov 2026).
 ETN_NAME = re.compile(
     r"\bETNs?\b|\bETRACS\b|" + NOTE_NAME +
-    r"|\b(?:bank\s+of\s+montreal|ubs\s+ag|barclays\s+bank|deutsche\s+bank\s+ag|credit\s+suisse\s+ag"
+    r"|\b(?:aktiengesellschaft|bank\s+of\s+montreal|ubs\s+ag|barclays\s+bank|deutsche\s+bank\s+ag|credit\s+suisse\s+ag"
     r"|jpmorgan\s+chase\s+(?:bank|financial|&\s+co)|citigroup\s+global\s+markets|morgan\s+stanley\s+finance"
     r"|goldman\s+sachs\s+international|royal\s+bank\s+of\s+canada|canadian\s+imperial\s+bank)\b", re.I)
 #: Option income, by the fund's name: a **name rule** (the plan's words: option income, covered call, buffer,
@@ -95,9 +109,13 @@ LEV_INVERSE_NAME = re.compile(
     r"|\bproshares\s+(?:ultra|short\b)|\binverse\b|\bleveraged\b(?!\s+loans?)"
     r"|\bdaily\b.*\b(?:long|short|bull|bear)\b|\b(?:long|short|bull|bear)\b.*\bdaily\b", re.I)
 
-#: A crypto asset by the fund's or trust's name (avo's E, 17 Nov 2026; ``etf_class`` reads it from here).
+#: A crypto asset by the fund's or trust's name (avo's E, 17 Nov 2026; ``etf_class`` reads it from here). Sui, HBAR,
+#: INJ, TRX, BNB and a digital market cap fund since 24 Nov 2026 (review M2: GSUI, HBR, INJC, SUIS, TRXS, TSUI,
+#: VBNB, BAGZ were commodity trusts). NEAR only as a coin's name, before a fund word: over the 20,255 N-CEN and Alpha
+#: Vantage names of 24 Nov 2026 a bare "near" also hits "USGI NEAR-TERM TAX FREE FUND".
 CRYPTO_NAME = re.compile(r"\b(bitcoin|btc|ether|ethereum|crypto\w*|solana|sol|xrp|litecoin|dogecoin|doge|zcash|"
-                         r"polkadot|avalanche|cardano|hedera|chainlink|hyperliquid|digital assets?|digital holdings)\b",
+                         r"polkadot|avalanche|cardano|hedera|chainlink|hyperliquid|digital assets?|digital holdings|"
+                         r"sui|hbar|inj|trx|bnb|digital market cap|near(?=\s+(?:etf|trust|fund|staking)\b))\b",
                          re.IGNORECASE)
 #: A currency or a VIX trust by its name (avo, 23 Nov 2026, "Evet düzenle": FXE, FXY, UUP, UVXY, SVXY).
 CURRENCY_NAME = re.compile(r"\b(currencyshares|currency|dollar index|euro|yen|swiss franc|british pound|yuan)\b", re.I)
@@ -106,8 +124,11 @@ VOLATILITY_NAME = re.compile(r"\b(vix|volatility)\b", re.I)
 TRUST_CLASSES = ("crypto", "volatility", "currency", "commodity")
 
 
-def trust_class(names) -> str:
-    """The ``asset_class`` of a 1933-Act trust or pool from its names: crypto, VIX, currency, else commodity."""
+def trust_class(names, category: str | None = None) -> str:
+    """The ``asset_class`` of a 1933-Act trust or pool: TickerInside's ``category`` where it maps to one of
+    :data:`TRUST_CLASSES` (avo's 4A, 24 Nov 2026), else from its names: crypto, VIX, currency, else commodity."""
+    if CATEGORY_ASSET_CLASS.get(category or "") in TRUST_CLASSES:
+        return CATEGORY_ASSET_CLASS[category]
     names = [n for n in names if n]
     for cls, rx in (("crypto", CRYPTO_NAME), ("volatility", VOLATILITY_NAME), ("currency", CURRENCY_NAME)):
         if any(rx.search(n) for n in names):
@@ -116,9 +137,17 @@ def trust_class(names) -> str:
 
 
 #: An ``etf`` row that is a **trust** (avo, 23 Nov 2026, "Bence trust lazım"): a 1933-Act grantor trust or commodity
-#: pool, no 40-Act fund -- no N-CEN series, no note, no CEF, and a class of :data:`TRUST_CLASSES`. The one definition.
+#: pool, no 40-Act fund. The one definition, and the trust rule's own condition (review M1, avo's 4A of 24 Nov
+#: 2026), not merely a class of :data:`TRUST_CLASSES`, which TickerInside's category also gives an Alpha Vantage row
+#: (FBEQ, FIBT: equity index funds): no N-CEN series and no N-CEN row (``source`` ``av`` or ``etp``), no note, no CEF,
+#: a ``security`` ``etp`` row whose CIK filed no N-CEN (:data:`ncen.FILERS`), and a class of :data:`TRUST_CLASSES`.
+#: It reads ``security`` and the N-CEN filer staging, so it holds inside the spine build only, which is where
+#: ``my_universe`` reads it. Before four N-CEN quarters are held the rule gives no class, so only a TickerInside
+#: trust class can match then.
 TRUST_SQL = ("series_id IS NULL AND NOT coalesce(is_etn, FALSE) AND NOT coalesce(is_cef, FALSE) "
-             f"AND asset_class IN {TRUST_CLASSES}")
+             f"AND source IN ('av', 'etp') AND asset_class IN {TRUST_CLASSES} "
+             "AND ticker IN (SELECT s.ticker FROM security s WHERE s.security_type = 'etp' "
+             f"AND NOT EXISTS (SELECT 1 FROM {FILERS} f WHERE f.cik = s.cik))")
 
 
 #: A carbon-allowance fund (KCCA, KRBN): a commodity whatever its collateral or category says (Grok xReview,
@@ -194,6 +223,12 @@ _CATEGORIES = {
 }
 CATEGORY_ASSET_CLASS = {cat: cls for cls, cats in _CATEGORIES.items() for cat in cats.split()}
 COMPUSTAT_SECD, TICKERINSIDE = "compustat_secd", "tickerinside"
+#: ``asset_class_source``: the trust rule by TickerInside's trust category or by the name rule, the carbon name rule,
+#: TickerInside's category, and N-PORT's holdings mix or (leveraged, inverse, synthetic) its largest contracts.
+CLASS_SOURCES = ("trust_category", "trust_name", "carbon_name", "tickerinside_category", "nport_mix",
+                 "nport_derivative")
+#: The build note names at most this many funds whose class changed against the live file.
+CLASS_CHANGES_NOTED = 30
 
 #: ``asset_class``'s third source, below the commodity rule and TickerInside's category and never over either: the
 #: fund's newest N-PORT report (``sec/nport``, newest of the last :data:`NPORT_QUARTERS` quarters held, linked by
@@ -215,16 +250,24 @@ def nport_class(mix: dict[str, float], lev: bool = False, mm: bool = False, opt:
     (:data:`OPTION_INCOME_NAME`) is read only as ``equity``, where it holds the shares it writes on: a buffer or
     put-write fund's Treasuries are collateral (Innovator's Premium Income funds, 100 % bills, 23 Nov 2026).
     Leveraged, inverse or synthetic, it is the class of its largest contract type (:data:`DERIVATIVE_CLASS`); FX
-    contracts of a fund whose name says crypto (``crypto``) are its crypto futures."""
-    if lev or mix.get("derivative", 0.0) >= NPORT_DERIVATIVE:
-        held = sorted((v, k[2:]) for k, v in mix.items() if k.startswith("d:"))
-        cls = DERIVATIVE_CLASS.get(held[-1][1]) if held else None
-        return "crypto" if crypto and cls == "currency" else cls
-    held = {"equity": mix.get("equity", 0.0), "bond": mix.get("debt", 0.0), "commodity": mix.get("commodity", 0.0)}
-    k, v = max(sorted({**held, "cash": mix.get("cash", 0.0)}.items()), key=lambda kv: kv[1])
-    cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
-        "multi_asset" if sum(held.values()) >= NPORT_SHARE else None)
+    contracts of a fund whose name says crypto (``crypto``) are its crypto futures. The option-income rule holds on
+    both paths (review L1: ACEI, 11.8 % rate contracts over Treasuries, was ``bond``)."""
+    if on_contracts(mix, lev):
+        contracts = sorted((v, k[2:]) for k, v in mix.items() if k.startswith("d:"))
+        cls = DERIVATIVE_CLASS.get(contracts[-1][1]) if contracts else None
+        cls = "crypto" if crypto and cls == "currency" else cls
+    else:
+        held = {"equity": mix.get("equity", 0.0), "bond": mix.get("debt", 0.0),
+                "commodity": mix.get("commodity", 0.0)}
+        k, v = max(sorted({**held, "cash": mix.get("cash", 0.0)}.items()), key=lambda kv: kv[1])
+        cls = (None if k == "cash" and not mm else k) if v >= NPORT_SHARE else (
+            "multi_asset" if sum(held.values()) >= NPORT_SHARE else None)
     return None if opt and cls != "equity" else cls
+
+
+def on_contracts(mix: dict[str, float], lev: bool = False) -> bool:
+    """Whether :func:`nport_class` reads the fund's contracts, not its lines: leveraged, inverse or 10 % derivatives."""
+    return lev or mix.get("derivative", 0.0) >= NPORT_DERIVATIVE
 
 
 def nport_mix(series_ids: list[str]) -> dict[str, dict[str, float]]:
@@ -398,6 +441,206 @@ def shares_x_close(tickers: list[str], as_of: date | None = None) -> dict[str, t
     return {str(t): (float(v), d) for t, v, d in found}
 
 
+#: The fund file's series that it lists under exactly one ETF ticker: the ``mf`` CTE of :func:`rows`.
+_FUND_FILE_SERIES = """mf AS (SELECT series_id, min(ticker) AS ticker FROM stg_sec_mf
+                    WHERE is_etf AND series_id IS NOT NULL GROUP BY series_id HAVING count(DISTINCT ticker) = 1)"""
+
+
+def _refuse_renames(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> list[tuple[str, str, str]]:
+    """Write ``_rename_refused`` (``series_id``, N-CEN's ``ticker``): the renames the fund file asks for that
+    :func:`rows` does not make, and return one ``etf_ticker_sources_disagree`` issue per series (avo's 1A, 24 Nov
+    2026, review H1). The fund file can lag too: it lists TCW's PWRD as NETZ, the ticker Compustat retired in Feb
+    2025. So the fund file's ticker is taken only when Compustat agrees or is silent. It disagrees when a series of
+    Compustat's still carries N-CEN's own ticker on its newest priced day within :data:`TIC_RECENT_DAYS`
+    (:func:`etf_series`, asked on N-CEN's ticker, before any rename), and none carries the fund file's. Compustat's
+    series of N-CEN's ticker is not this fund's, so it says nothing, where the fund file or N-CEN gives that ticker
+    to another series (GLOW is S000085471's; N-CEN wrote it for its sibling, BMDL). Measured on 24 Nov 2026, the
+    second clause keeps APLZ -> APLX and CORZ (a stock) -> COZX, both priced by Compustat under the new ticker. A
+    rename is refused too when its target is already another series' ETF ticker in the fund file or in N-CEN: two
+    series would then share one row."""
+    cand = con.execute(f"""
+        WITH {_FUND_FILE_SERIES}
+             , etfs AS (SELECT series_id, ticker FROM stg_sec_mf WHERE is_etf
+                        UNION ALL SELECT series_id, ticker FROM {NCEN} WHERE is_etf)
+        SELECT DISTINCT n.series_id, n.ticker, mf.ticker AS target,
+               (SELECT min(o.series_id) FROM etfs o WHERE o.ticker = mf.ticker AND o.series_id <> n.series_id),
+               EXISTS (SELECT 1 FROM etfs o WHERE o.ticker = n.ticker AND o.series_id <> n.series_id)
+        FROM {NCEN} n JOIN mf ON mf.series_id = n.series_id
+        WHERE n.is_etf AND n.ticker IS NOT NULL AND n.ticker <> mf.ticker
+          AND NOT EXISTS (SELECT 1 FROM stg_sec_mf s WHERE s.is_etf AND s.series_id = n.series_id
+                                                       AND s.ticker = n.ticker)
+        ORDER BY 1, 2""").fetchall()
+    priced = etf_series([t for c in cand for t in c[1:3]], ctx.as_of)
+    refused: dict[tuple[str, str], str] = {}
+    for series_id, ticker, target, holder, not_its_own in cand:
+        if ticker in priced and target not in priced and not not_its_own:
+            gvkey, iid, _ = priced[ticker]
+            refused[(series_id, ticker)] = (f"the SEC fund file lists series {series_id} as {target}, N-CEN as "
+                                            f"{ticker}, and Compustat still prices {ticker} (gvkey {gvkey} iid "
+                                            f"{iid}): kept {ticker}")
+        elif holder:
+            refused[(series_id, ticker)] = (f"the SEC fund file lists series {series_id} as {target}, N-CEN as "
+                                            f"{ticker}, and {target} is already series {holder}'s: kept {ticker}")
+    base.rows_table(con, "_rename_refused", [("series_id", "TEXT"), ("ticker", "TEXT")],
+                    [{"series_id": s, "ticker": t} for s, t in refused])
+    out: dict[str, str] = {}
+    for (series_id, _), detail in refused.items():
+        out[series_id] = out.get(series_id, "") + ("; " if series_id in out else "") + detail
+    ctx.notes.append(f"etf tickers the SEC fund file renames: {len(cand) - len(refused)} taken, "
+                     f"{len(refused)} refused ({len(out)} series)")
+    return [("etf_ticker_sources_disagree", s, d) for s, d in sorted(out.items())]
+
+
+def _filed(con: duckdb.DuckDBPyConnection) -> dict[str, dict[str, str | None]]:
+    """``{ticker: {series_id: cik}}``: the series the SEC fund file lists each ETF ticker under."""
+    filed: dict[str, dict[str, str | None]] = {}
+    for t, s, cik in con.execute("SELECT DISTINCT ticker, series_id, cik FROM stg_sec_mf "
+                                 "WHERE is_etf AND series_id IS NOT NULL").fetchall():
+        filed.setdefault(t, {})[s] = cik
+    return filed
+
+
+def nport_reports(series_ids: list[str]) -> dict[str, tuple[date, set[str]]]:
+    """``{series_id: (newest report_date, the series names its reports carry)}`` over every quarter of ``sec/nport``
+    held (``fund.parquet``, linked by ``series_id`` as :func:`nport_mix` links it); a series with none is absent."""
+    from .etf_class import NPORT          # ``etf_class`` imports this module
+    wanted = sorted({s for s in series_ids if s})
+    files = [f for _, f in stage.partitions(base.parquet_root().joinpath(*NPORT.split("/")), "quarter",
+                                            "fund.parquet")]
+    if not wanted or not files:
+        return {}
+    con = base.scratch_con()
+    try:
+        found = con.execute(f"""
+            SELECT series_id, max(report_date), list(DISTINCT series_name)
+            FROM read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)
+            WHERE series_id IN ({', '.join('?' * len(wanted))}) AND report_date IS NOT NULL GROUP BY 1""",
+            wanted).fetchall()
+    finally:
+        con.close()
+    return {str(s): (d, {n for n in names if n}) for s, d, names in found}
+
+
+def issuer_changed(con: duckdb.DuckDBPyConnection, ids: dict[str, tuple[str, str]],
+                   as_of: date | None = None) -> dict[str, date]:
+    """``{ticker: day}``: the first day of the current CUSIP issuer code (its first six characters) of each ticker's
+    Compustat series ``(gvkey, iid)``, where an earlier period of the same series carried another code. Read from
+    ``comp.sec_idhist``'s CUSIP periods as the spine build staged them (``stg_wrds_idhist``, which ``security_history``
+    copies), not from ``comp.secd``: that one carries today's CUSIP on every past day. No staging, no answer."""
+    gids = {f"{g}:{i}": t for t, (g, i) in ids.items()}
+    cutoff = "" if as_of is None else f" AND efffrom <= DATE '{as_of.isoformat()}'"
+    try:
+        found = con.execute(f"""
+            WITH p AS (SELECT gvkey || ':' || iid AS gid, efffrom AS day, upper(left(itemvalue, 6)) AS code
+                       FROM stg_wrds_idhist
+                       WHERE upper(item) = 'CUSIP' AND itemvalue IS NOT NULL AND efffrom IS NOT NULL{cutoff}
+                         AND gvkey || ':' || iid IN ({', '.join('?' * len(gids)) or 'NULL'})),
+                 now AS (SELECT gid, arg_max(code, day) AS code FROM p GROUP BY gid),
+                 was AS (SELECT p.gid, max(p.day) AS day FROM p JOIN now USING (gid)
+                         WHERE p.code <> now.code GROUP BY p.gid)
+            SELECT p.gid, min(p.day) FROM p JOIN now USING (gid) JOIN was USING (gid)
+            WHERE p.code = now.code AND p.day > was.day GROUP BY p.gid""", sorted(gids)).fetchall()
+    except duckdb.CatalogException:          # a build without the WRDS staging (a test of another rule)
+        return {}
+    return {gids[g]: d for g, d in found}
+
+
+#: Rule 3 of :func:`_settle_series`: a series whose newest N-PORT report is older than this many days.
+DEAD_NPORT_DAYS = 150
+
+
+def _settle_series(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, out: list[dict], ti_series: set[str],
+                   report_end: dict[str, date | None]) -> dict[str, str]:
+    """Settle the rows whose N-CEN series is none the SEC fund file lists for the ticker (avo's option A, 24 Nov
+    2026), in place, and return ``{ticker: the row's N-CEN series}`` of each it settled; one note names each and
+    which way it went.
+
+    1. Both series have N-PORT reports (:func:`nport_reports`): the one with the newer newest report wins. A series
+       with none never wins over one with some (PLTD, BIOY: the file's series never started).
+    2. The file's series has none yet: it wins where the row's Compustat issuer code changed (:func:`issuer_changed`)
+       after N-CEN's report period end, not its filing day, and the file's series sits under another CIK (ARB, EVNT,
+       MAGA: a reorganisation into another trust whose first N-PORT is not due yet).
+    3. N-CEN's series filed no N-PORT for over :data:`DEAD_NPORT_DAYS` days and Compustat prices no series of the
+       ticker: the fund is dead (QUP, QDWN, liquidated in Dec 2025, their tickers reused by unstarted funds). The
+       row stays on its series with no AUM, so ``my_universe`` cannot take it; the file's series is only named.
+
+    A winning file series brings its CIK. Left open (``etf_series_file_disagrees``): a TickerInside series, a ticker
+    the file lists under several series, neither series reporting, and CONI's case: the file's series is a sibling
+    under the same CIK while our series' own reports name two funds (``1x`` then ``2x Short COIN``), so the trust may
+    have moved the fund between its series ids and nothing here says which."""
+    filed = _filed(con)
+    todo = [r for r in out if r["series_id"] and r["ticker"] not in ti_series and len(filed.get(r["ticker"], {})) == 1
+            and r["series_id"] not in filed[r["ticker"]]]
+    if not todo:
+        return {}
+    reports = nport_reports([s for r in todo for s in (r["series_id"], *filed[r["ticker"]])])
+    changed = issuer_changed(con, {r["ticker"]: (r["gvkey"], r["iid"]) for r in todo if r["gvkey"]}, ctx.as_of)
+    as_of = ctx.as_of or date.today()
+    said: list[str] = []
+    done: dict[str, str] = {}
+    for r in todo:
+        t, ours = r["ticker"], r["series_id"]
+        (theirs, their_cik), = filed[t].items()
+        ours_day, names = reports.get(ours, (None, set()))
+        their_day = reports.get(theirs, (None, set()))[0]
+        sibling = _cik(their_cik) == _cik(r["cik"])
+        if their_day and (ours_day is None or their_day > ours_day):
+            how = f"{t} {ours}->{theirs} (N-PORT {their_day} over {ours_day or 'none'})"
+        elif their_day:
+            how = f"{t} kept {ours} (N-PORT {ours_day} over {theirs}'s {their_day})"
+        elif ours_day and not r["gvkey"] and (as_of - ours_day).days > DEAD_NPORT_DAYS:
+            r["aum"] = r["aum_as_of"] = r["aum_source"] = None
+            said.append(f"{t} dead on {ours} (no N-PORT since {ours_day}, no Compustat series; {theirs} a candidate)")
+            done[t] = ours
+            continue
+        elif t in changed and report_end.get(t) and changed[t] > report_end[t] and not sibling:
+            how = f"{t} {ours}->{theirs} (issuer code changed {changed[t]}, after N-CEN's {report_end[t]})"
+        elif ours_day and not (sibling and len(names) > 1):
+            how = f"{t} kept {ours} (N-PORT {ours_day}, {theirs} none)"
+        else:
+            continue
+        if "->" in how:
+            r["series_id"], r["cik"] = theirs, their_cik
+        said.append(how)
+        done[t] = ours
+    ctx.notes.append(f"etf series vs the SEC fund file: {len(said)} settled ({'; '.join(said)}), "
+                     f"{len(todo) - len(said)} open")
+    return done
+
+
+def _series_issues(con: duckdb.DuckDBPyConnection, out: list[dict], ti_series: set[str],
+                   settled: dict[str, str]) -> list[tuple[str, str, str]]:
+    """Two series checks over the built rows, issues only (avo's 2A and 3A, 24 Nov 2026): ``etf_series_id_shared``
+    where two rows carry one ``series_id`` (RPSA and RSPA; ``my_universe`` keeps one of them), and
+    ``etf_series_file_disagrees`` where a row's ``series_id`` (N-CEN's, else TickerInside's) is none the SEC fund
+    file lists for the ticker as an ETF and :func:`_settle_series` did not settle it (``settled``): CONI."""
+    by_series: dict[str, list[str]] = {}
+    for r in out:
+        if r["series_id"]:
+            by_series.setdefault(r["series_id"], []).append(r["ticker"])
+    found = [("etf_series_id_shared", s, f"etf rows {', '.join(sorted(ts))} carry one series {s}")
+             for s, ts in sorted(by_series.items()) if len(ts) > 1]
+    filed = _filed(con)
+    found += [("etf_series_file_disagrees", r["ticker"],
+               f"the etf row's series is {r['series_id']} ({'TickerInside' if r['ticker'] in ti_series else 'N-CEN'}"
+               f"), the SEC fund file's {', '.join(sorted(filed[r['ticker']]))}: the rule cannot settle it, kept")
+              for r in out if r["series_id"] and r["ticker"] in filed and r["series_id"] not in filed[r["ticker"]]
+              and r["ticker"] not in settled]
+    return found
+
+
+def _class_changes(out: list[dict]) -> str:
+    """The build note of each fund whose ``asset_class`` changed against the live ``etf`` table: ``TICKER old->new
+    by <source>``, at most :data:`CLASS_CHANGES_NOTED` named. A fund new to the table, or gone from it, is no change."""
+    live = {r["ticker"]: r["asset_class"] for r in stage.live_rows(TABLE, ["ticker", "asset_class"]) or []}
+    changed = [f"{r['ticker']} {live[r['ticker']]}->{r['asset_class']}"
+               + (f" by {r['asset_class_source']}" if r["asset_class_source"] else "")
+               for r in out if r["ticker"] in live and live[r["ticker"]] != r["asset_class"]]
+    more = f", ... {len(changed) - CLASS_CHANGES_NOTED} more" if len(changed) > CLASS_CHANGES_NOTED else ""
+    return (f"etf asset_class vs live: {len(changed)} changed"
+            + (f" ({', '.join(changed[:CLASS_CHANGES_NOTED])}{more})" if changed else ""))
+
+
 def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | None = None) -> list[dict]:
     """Every ETF ticker's row, from the staging tables and the ``security`` table this build just created.
 
@@ -411,13 +654,27 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     ``asset_class`` through :data:`CATEGORY_ASSET_CLASS` only where the commodity rule left it NULL; an unmapped
     category is one ``etf_category_unmapped`` issue per category."""
     from .etf_holdings import tickerinside_meta
+    issues = [] if issues is None else issues
+    issues += _refuse_renames(ctx, con)
     cur = con.execute(f"""
         WITH av AS (SELECT ticker, name, ipo_date, source_as_of, fetched_at FROM {AV}
                     WHERE asset_type = 'ETF' AND status = 'Active'
                     QUALIFY row_number() OVER (PARTITION BY ticker ORDER BY ipo_date DESC NULLS LAST, symbol) = 1),
-             nc AS (SELECT * FROM {NCEN} WHERE is_etf AND ticker IS NOT NULL
-                    QUALIFY row_number() OVER (PARTITION BY ticker
-                                               ORDER BY filing_date DESC NULLS LAST, accession DESC, series_id) = 1),
+             -- N-CEN is annual and writes the ticker of its filing day; SEC's fund file is current. A series the
+             -- fund file lists under one ETF ticker, none of them N-CEN's, was renamed: it takes that ticker
+             -- (SPLG -> SPYM, PHB -> IFLN), unless :func:`_refuse_renames` kept N-CEN's (``_rename_refused``).
+             {_FUND_FILE_SERIES},
+             nc0 AS (SELECT n.*, CASE WHEN mf.ticker IS NULL
+                                        OR EXISTS (SELECT 1 FROM stg_sec_mf s WHERE s.is_etf
+                                                   AND s.series_id = n.series_id AND s.ticker = n.ticker)
+                                        OR EXISTS (SELECT 1 FROM _rename_refused k
+                                                   WHERE k.series_id = n.series_id AND k.ticker = n.ticker)
+                                      THEN n.ticker ELSE mf.ticker END AS emitted
+                     FROM {NCEN} n LEFT JOIN mf ON mf.series_id = n.series_id
+                     WHERE n.is_etf AND n.ticker IS NOT NULL),
+             nc AS (SELECT * REPLACE (emitted AS ticker) FROM nc0
+                    QUALIFY row_number() OVER (PARTITION BY emitted ORDER BY filing_date DESC NULLS LAST,
+                                               accession DESC, series_id) = 1),
              etp AS (SELECT ticker, cik, name, source_as_of, fetched_at FROM security WHERE security_type = 'etp'),
              cef AS (SELECT ticker FROM security WHERE security_type = 'cef'),
              -- a fund record counts only under the security's own CIK (CORZ: N-CEN files Tradr's 2x ETF under it)
@@ -444,7 +701,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
         ORDER BY t.ticker""")
     cols = [d[0] for d in cur.description]
     found = [dict(zip(cols, x)) for x in cur.fetchall()]      # before the next execute replaces the result
-    issues = [] if issues is None else issues
+    con.execute("DROP TABLE _rename_refused")
     issues += [("etf_label_not_a_fund", r["ticker"],
                 f"{'Alpha Vantage lists' if r['in_av'] else 'the spine types'} {r['ticker']} "
                 f"({r['av_name'] or r['etp_name']}) as an ETF, but security types it {r['nf_type']} by "
@@ -459,6 +716,7 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
     ids_of = etf_series([r["ticker"] for r in found], ctx.as_of)
     ti_ids, ti_funds = tickerinside_meta(ctx.as_of)
     unmapped: dict[str, list[str]] = {}
+    ti_series: set[str] = set()
     out = []
     for r in found:
         names = (r["fund_name"], r["av_name"], r["etp_name"])
@@ -476,19 +734,26 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
                                                   f"{cik}: nothing taken from TickerInside"))
         ti = ti if ti is not None and (not raw_cik or ti["cik"] == cik) else None
         fund = ti_funds.get(t) if ti is not None else None
-        asset_class = (trust_class(names) if commodity else
-                       "commodity" if any(CARBON_NAME.search(n) for n in names if n) else None)
-        if asset_class is None and fund and fund["category"]:
-            asset_class = CATEGORY_ASSET_CLASS.get(fund["category"])
+        category = (fund or {}).get("category")
+        asset_class, class_src = ((trust_class(names, category), "trust_category"
+                                   if CATEGORY_ASSET_CLASS.get(category or "") in TRUST_CLASSES else "trust_name")
+                                  if commodity else ("commodity", "carbon_name")
+                                  if any(CARBON_NAME.search(n) for n in names if n) else (None, None))
+        if asset_class is None and category:
+            asset_class = CATEGORY_ASSET_CLASS.get(category)
+            class_src = "tickerinside_category" if asset_class else None
             if asset_class is None:
-                unmapped.setdefault(fund["category"], []).append(t)
+                unmapped.setdefault(category, []).append(t)
         gvkey, iid, cusip = ids_of.get(t, (None, None, None))
         figi = (ti or {}).get("composite_figi")
+        if not series_id and (ti or {}).get("series_id"):
+            ti_series.add(t)
         out.append({
             "ticker": t, "name": next((n for n in names if n), None),
             "series_id": series_id or (ti or {}).get("series_id"), "cik": raw_cik or (ti or {}).get("cik"),
             "source": "both" if r["in_av"] and nc else "av" if r["in_av"] else "ncen" if nc else "etp",
-            "is_etn": etn, "is_cef": r["is_cef"], "asset_class": asset_class, "focus": None,
+            "is_etn": etn, "is_cef": r["is_cef"], "asset_class": asset_class,
+            "asset_class_source": class_src, "focus": None,
             "country": None,
             "is_index": _flag(nc, r["is_index"]),
             "is_lev_inverse": True if is_lev_inverse(*names) else _flag(nc, r["is_multi_inverse_index"]),
@@ -501,17 +766,25 @@ def rows(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, issues: list | No
             "source_as_of": r["source_as_of"],
             # The newest of its sources' fetch times; run_id is the build that wrote the row (it is derived).
             "fetched_at": r["fetched_at"], "run_id": ctx.run_id})
+    # Before the N-PORT mix: a row the rule moves to the fund file's series reads that series' reports.
+    settled = _settle_series(ctx, con, out, ti_series, {r["ticker"]: r["report_end"] for r in found})
     # The third source of asset_class: what the earlier two left NULL, from the newest N-PORT mix (never over them).
-    mixes = nport_mix([r["series_id"] for r in out if r["asset_class"] is None])
+    # A fund moved to a series that has not reported yet (ARB, MAGA) is read on its old series' reports meanwhile.
+    mixes = nport_mix([s for r in out if r["asset_class"] is None for s in (r["series_id"], settled.get(r["ticker"]))])
     from_nport = 0
     for r in out:
-        if r["asset_class"] is None and r["series_id"] in mixes:
-            r["asset_class"] = nport_class(mixes[r["series_id"]], lev=bool(r["is_lev_inverse"]),
-                                           mm=bool(r["is_money_market"]), opt=r["is_option_income"],
+        mix = mixes.get(r["series_id"]) or mixes.get(settled.get(r["ticker"]))
+        if r["asset_class"] is None and mix:
+            lev = bool(r["is_lev_inverse"])
+            r["asset_class"] = nport_class(mix, lev=lev, mm=bool(r["is_money_market"]), opt=r["is_option_income"],
                                            crypto=bool(CRYPTO_NAME.search(r["name"] or "")))
+            r["asset_class_source"] = (r["asset_class"] and
+                                       ("nport_derivative" if on_contracts(mix, lev) else "nport_mix"))
             from_nport += r["asset_class"] is not None
+    issues += _series_issues(con, out, ti_series, settled)
     ctx.notes.append(f"etf asset_class: {from_nport} from N-PORT ({len(mixes)} reports read), "
                      f"{sum(1 for r in out if r['asset_class'] is None)} still NULL")
+    ctx.notes.append(_class_changes(out))
     issues += [("etf_category_unmapped", cat, f"TickerInside category {cat} has no asset class here: "
                 + ", ".join(sorted(ts))[:300]) for cat, ts in sorted(unmapped.items())]
     ctx.notes.append(f"etf identity: {sum(1 for r in out if r['gvkey'])} with a Compustat series, "

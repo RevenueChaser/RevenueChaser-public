@@ -16,7 +16,7 @@ from revenuechaser.rcdata.needs import screen
 
 PV_LABELS: dict[str, str] = {
     "build": "the build", "rule": "our rule", "sec": "SEC", "wrds": "WRDS", "figi": "OpenFIGI", "alpaca": "Alpaca",
-    "uw": "Unusual Whales", "tickerinside": "TickerInside", "yf": "yfinance", "finra": "FINRA", "ibkr": "IBKR", "exch": "exchanges",
+    "uw": "Unusual Whales", "tickerinside": "TickerInside", "yf": "yfinance", "tv": "TradingView", "finra": "FINRA", "ibkr": "IBKR", "exch": "exchanges",
     "av": "Alpha Vantage", "issuer": "fund issuers", "macro": "FRED · BLS · CFTC · Treasury",
     "mix": "several sources: the code does not say which column comes from which yet",
 }
@@ -44,6 +44,7 @@ _WORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("unusual", "uw"), "uw"),
     (("tickerinside",), "tickerinside"),
     (("yfinance",), "yf"),
+    (("tradingview",), "tv"),
     (("finra",), "finra"),
     (("ibkr",), "ibkr"),
     (("alphavantage",), "av"),
@@ -185,7 +186,7 @@ def funnel(nd: dict, *, rules_path: Path | None = None) -> dict:
                 f"volume at or over {_usd(rules.etf_adv_floor)}")
     stocks = [
         {"step": "in the SEC ticker file", "n": _n(steps.get("sec")), "drops": ""},
-        {"step": "listed on Nasdaq, NYSE or Cboe", "n": _n(steps.get("listed")),
+        {"step": "listed on an exchange (tier A or B)", "n": _n(steps.get("listed")),
          "drops": "over the counter, or no exchange in the file"},
         {"step": f"tier {tiers}; {types}", "n": counted(by_rule, "stock"),
          "drops": f"a tier other than {tiers}, or a type other than {types}"},

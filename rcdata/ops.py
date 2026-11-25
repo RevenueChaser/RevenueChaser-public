@@ -31,6 +31,8 @@ The tables and what writes them:
   and an optional note; ``watchlist_*_changes`` is their history, one row per add or remove. The dashboard's toggle
   routes write them (PR 4); the option list is what the options build will cover besides SPX.
 - ``dataset_schedule``: cadence and pause state per dataset.
+- ``dataset_slot``: the Amsterdam time a daily or weekly dataset starts at, and its weekday for a weekly one
+  (avo, 24 Nov 2026); no row is any time of day.
 - ``kind_automation``: what the hourly pass queues on its own for each serving kind (``KIND_MODES``); no row is off.
 
 ``ensure()`` creates the tables and stamps ``ops_schema``; it upgrades an older file in place and refuses a file
@@ -166,6 +168,14 @@ _DDL = {
         at REAL NOT NULL, by TEXT, note TEXT)""" for k in WATCH_KINDS},
     "dataset_schedule": """CREATE TABLE IF NOT EXISTS dataset_schedule (
         dataset TEXT PRIMARY KEY, cadence TEXT, next_due TEXT, paused_at REAL, paused_by TEXT)""",
+    # avo, 24 Nov 2026: when a daily or weekly dataset starts. A new table, no upgrade step.
+    "dataset_slot": """CREATE TABLE IF NOT EXISTS dataset_slot (
+        dataset TEXT PRIMARY KEY, at TEXT NOT NULL, weekday INTEGER, set_at REAL NOT NULL)""",
+    # avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali"): the Amsterdam hours the storage fetch takes one serving
+    # file's sources at, as "7,22"; no row is the code's own hours (``due.FETCH_HOURS``), else every hour. Fetch only:
+    # a build hour is not this table's. A new table, no upgrade step.
+    "kind_fetch_hours": """CREATE TABLE IF NOT EXISTS kind_fetch_hours (
+        kind TEXT PRIMARY KEY, hours TEXT NOT NULL, set_at REAL NOT NULL)""",
     # A new table, no upgrade step: ``ensure`` makes it in an older file too, and an older checkout ignores it.
     "kind_automation": """CREATE TABLE IF NOT EXISTS kind_automation (
         kind TEXT PRIMARY KEY, mode TEXT NOT NULL, set_at REAL, set_by TEXT)""",
@@ -437,11 +447,16 @@ def queue_view(finished: int = 20) -> dict:
 FETCH_ONLY_PARAMS = ("no_duckdb", "no_parquet", "no_build")
 
 
-def is_fetch_only(params) -> bool:
-    """True for a request's params (a dict, its JSON text, or None) that build no serving file."""
+def params_of(params) -> dict:
+    """A request's params as a dict, from a dict, its JSON text, or None."""
     if isinstance(params, str):
         params = json.loads(params) if params else None
-    return any((params or {}).get(k) for k in FETCH_ONLY_PARAMS)
+    return params or {}
+
+
+def is_fetch_only(params) -> bool:
+    """True for a request's params (a dict, its JSON text, or None) that build no serving file."""
+    return any(params_of(params).get(k) for k in FETCH_ONLY_PARAMS)
 
 
 def _request(row: sqlite3.Row | None) -> dict | None:
@@ -455,7 +470,7 @@ def _request(row: sqlite3.Row | None) -> dict | None:
 @_routed
 def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
                  only: Iterable[str] | None = None, by: str | None = None,
-                 fetch_only: bool = False) -> dict | None:
+                 fetch_only: bool = False, or_by: str | None = None) -> dict | None:
     """Take the oldest queued request (of ``dataset``, when given) and mark it running; None when none is queued.
 
     ``skip`` leaves those datasets' requests in the queue, and ``only`` claims nothing else: that is how a request
@@ -469,6 +484,8 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
 
     ``fetch_only`` claims only requests that build no serving file (``FETCH_ONLY_PARAMS``): a fetch-only process
     holds no builder lock, so an ordinary request it drained would build and swap beside the real builder (#502).
+    ``or_by`` lets ``fetch_only`` claim that requester's requests too: the storage fetch takes the schedule's own,
+    whatever they asked, and stages them only (``base.FETCH_ONLY_PASS``; avo, 24 Nov 2026).
     """
     skip = tuple(skip)
     if skip and only is not None:
@@ -486,7 +503,11 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
             sql += " AND requested_by = ?"
             args += (by,)
         if fetch_only:
-            sql += " AND (" + " OR ".join(f"coalesce(json_extract(params, '$.{k}'), 0)" for k in FETCH_ONLY_PARAMS) + ")"
+            sql += " AND (" + " OR ".join(f"coalesce(json_extract(params, '$.{k}'), 0)" for k in FETCH_ONLY_PARAMS)
+            if or_by is not None:             # not the storage build's own requests (``build_only``)
+                sql += " OR (requested_by = ? AND NOT coalesce(json_extract(params, '$.build_only'), 0))"
+                args += (or_by,)
+            sql += ")"
         if only is not None:
             names = tuple(only)
             if not names:
@@ -1150,6 +1171,46 @@ def schedule_resume(dataset: str) -> None:
 def schedule_get(dataset: str) -> dict | None:
     with _open() as con:
         row = con.execute("SELECT * FROM dataset_schedule WHERE dataset = ?", (dataset,)).fetchone()
+    return dict(row) if row else None
+
+
+@_routed
+def slot_set(dataset: str, at: str | None, weekday: int | None) -> None:
+    """``at`` ("HH:MM", Amsterdam) and ``weekday`` (0 Monday, for a weekly dataset) when ``dataset`` starts; no
+    ``at`` drops the row (any time of day). ``set_at`` is now: a slot that passed before it was set is not owed."""
+    with _open() as con:
+        if not at:
+            con.execute("DELETE FROM dataset_slot WHERE dataset = ?", (dataset,))
+            return
+        con.execute("INSERT INTO dataset_slot (dataset, at, weekday, set_at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT (dataset) DO UPDATE SET at = excluded.at, weekday = excluded.weekday, "
+                    "set_at = excluded.set_at", (dataset, at, weekday, calendar._now().timestamp()))
+
+
+@_routed
+def slot_get(dataset: str) -> dict | None:
+    with _open() as con:
+        row = con.execute("SELECT * FROM dataset_slot WHERE dataset = ?", (dataset,)).fetchone()
+    return dict(row) if row else None
+
+
+@_routed
+def fetch_hours_set(kind: str, hours: str | None) -> None:
+    """``hours`` ("7,22", already checked by ``due.parse_hours``) the storage fetch takes ``kind`` at; None drops the
+    row, which is the code's own hours again (``due.fetch_hours``)."""
+    with _open() as con:
+        if hours is None:
+            con.execute("DELETE FROM kind_fetch_hours WHERE kind = ?", (kind,))
+            return
+        con.execute("INSERT INTO kind_fetch_hours (kind, hours, set_at) VALUES (?, ?, ?) "
+                    "ON CONFLICT (kind) DO UPDATE SET hours = excluded.hours, set_at = excluded.set_at",
+                    (kind, hours, calendar._now().timestamp()))
+
+
+@_routed
+def fetch_hours_get(kind: str) -> dict | None:
+    with _open() as con:
+        row = con.execute("SELECT * FROM kind_fetch_hours WHERE kind = ?", (kind,)).fetchone()
     return dict(row) if row else None
 
 

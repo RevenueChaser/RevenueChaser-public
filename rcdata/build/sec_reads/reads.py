@@ -13,7 +13,9 @@ a new filing that carries the same text is not, and a second writer is not asked
 only a company's new filing and a retry. A DeepSeek question is asked at most :data:`DAY_CAP` companies a day; past
 the cap it stops and goes on the next day (avo, 15 Nov 23:48). EVREN has no quota, so an EVREN question has no day
 cap and reads every new filing as it comes (avo, 16 Nov 2026 09:38). Everything else that is stale (a changed prompt, a re-cut text, a question's
-first pass) waits for a request that says ``"reread": true`` (the CLI's ``--reread``), which asks all of it.
+first pass) waits for a request that says ``"reread": true`` (the CLI's ``--reread``), which asks all of it, or
+``"reread": [question ids]`` (``--reread debt.note``), which asks all of those questions and only the usual rest of
+the others.
 
 **The attempts rule** (from ``module_relatedness.engine``): an unusable reply is counted on its key, three of them
 and the company waits for a new filing, a new prompt or :data:`RETRY_AFTER_S`, and a ``partial`` answer is never
@@ -163,6 +165,7 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
         if r["status"] != asker.NO_TEXT:
             by_cik.setdefault(r["cik"], []).append(r)
     begun = any(r["prompt_version"] == q.prompt_version and r["status"] == asker.OK for r in have.values())
+    reread = ctx.reread is True or q.id in (ctx.reread or ())
     waiting: dict[str, int] = {}
     jobs, prior, no_text, new = [], {}, [], 0
     for cik in ciks:
@@ -181,13 +184,13 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
                 and time.time() - (old["fetched_at"] or 0) < RETRY_AFTER_S):
             continue
         why = stale_reason(job, by_cik.get(cik, []), begun)
-        if why not in AUTOMATIC and not ctx.reread:
+        if why not in AUTOMATIC and not reread:
             waiting[why] = waiting.get(why, 0) + 1
             continue
         jobs.append(job)
         prior[_job_key(job)] = old
         new += why == NEW_COMPANY
-    if new > NEW_COMPANY_LIMIT and not ctx.reread:
+    if new > NEW_COMPANY_LIMIT and not reread:
         # A change of scope, not a company's first report: none of them is asked without the owner's word.
         waiting[NEW_COMPANY] = new
         jobs = [j for j in jobs if by_cik.get(j.cik)]
@@ -195,7 +198,7 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     if waiting:
         ctx.notes.append(f"{q.id}: {sum(waiting.values())} wait for the owner's word, a request with reread ("
                          + ", ".join(f"{w} {n}" for w, n in sorted(waiting.items())) + ")")
-    if not ctx.reread and q.provider not in UNCAPPED:
+    if not reread and q.provider not in UNCAPPED:
         day = _now() - 86400.0
         today = len({r["cik"] for rows in by_cik.values() for r in rows if (r["fetched_at"] or 0) > day})
         room = max(0, DAY_CAP - today)
@@ -207,10 +210,10 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     return jobs, prior, no_text
 
 
-def plan_counts(reread: bool = False) -> dict:
+def plan_counts(reread: bool | tuple[str, ...] = False) -> dict:
     """``{"would_ask": {question: companies}, "notes": [...]}``: what a run would ask now, with no call and nothing
-    written (``python -m revenuechaser.rcdata.build.sec_reads --plan [--reread]``). A question that reads another's
-    answers (the profile reads the locator's) is planned on what is stored now."""
+    written (``python -m revenuechaser.rcdata.build.sec_reads --plan [--reread [question ...]]``). A question that
+    reads another's answers (the profile reads the locator's) is planned on what is stored now."""
     ctx = base.RunContext(run_id="plan", dataset=NAME, reread=reread)
     return {"would_ask": {q.id: len(_plan(q, ctx)[0]) for q in QUESTIONS.values()}, "notes": ctx.notes}
 

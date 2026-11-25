@@ -1,7 +1,7 @@
-"""The week's volatility calendar (A8) from UW's /market/economic-calendar.
+"""The week's volatility calendar (A8) from the market store's economic calendar (``store_reads.vol_calendar``).
 
 Events from the board's day through the Friday the week resolves on, high-impact releases marked, times in
-Europe/Amsterdam (the owner's clock). UW repeats rows, so (event, time) duplicates are dropped.
+Europe/Amsterdam (the owner's clock). A source can repeat rows, so (event, time) duplicates are dropped.
 """
 from __future__ import annotations
 
@@ -11,8 +11,10 @@ from zoneinfo import ZoneInfo
 from .brier import target_friday
 
 AMS = ZoneInfo("Europe/Amsterdam")
-HIGH_IMPACT = ("cpi", "employment report", "nonfarm", "ppi", "fomc", "fed interest rate", "pce", "gdp",
-               "retail sales")
+HIGH_IMPACT = ("cpi", "employment report", "nonfarm", "non farm", "ppi", "fomc", "fed interest rate", "pce", "gdp",
+               "retail sales", "inflation rate", "unemployment rate")
+#: TradingView names the FOMC decision just "Interest Rate"; its projections and reserve rate are not high impact.
+HIGH_NAMES = ("interest rate",)
 
 
 def week_events(payload: dict | None, asof_date: str) -> list[dict]:
@@ -38,6 +40,6 @@ def week_events(payload: dict | None, asof_date: str) -> list[dict]:
         out.append({"event": name, "type": r.get("type"), "time": r["time"],
                     "local": f"{local:%a} {local.day} {local:%b %H:%M}",
                     "prev": r.get("prev"), "forecast": r.get("forecast"),
-                    "high_impact": any(k in name.lower() for k in HIGH_IMPACT)})
+                    "high_impact": name.strip().lower() in HIGH_NAMES or any(k in name.lower() for k in HIGH_IMPACT)})
     out.sort(key=lambda r: r["time"])
     return out

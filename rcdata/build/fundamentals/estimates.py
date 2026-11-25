@@ -4,8 +4,8 @@ One request per company (``core/providers/yfinance.get_earnings_trend``: Yahoo's
 ``earnings_estimate``, ``revenue_estimate``, ``eps_trend``, ``eps_revisions`` for the periods ``0q``, ``+1q``,
 ``0y``, ``+1y``), for its shortest ticker (HEI, not HEI-A), when its newest answer is ``WEEK_DAYS`` old or there is
 none; the companies longest without an answer first. Mapped to columns by ``trend_rows`` (the D14 mapping, moved
-here from Earnings Radar's old sweep when the old store went, #860); a field Yahoo does not give, or gives as NaN, stays NULL. Counted under ``yfinance`` and paced at its
-window, 2,000 an hour (``caps.WINDOWS``, shared with the run's other Yahoo readers);
+here from Earnings Radar's old sweep when the old store went, #860); a field Yahoo does not give, or gives as NaN, stays NULL. Counted under ``yfinance``, with no
+window of ours (avo 23 Nov 2026, #1473);
 ``FAIL_STREAK`` failures in a row stop the run (Yahoo throttling or down), and a run where every request failed is a
 failed run. A company that failed is asked again by the next run.
 
@@ -153,7 +153,6 @@ class Estimates:
                 not_asked = len(due) - n
                 break
             ctx.check_cap(PROVIDER)
-            base.run_pacer(ctx, PROVIDER).wait()
             ctx.count(PROVIDER, calls=1)
             # As in ``fx_rates``: counted once, here, not again inside the provider module (#1277).
             with yf_provider.spend_owned_by_caller():

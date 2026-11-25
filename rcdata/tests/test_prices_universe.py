@@ -108,6 +108,29 @@ def test_the_etf_list_comes_from_the_live_spines_etf_table():
     assert universe.etf_tickers() == {"SPY", "TQQQ"}
 
 
+def test_a_fund_the_security_table_keys_by_cik_only_takes_the_etf_tables_compustat_series():
+    """Plan v4 step 4 (#1413): 70 commodity and crypto funds are served as ``cik:<CIK>:<T>`` while the spine's
+    ``etf`` table carries their Compustat ``gvkey``/``iid``. The build now keys them ``gvkey:iid`` (the re-key guard
+    moves the old id's bars); a name with its own gvkey or FIGI keeps it."""
+    write_spine()
+    con = duckdb.connect(str(serving.live_path("spine")))
+    try:
+        con.execute("CREATE TABLE etf (ticker TEXT, aum DOUBLE, is_etn BOOLEAN, is_cef BOOLEAN, inception DATE, "
+                    "gvkey TEXT, iid TEXT)")
+        con.execute("INSERT INTO etf VALUES ('GAPX', 5e9, NULL, NULL, NULL, '009999', '01'), "
+                    "('FLG', 5e9, NULL, NULL, NULL, '008888', '01'), ('SPY', 5e11, NULL, NULL, NULL, '007777', '01')")
+    finally:
+        con.close()
+    con = duckdb.connect()
+    try:
+        prices_serving._spine(con)
+        ids = dict(con.execute("SELECT ticker, security_id FROM stg_spine").fetchall())
+    finally:
+        con.close()
+    assert ids["GAPX"] == "009999:01"                          # was cik:4000001:GAPX
+    assert ids["FLG"] == "figi:BBG000BWBX65" and ids["SPY"] == "001000:01" and ids["AAPL"] == "001690:01"
+
+
 # ── avo's own list, when the spine holds one ───────────────────────────────────────────────────────────────────
 
 def test_without_the_list_the_rule_decides():

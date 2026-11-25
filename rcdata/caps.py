@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from . import ops
 
+# Yahoo (yfinance) has no window: Yahoo publishes none and the owner removed ours (avo 2026-11-23, #1473).
 # UW has no day cap: the owner removed it (avo 2026-11-10, "UW icin sinir koyma, siniri tamamen kaldir").
 DAY_CAPS: dict[str, int] = {
     # shared by the earnings calendar (one a run) and the spine's listing status (two a run, #346)
@@ -29,7 +30,6 @@ WINDOWS: dict[str, tuple[int, float]] = {
     "openfigi": (250, 60.0),  # /v3/mapping with a key: https://www.openfigi.com/api/documentation
     "openfigi_search": (20, 60.0),  # /v3/search with a key (no caller yet): https://www.openfigi.com/api/documentation
     "finra": (1_200, 60.0),  # synchronous, per IP: https://developer.finra.org/docs
-    "yfinance": (2_000, 3_600.0),  # per IP, Yahoo publishes none: owner-marked avo 2026-11-02
 }
 
 

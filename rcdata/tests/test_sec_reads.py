@@ -603,6 +603,21 @@ def test_the_plan_counts_what_a_run_would_ask_and_calls_nobody(http_mock):
     assert reads.plan_counts(reread=True)["would_ask"] == {"test.products": 0}
 
 
+def test_a_word_for_one_question_rereads_that_one_and_leaves_the_others_waiting(http_mock):
+    """25 Nov 2026: debt.note's 316 needed the owner's word, and the only word there was would also have asked
+    company.profile's 4,769. A request's ``"reread"`` may name the questions it is for."""
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    question(ciks=("789019",))
+    question(id="test.other", ciks=("320193",))
+    assert reads.plan_counts(reread=("test.products",))["would_ask"] == {"test.products": 1, "test.other": 0}
+    fx.run(reads.NAME, reread="yes")                        # not true and not a list: no word at all
+    assert len(http_mock.requests) == 0
+    check = fx.run(reads.NAME, reread=["test.products"])
+    assert len(http_mock.requests) == 1
+    assert rows("SELECT question, cik FROM read_answer WHERE status = 'ok'") == [("test.products", "789019")]
+    assert "test.other: 1 wait for the owner's word" in check["note"]
+
+
 def test_a_usable_reply_after_the_unusable_stop_does_not_store_the_held_back_ones(http_mock, monkeypatch):
     many = {str(1000 + i): f"company {i}" for i in range(8)}
     gave_up = threading.Event()

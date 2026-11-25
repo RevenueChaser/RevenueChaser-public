@@ -35,8 +35,8 @@ def test_the_request_windows_are_the_official_ones():
         "openfigi": (250, 60.0),
         "openfigi_search": (20, 60.0),
         "finra": (1_200, 60.0),
-        "yfinance": (2_000, 3_600.0),
     }
+    assert "yfinance" not in caps.WINDOWS      # avo 23 Nov 2026 (#1473): no limit of ours on Yahoo
 
 
 def test_every_number_in_caps_names_its_source():
@@ -73,9 +73,9 @@ def test_the_pacer_keeps_a_one_hour_window():
 
 def test_run_pacer_is_one_per_provider_and_run_with_its_official_window():
     ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
-    p = base.run_pacer(ctx, "yfinance")
-    assert (p.limit, p.window_s) == caps.WINDOWS["yfinance"]
-    assert base.run_pacer(ctx, "yfinance") is p
+    p = base.run_pacer(ctx, "alpaca")
+    assert (p.limit, p.window_s) == caps.WINDOWS["alpaca"]
+    assert base.run_pacer(ctx, "alpaca") is p
     assert base.run_pacer(ctx, "finra") is not p
 
 
@@ -117,27 +117,14 @@ def test_module_financials_holds_no_uw_limit_of_its_own():
     assert not hasattr(config, "UW_RATE_LIMIT_PER_MIN") and not hasattr(config, "UW_RATE_LIMIT_PER_DAY")
 
 
-@pytest.fixture
-def yf_waits(monkeypatch):
-    """Counts the waits on the run's yfinance pacer (``base.run_pacer``), whatever reader asks Yahoo."""
-    waits = []
-    real = base.run_pacer
-
-    def run_pacer(ctx, provider):
-        p = real(ctx, provider)
-        if provider == "yfinance":
-            monkeypatch.setattr(p, "wait", lambda: waits.append(provider))
-        return p
-    monkeypatch.setattr(base, "run_pacer", run_pacer)
-    return waits
-
-
-def test_the_yahoo_market_series_waits_for_the_yfinance_window(yf_waits, tmp_path):
-    from datetime import date
+def test_no_yahoo_reader_waits_on_a_pacer(monkeypatch):
+    """avo, 23 Nov 2026 (#1473): Yahoo has no window of ours. Every reader that asked the old 2,000-an-hour pacer
+    (the float, the estimates, the FX rates, the market series) no longer asks any pacer."""
+    from revenuechaser.rcdata.build.fundamentals import estimates, fx_rates
+    from revenuechaser.rcdata.build.prices import floats
     from revenuechaser.rcdata.build.sources import yahoo
-    ctx = base.RunContext(run_id="r", dataset="d", sleep=lambda s: None)
-    yahoo.fetch(ctx, date(2026, 10, 27), download=lambda symbol: [["2026-10-27", 1.0, 1.0, 1.0, 1.0]])
-    assert len(yf_waits) == len(yahoo.SYMBOLS)
+    for module in (floats, estimates, fx_rates, yahoo):
+        assert "run_pacer" not in Path(module.__file__).read_text(encoding="utf-8"), module.__name__
 
 
 # ── Review of PR #380: the box as a whole stays inside each shared limit ─────────────────────────────────────────

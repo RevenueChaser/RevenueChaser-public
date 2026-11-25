@@ -62,6 +62,16 @@ def test_a_class_share_is_named_through_the_spine(src):
     assert _served("SELECT count(*) FROM finra_short_interest WHERE ticker IS NULL") == [(12_000,)]
 
 
+
+def test_an_etf_symbol_is_named_through_the_spine_etf_table(src):
+    """An ETF's ticker sits in the spine's ``etf`` table, not ``security``; FINRA's SPYM row still gets one."""
+    serving.live_path("spine").unlink()
+    ox.make_spine(etfs=("SPYM",))
+    src.dates[NEW].append(ox.finra_row("SPYM", NEW, 5_000))
+    _run()
+    assert _served("SELECT ticker, ticker_source FROM finra_short_interest WHERE symbol = 'SPYM'") == [
+        ("SPYM", "spine:exact")]
+
 def test_a_date_whose_pages_do_not_add_up_is_refused_and_not_kept(src):
     src.total_override[NEW] = 12_500
     row = _run()

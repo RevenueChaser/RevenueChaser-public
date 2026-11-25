@@ -19,7 +19,7 @@ import duckdb
 import pytest
 
 from revenuechaser.rcdata.build import base
-from revenuechaser.rcdata.build.spine import etf, my_universe, security
+from revenuechaser.rcdata.build.spine import etf, my_universe, ncen, sec_tickers_mf, security
 
 
 def _plain(schema):
@@ -30,10 +30,15 @@ def _ctx(as_of=date(2026, 11, 4)) -> base.RunContext:
     return base.RunContext(run_id="run-test", dataset=security.NAME, as_of=as_of)
 
 
-def _con(securities=(), etfs=()) -> duckdb.DuckDBPyConnection:
+def _con(securities=(), etfs=(), fund_file=None) -> duckdb.DuckDBPyConnection:
+    """``security``, ``etf`` and the N-CEN filer staging ``etf.TRUST_SQL`` reads; ``fund_file`` (ETF tickers) adds
+    the SEC fund file's staging, which only the spine build holds."""
     con = duckdb.connect()
     base.rows_table(con, "security", _plain(security.SECURITY), list(securities))
     base.rows_table(con, "etf", _plain(etf.SCHEMA), list(etfs))
+    base.rows_table(con, ncen.FILERS, ncen.FILER, [])
+    if fund_file is not None:
+        base.rows_table(con, "stg_sec_mf", sec_tickers_mf.SCHEMA, [{"ticker": t, "is_etf": True} for t in fund_file])
     return con
 
 
@@ -52,7 +57,7 @@ def _etf(ticker, aum=None, adv=None, **kw) -> dict:
 @pytest.fixture
 def live_my_universe():
     """Write a live ``spine.duckdb`` holding ``my_universe`` and ``my_universe_changes`` rows, as a build left them."""
-    def write(rows=(), changes=()):
+    def write(rows=(), changes=(), etfs=None):
         from revenuechaser.rcdata import serving
         path = serving.live_path("spine")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -60,6 +65,8 @@ def live_my_universe():
         try:
             base.rows_table(con, my_universe.TABLE, _plain(my_universe.SCHEMA), list(rows))
             base.rows_table(con, my_universe.CHANGES, _plain(my_universe.CHANGES_SCHEMA), list(changes))
+            if etfs is not None:                               # the live etf table: yesterday's series per ticker
+                base.rows_table(con, etf.TABLE, _plain(etf.SCHEMA), list(etfs))
         finally:
             con.close()
     return write
@@ -659,13 +666,24 @@ def test_either_number_at_its_exit_floor_keeps_the_fund(live_my_universe):
 
 # ── Trusts (avo, 23 Nov 2026: "Bence trust lazım", option a) ───────────────────────────────────────────────────
 
+def _etp(*tickers):
+    """``security`` etp rows of 1933-Act trusts: each its own CIK, none of them an N-CEN filer."""
+    return [_sec(t, "etp", tier="B", cik=str(9000 + i)) for i, t in enumerate(tickers)]
+
+
 def test_a_commodity_or_crypto_trust_is_kind_trust_on_the_etf_floors():
-    con = _con(etfs=[_etf("GLD", aum=1e11, asset_class="commodity"), _etf("IBIT", adv=2e9, asset_class="crypto"),
+    """FBEQ is an Alpha Vantage row TickerInside classes commodity, with no etp row of its own: the trust rule never
+    saw it, so it is an ETF (review M1, 24 Nov 2026)."""
+    con = _con(securities=_etp("GLD", "IBIT", "TINY"),
+               etfs=[_etf("GLD", aum=1e11, asset_class="commodity", source="av"),
+                     _etf("IBIT", adv=2e9, asset_class="crypto", source="etp"),
                      _etf("SPY", aum=5e11),                                   # a unit trust: no class, an ETF
                      _etf("DBC", aum=1.5e9, series_id="S1", asset_class="commodity"),   # a 40-Act fund
-                     _etf("TINY", aum=1e6, adv=1e5, asset_class="commodity")])          # under both floors
+                     _etf("FBEQ", aum=2e8, asset_class="commodity", source="av"),
+                     _etf("TINY", aum=1e6, adv=1e5, asset_class="commodity", source="av")])  # under both floors
     rows, _, _ = _rows(con)
-    assert {t: r["kind"] for t, r in rows.items()} == {"GLD": "trust", "IBIT": "trust", "SPY": "etf", "DBC": "etf"}
+    assert {t: r["kind"] for t, r in rows.items()} == {
+        "GLD": "trust", "IBIT": "trust", "SPY": "etf", "DBC": "etf", "FBEQ": "etf"}
     assert (rows["GLD"]["rule"], rows["IBIT"]["rule"]) == ("etf_aum", "etf_adv")
     assert my_universe.TRUST in my_universe.FUNDS and my_universe.ETF in my_universe.FUNDS
 
@@ -674,9 +692,44 @@ def test_a_live_etf_that_is_now_a_trust_moves_kind_without_a_left_or_entered_row
     live_my_universe(rows=[{"ticker": "GLD", "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 10, 1)},
                            {"ticker": "IBIT", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 2e9,
                             "entered_on": date(2026, 10, 1)}])
-    con = _con(etfs=[_etf("GLD", aum=1e11, adv=5e9, asset_class="commodity"),   # the volume source answers
-                     _etf("IBIT", asset_class="crypto")])          # no volume today: held on its live row
+    con = _con(securities=_etp("GLD", "IBIT"),
+               etfs=[_etf("GLD", aum=1e11, adv=5e9, asset_class="commodity", source="av"),   # volume answers
+                     _etf("IBIT", asset_class="crypto", source="av")])   # no volume today: held on its live row
     rows, changes, _ = _rows(con)
     assert (rows["GLD"]["kind"], rows["IBIT"]["kind"]) == ("trust", "trust")
     assert rows["GLD"]["entered_on"] == date(2026, 10, 1)
     assert [c for c in changes if c["ticker"] in ("GLD", "IBIT")] == []
+
+
+# ── One fund, one row; a renamed fund keeps its entry (avo's 2A, 24 Nov 2026) ─────────────────────────────────
+
+def test_two_kept_rows_of_one_series_are_one_row_and_the_twin_leaves_as_the_same_fund(live_my_universe):
+    """RPSA (N-CEN) and RSPA (Alpha Vantage) carry one series: the row with a Compustat series stays. With neither
+    a gvkey, the SEC fund file's ticker stays. The live RPSA leaves as the same fund, not as "rules no longer hold"."""
+    live_my_universe(rows=[{"ticker": t, "kind": "etf", "rule": "etf_aum", "entered_on": date(2026, 11, 5)}
+                           for t in ("RPSA", "RSPA")],
+                     etfs=[{"ticker": "RPSA", "series_id": "S30"}, {"ticker": "RSPA", "series_id": "S30"}])
+    con = _con(etfs=[_etf("RPSA", aum=2e8, series_id="S30"), _etf("RSPA", aum=2e8, series_id="S30", gvkey="0333"),
+                     _etf("AAA", aum=2e8, series_id="S31"), _etf("BBB", aum=2e8, series_id="S31")],
+               fund_file=["BBB"])
+    rows, changes, _ = _rows(con)
+    assert sorted(rows) == ["BBB", "RSPA"]
+    assert {c["ticker"]: c["reason"] for c in changes if c["change"] == "left"} == {
+        "RPSA": "the same fund as RSPA, kept once under it"}
+
+
+def test_a_renamed_fund_keeps_its_entry_day_and_exit_floor_and_says_renamed(live_my_universe):
+    """SPLG -> SPYM: the live list held SPLG on its volume; today the series is on SPYM, whose volume is under the
+    entry floor and over the exit floor. SPYM stays on SPLG's floor and entry day, SPLG's vanished etf row is no
+    outage to hold, and the two change rows say renamed."""
+    live_my_universe(rows=[{"ticker": "SPLG", "kind": "etf", "rule": "etf_adv", "adv_usd_20d": 2e7,
+                            "entered_on": date(2026, 11, 5)}],
+                     etfs=[{"ticker": "SPLG", "series_id": "S2"}])
+    con = _con(etfs=[_etf("SPYM", adv=9e6, series_id="S2", aum=None), _etf("XLK", aum=6e10, adv=1e9)])
+    rows, changes, issues = _rows(con)
+    assert sorted(rows) == ["SPYM", "XLK"]
+    assert (rows["SPYM"]["rule"], rows["SPYM"]["entered_on"]) == ("etf_adv", date(2026, 11, 5))
+    got = {(c["ticker"], c["change"]): c["reason"] for c in changes}
+    assert got[("SPLG", "left")] == "renamed to SPYM"
+    assert got[("SPYM", "entered")].startswith("renamed from SPLG; held above the exit floor")
+    assert not [i for i in issues if i[0] == "my_universe_etf_row_gone"]

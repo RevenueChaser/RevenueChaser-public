@@ -49,6 +49,7 @@ SCHEMA = [("snapshot_date", "DATE"), ("session_date", "DATE"), ("snapshot_at", "
           ("figi", "TEXT"), ("rebate_rate", "DOUBLE"), ("fee_rate", "DOUBLE"), ("available", "BIGINT"),
           ("available_capped", "BOOLEAN"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 SERVED = SCHEMA[:4] + [("ticker", "TEXT"), ("ticker_source", "TEXT")] + SCHEMA[4:] + [("source", "TEXT")]
+NAMING = common.BY_SYMBOL._replace(date="session_date")   # a row is named by the symbol of its day
 
 # Seams: the FTP client class and the clock of a download (tests replace both).
 _ftp_factory = ftplib.FTP
@@ -207,7 +208,7 @@ class IbkrShortable:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {TABLE: common.build_keyed(ctx, con, NAME, TABLE, SERVED, partitions(parquet_dir(), "date"),
-                                          "snapshot_date", "snapshot_date, symbol", common.BY_SYMBOL)}
+                                          "snapshot_date", "snapshot_date, symbol", NAMING)}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         added, removed = base.compare_with_live(con, KIND, TABLE, ["snapshot_date", "symbol", "available", "fee_rate"])

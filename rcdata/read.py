@@ -33,7 +33,7 @@ NEVER_CHECKED = "never_checked"
 STATUS_UNKNOWN = "status_unknown"
 DATASET_OF_TABLE = {"market_series": "market_series", "spx_gamma_expiry_strike": "uw/spot_expiry_strike",
                     "spx_greek_expiry_strike": "uw/greek_expiry_strike",
-                    "economic_event": "uw/economic_calendar", "fda_event": "uw/fda_calendar",
+                    "economic_event": "public/economic_calendar", "fda_event": "public/fda_calendar",
                     "security": "spine/security", "security_history": "spine/security",
                     "gics_history": "spine/security", "index_membership": "funds/index_holdings",
                     "fund": "sec/company_tickers_mf", "etf_holdings": "funds/etf_holdings", "etf": "spine/security",
@@ -181,14 +181,15 @@ def market_series(series_ids: Iterable[str] = (), start=None, end=None, prefix: 
 
 
 def economic_calendar(snapshot_date=None) -> list[dict]:
-    """UW's economic calendar as of one snapshot day (default: the newest held), by event time.
+    """The economic calendar as of one snapshot day (default: the newest held), by event time: TradingView's and the
+    Fed's rows when that day has them, else UW's (market 6, #1433).
 
     A file built before market 3 has no ``economic_event``: that reads as no rows, not an error."""
     where, params = "snapshot_date = (SELECT max(snapshot_date) FROM economic_event)", []
     if snapshot_date is not None:
         where, params = "snapshot_date = ?", [_day(snapshot_date)]
-    return _rows("economic_event", f"SELECT * FROM economic_event WHERE {where} ORDER BY event_ts, event, type",
-                 params, missing_table_ok=True)
+    return _rows("economic_event", f"SELECT * FROM economic_event WHERE {where} AND {_ECON_PREFERRED} "
+                 "ORDER BY event_ts, event, type", params, missing_table_ok=True)
 
 
 def economic_events(fetched_after: float | None = None) -> list[dict]:
@@ -196,14 +197,23 @@ def economic_events(fetched_after: float | None = None) -> list[dict]:
     only the rows of newer fetches. Each snapshot day holds that day's newest fetch (``uw/economic_calendar``).
 
     A file built before market 3 has no ``economic_event``: that reads as no rows, not an error."""
-    sql, params = "SELECT * FROM economic_event", []
+    sql, params = f"SELECT * FROM economic_event WHERE {_ECON_PREFERRED}", []
     if fetched_after is not None:
-        sql, params = sql + " WHERE fetched_at > ?", [float(fetched_after)]
+        sql, params = sql + " AND fetched_at > ?", [float(fetched_after)]
     return _rows("economic_event", sql + " ORDER BY fetched_at, event_ts, event, type", params, missing_table_ok=True)
 
 
+#: Market 6 (#1433): a snapshot day that holds a keyless source's rows (TradingView, the Fed) is read from them, and
+#: UW's rows of that day are left out, so a board never sees one release twice under two names. A day only UW
+#: fetched reads as before. A file built before market 6 has every row from UW, so this reads it unchanged.
+_ECON_PREFERRED = ("(source <> 'uw' OR snapshot_date NOT IN "
+                   "(SELECT snapshot_date FROM economic_event WHERE source <> 'uw'))")
+#: The same rule for the FDA calendar: the SEC's and the Federal Register's rows of a day, else UW's.
+_FDA_PREFERRED = "(source <> 'uw' OR snapshot_date NOT IN (SELECT snapshot_date FROM fda_event WHERE source <> 'uw'))"
+
+
 def fda_calendar(snapshot_date=None) -> list[dict]:
-    """UW's FDA calendar as of one snapshot day (default: the newest held), by target date.
+    """The FDA calendar (the SEC's 8-Ks and the Federal Register, else UW; market 6, #1433) as of one snapshot day (default: the newest held), by target date.
 
     A row's ``target_date`` is the day its ``target_text`` resolves to, and ``target_precision`` says what the text
     said (``day``, ``quarter``, ``half``, ``mid``, ``late``), so a quarter is never read as a day.
@@ -212,8 +222,8 @@ def fda_calendar(snapshot_date=None) -> list[dict]:
     where, params = "snapshot_date = (SELECT max(snapshot_date) FROM fda_event)", []
     if snapshot_date is not None:
         where, params = "snapshot_date = ?", [_day(snapshot_date)]
-    return _rows("fda_event", f"SELECT * FROM fda_event WHERE {where} ORDER BY target_date, ticker, drug",
-                 params, missing_table_ok=True)
+    return _rows("fda_event", f"SELECT * FROM fda_event WHERE {where} AND {_FDA_PREFERRED} "
+                 "ORDER BY target_date, ticker, drug", params, missing_table_ok=True)
 
 
 def fda_events(fetched_after: float | None = None) -> list[dict]:
@@ -221,9 +231,9 @@ def fda_events(fetched_after: float | None = None) -> list[dict]:
     the rows of newer fetches. Each snapshot day holds that day's newest fetch (``uw/fda_calendar``).
 
     A file built before market 5 has no ``fda_event``: that reads as no rows, not an error."""
-    sql, params = "SELECT * FROM fda_event", []
+    sql, params = f"SELECT * FROM fda_event WHERE {_FDA_PREFERRED}", []
     if fetched_after is not None:
-        sql, params = sql + " WHERE fetched_at > ?", [float(fetched_after)]
+        sql, params = sql + " AND fetched_at > ?", [float(fetched_after)]
     return _rows("fda_event", sql + " ORDER BY fetched_at, target_date, ticker, drug", params,
                  missing_table_ok=True)
 
@@ -2385,23 +2395,28 @@ KIND_OF_TABLE.update({"read_answer": "sec_reads"})
 
 
 def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str | None = None,
-              model: str | None = None, raw: bool = False) -> list[dict]:
+              model: str | None = None, raw: bool = False,
+              statuses: Iterable[str] = ("ok", "partial")) -> list[dict]:
     """Per company the newest answer to ``question`` (``sec.read``), one each; a company with none is absent.
 
     An answer is current whoever wrote it, so every writer's rows are read: an answer under the question's current
     prompt version wins over any other, then the newest filing, then the newest asked. In a process that has not
     registered the question the prompt version is not known and the newest filing decides. ``provider`` / ``model`` narrow the read to
     one writer (a comparison). ``answer`` is the parsed JSON; only ``ok`` and ``partial`` rows are
-    answers. ``raw=False`` leaves the replies out.
+    answers. ``statuses`` widens the read to other rows (``no_text``: the service found no text to read).
+    ``raw=False`` leaves the replies out.
     """
     wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
     if not wanted or not question:
         return []
     from .build.sec_reads.questions import QUESTIONS
     q = QUESTIONS.get(str(question))
+    states = [str(x) for x in statuses]
+    if not states:
+        return []
     sql = (f"SELECT {'*' if raw else '* EXCLUDE (raw)'} FROM read_answer WHERE question = ? "
-           f"AND status IN ('ok', 'partial') AND cik IN ({', '.join('?' * len(wanted))})")
-    params: list = [str(question), *wanted]
+           f"AND status IN ({', '.join('?' * len(states))}) AND cik IN ({', '.join('?' * len(wanted))})")
+    params: list = [str(question), *states, *wanted]
     for col, value in (("provider", provider), ("model", model)):
         if value:
             sql += f" AND {col} = ?"

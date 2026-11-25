@@ -121,6 +121,8 @@ ICONS: dict[str, str] = {
               "14m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z M12 4l0 10 M12 19l0 1 M16 "
               "5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z M18 4l0 1 M18 11l0 9",
     "yfinance": "M4 19l16 0 M4 15l4 -6l4 2l4 -5l4 4",
+    # TradingView's public stock scanner, a chart site like Yahoo (the same Tabler ``chart-line``).
+    "tradingview": "M4 19l16 0 M4 15l4 -6l4 2l4 -5l4 4",
     "uw": "M16.69 7.44a6.973 6.973 0 0 0 -1.69 4.56c0 1.747 .64 3.345 1.699 4.571 M2 9.504c7.715 8.647 14.75 10.265 "
           "20 2.498c-5.25 -7.761 -12.285 -6.142 -20 2.504 M18 11v.01 M11.5 10.5c-.667 1 -.667 2 0 3",
     "alphavantage": "M4 5m0 2a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z M16 3l0 4 M8 3l0 4 "
@@ -141,6 +143,9 @@ ICONS: dict[str, str] = {
     "fed": "M3 21l18 0 M3 10l18 0 M5 6l7 -3l7 3 M4 10l0 11 M20 10l0 11 M8 14l0 3 M12 14l0 3 M16 14l0 3",
     "bls": "M3 7m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z M8 7v-2a2 2 0 0 1 2 -2h4a2 "
            "2 0 0 1 2 2v2 M12 12l0 .01 M3 13a20 20 0 0 0 18 0",
+    "tradingview": "M4 19l16 0 M4 15l4 -6l4 2l4 -5l4 4",                                  # Tabler ``chart-line``
+    "federalregister": "M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0 M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0 M3 6l0 13 M12 6l0 13 "
+                       "M21 6l0 13",                                                          # Tabler ``book``
 }
 
 
@@ -557,7 +562,7 @@ def _dataset_row(card: dict, ds, kind: str, universe_view: dict, now: datetime, 
         "since_words": since_words(card.get("schedule")),
         "backfill": card.get("backfill"), "calendar": name in CALENDARS,
         "recent": card.get("recent") or [], "samples": card.get("samples") or [],
-        "cross_check": name in ("alpaca/bars", "uw/total_float", "yfinance/float"),
+        "cross_check": name in ("alpaca/bars", "yfinance/float"),
         # #527: this source's own automation (None: as the file) and its file's, for the source's select
         "automation_own": own, "automation_file": file_mode if file_mode is not None else mode,
     }
@@ -602,13 +607,16 @@ def _pass_words(when: datetime, *, recurring: bool = False) -> str:
 
 def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, cadence: str | None, *,
                    attended: bool, starts_by_hand: bool, timer: dict | None, now: datetime,
-                   mode: str = "full", starts: time | None = None) -> str:
+                   mode: str = "full", starts: time | None = None, slot: dict | None = None,
+                   hours: tuple[int, ...] | None = None) -> str:
     """When the hourly pass first runs a dataset, by the rules of ``rcdata.build.due.is_due``.
 
     ``check`` is the newest check (``result``, ``checked_on``, ``next_check_due``), None when it never built; ``kind``
     the dataset's ``as_of_kind``; ``timer`` the hourly builder timer (``view["timer"]``); ``mode`` its serving kind's
     automation (``ops.KIND_MODES``); ``starts`` the New York time its day starts at when the dataset names one
-    (``due_from_ny``: the SEC reads' night check)."""
+    (``due_from_ny``: the SEC reads' night check); ``slot`` its start time (``ops.dataset_slot``), which a daily or
+    weekly dataset waits for (``due._slot_waits``); ``hours`` the Amsterdam hours its file is fetched at
+    (``due.fetch_hours``, avo 24 Nov 2026: a fetch time per DuckDB), None for every hour."""
     from revenuechaser.core import calendar
     from revenuechaser.rcdata.build import due
     schedule = schedule or {}
@@ -625,27 +633,43 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
     if timer.get("state") not in ("on", "off") or minute is None:
         return "next pass not known"
     prefix = "timer off · " if timer.get("state") == "off" else ""
+
+    def first(at: datetime) -> datetime:          # the first pass at or after ``at`` that takes the file
+        p = _first_pass(at, minute)
+        while hours and p.astimezone(LOCAL).hour not in hours:
+            p += timedelta(hours=1)
+        return p
     now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
     settle = (datetime.combine(date(2000, 1, 1), calendar.SESSION_CLOSE) + calendar.COMPLETE_MARGIN).time()
     starts = starts or (settle if kind == "latest_complete_session" else time(0, 0))
     cadence = cadence if cadence in due.CADENCES else due.DEFAULT_CADENCE
     day = None
-    if check is not None and (check.get("result") not in ("failed", "skipped") or due._stage_done(check, mode)):
+    ran = check is not None and (check.get("result") not in ("failed", "skipped") or due._stage_done(check, mode))
+    timed = ran and due.last_slot(slot, cadence, now) is not None
+    if ran:
         if cadence == "daily":
             day = _day(check.get("next_check_due"))
-            if day is None:
+            if day is None and not timed:
                 at = datetime.combine(now.astimezone(NY).date(), starts, tzinfo=NY)
-                return prefix + _pass_words(_first_pass(at, minute), recurring=True)
+                return prefix + _pass_words(first(at), recurring=True)
         elif cadence == "hourly":                  # due.is_due: due again within the hour of its last run
+            if hours:
+                return prefix + "at " + " and ".join(f"{h:02d}:{int(minute):02d}" for h in hours)
             return f"{prefix}every hourly pass (:{int(minute):02d})"
         else:
             checked = _day(check.get("checked_on"))
             day = checked + timedelta(days=due.CYCLE_DAYS[cadence]) if checked else None
-    if day is not None:
-        at = datetime.combine(day, starts, tzinfo=NY)
-        if at > now:
-            return prefix + _pass_words(_first_pass(at, minute))
-    return prefix + "due · " + _pass_words(_first_pass(now, minute))
+    at = datetime.combine(day, starts, tzinfo=NY) if day is not None else None
+    if timed:
+        # the first start after the last run and after the start was set; a daily one also after its next session
+        from revenuechaser.rcdata import ops
+        started = ops.run_started_at(check["run_id"]) if check.get("run_id") else None
+        since = max(float(slot.get("set_at") or 0), float(started or 0))
+        owed = due.first_slot(slot, cadence, datetime.fromtimestamp(since, timezone.utc) + timedelta(microseconds=1))
+        at = owed if cadence == "weekly" or at is None else max(owed, due.first_slot(slot, cadence, at))
+    if at is not None and at > now:
+        return prefix + _pass_words(first(at))
+    return prefix + "due · " + _pass_words(first(now))
 
 
 def since_words(schedule: dict | None) -> str:
@@ -1083,6 +1107,8 @@ def flow(file_views: list[dict], datasets: dict, reads: dict, universe_view: dic
 
 
 BUILDER_ENTRY = "RC-Build"
+#: The hourly pass that fetches a source since the split (avo, 24 Nov 2026): a source's "next run" is this timer's.
+FETCH_ENTRY = "RC-Store-Fetch"
 
 
 SYSTEM_TIMER_PROPS = ("LoadState", "ActiveState", "UnitFileState", "LastTriggerUSec", "NextElapseUSecRealtime")
@@ -1112,7 +1138,7 @@ def read_system_timer(unit: str, system=None) -> tuple[str | None, str | None, s
             automations._show_value(props.get("NextElapseUSecRealtime")))
 
 
-def read_timer(scheduler=None, system=None) -> dict:
+def read_timer(scheduler=None, system=None, entry: str = BUILDER_ENTRY) -> dict:
     """The hourly builder timer (``core.automations``' ``RC-Build`` row, unit ``life-rc-builder``): ``state`` "on"
     while the timer is active, "off" when disabled; ``last`` / ``next`` its passes; ``minute`` the minute of its
     ``OnCalendar``. The scheduler answers first; when it has no row (no user unit, or no scheduler on this host)
@@ -1120,10 +1146,10 @@ def read_timer(scheduler=None, system=None) -> dict:
     or a read that fails: every value None."""
     from revenuechaser.core import automations
     try:
-        e = automations.entry(BUILDER_ENTRY)
+        e = automations.entry(entry)
         minute = int(automations.on_calendar(e).split()[-1].split(":")[1])
         scheduler = scheduler or automations.get_scheduler()
-        st = scheduler.status(BUILDER_ENTRY)
+        st = scheduler.status(entry)
         if st is not None:
             return {"state": "off" if st.state == "disabled" else "on", "last": st.last_run,
                     "next": st.next_run, "minute": minute}
@@ -1148,7 +1174,7 @@ def _timer(reader) -> dict:
 # ── The whole board ───────────────────────────────────────────────────────────────────────────────────────────
 
 def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, now: datetime | None = None,
-          datasets: dict | None = None, timer=None, job_runs=None, kind_modes=None, switches=None,
+          datasets: dict | None = None, timer=None, fetch_timer=None, job_runs=None, kind_modes=None, switches=None,
           runs_now=None, cgroup=None, alive=None, dataset_modes=None) -> dict:
     """The page's model from ``newdata.collect``'s output. ``applied`` is the saved universe
     (``board_settings.values("module_settings")["values"]``), ``ibkr`` the gateway's login state, ``datasets`` the
@@ -1171,6 +1197,10 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
     provider_rows = _providers(nd)
     reads = readers()
     timer_view = _timer(timer)
+    # A source is fetched by the storage fetch, so its next run is that timer's; a test that hands in only ``timer``
+    # gets it for both
+    fetch_view = (timer_view if timer is not None and fetch_timer is None
+                  else _timer(fetch_timer or (lambda: read_timer(entry=FETCH_ENTRY))))
     longest_unread = False
     try:
         longest = longest_build(job_runs() if job_runs else _read_job_runs(now), now)
@@ -1195,7 +1225,7 @@ def build(nd: dict, *, applied: dict | None = None, ibkr: dict | None = None, no
                                alive or procs.pid_alive, now)
     except Exception:  # noqa: BLE001 - an unreadable store leaves the lines without a limit, never the board failing
         running = []
-    file_views = files(nd, datasets, uni, reads, now, timer_view, modes, ds_modes)
+    file_views = files(nd, datasets, uni, reads, now, fetch_view, modes, ds_modes)
     control_sources.attach_pv(file_views, datasets)
     return {
         "error": None,

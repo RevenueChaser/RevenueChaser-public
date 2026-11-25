@@ -113,6 +113,50 @@ def carry_live(con: duckdb.DuckDBPyConnection, ids: list[str], table: str = "pri
         con.execute("DETACH live_carry")
 
 
+def carry_reports(con: duckdb.DuckDBPyConnection, table: str = "wrds_price_diff") -> int:
+    """Copy the live file's older reports into the build's ``table`` (by column name): every live row whose
+    ``(comparison, as_of)`` the build does not hold, so a whole build keeps the ``as_of`` series instead of
+    starting it again (plan v2 step 3, #1413 P-C). A row with no ``as_of`` is no report and is not kept. The rows
+    copied; none with no live file or table."""
+    from ... import serving
+    live = serving.live_path(KIND)
+    if not live.exists():
+        return 0
+    con.execute(f"ATTACH {base.sql_path(live)} AS live_reports (READ_ONLY)")
+    try:
+        if not con.execute("SELECT count(*) FROM duckdb_tables() WHERE database_name = 'live_reports' "
+                           "AND table_name = ?", [table]).fetchone()[0]:
+            return 0
+        before = count(con, table)
+        con.execute(f'''INSERT INTO "{table}" BY NAME SELECT l.* FROM live_reports."{table}" l
+            WHERE l.as_of IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "{table}" b
+                  WHERE b.comparison = l.comparison AND b.as_of = l.as_of)''')
+        return count(con, table) - before
+    finally:
+        con.execute("DETACH live_reports")
+
+
+def carry_live_as(con: duckdb.DuckDBPyConnection, pairs: dict[str, str], table: str = "price_bar_daily") -> int:
+    """Copy the live file's ``table`` rows of each old id of ``pairs`` under its new id, for the sessions the build
+    holds no row of the new id for (the build's own row wins its session); the rows copied."""
+    from ... import serving
+    if not pairs:
+        return 0
+    con.execute("CREATE OR REPLACE TEMP TABLE _rekey (old_id TEXT, new_id TEXT)")
+    con.executemany("INSERT INTO _rekey VALUES (?, ?)", sorted(pairs.items()))
+    con.execute(f"ATTACH {base.sql_path(serving.live_path(KIND))} AS live_carry (READ_ONLY)")
+    try:
+        before = count(con, table)
+        con.execute(f'''INSERT INTO "{table}" BY NAME
+            SELECT l.* REPLACE (k.new_id AS security_id) FROM live_carry."{table}" l
+            JOIN _rekey k ON k.old_id = l.security_id
+            WHERE NOT EXISTS (SELECT 1 FROM "{table}" b WHERE b.security_id = k.new_id
+                              AND b.session_date = l.session_date)''')
+        return count(con, table) - before
+    finally:
+        con.execute("DETACH live_carry")
+
+
 def view(con: duckdb.DuckDBPyConnection, name: str, schema: list[tuple[str, str]], files=(),
          added_later=()) -> None:
     """``CREATE TEMP VIEW name`` over ``files`` (Parquet, by name), typed by ``schema``: what :func:`create` would

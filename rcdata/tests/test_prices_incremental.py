@@ -37,6 +37,7 @@ def _shrunk_build(where: str):
     con.execute(f"CREATE TABLE price_bar_daily AS SELECT * FROM l.price_bar_daily WHERE NOT ({where})")
     con.execute("DETACH l")
     con.execute("CREATE TABLE _gvkey_alias (gid TEXT, security_id TEXT)")
+    con.execute("CREATE TABLE stg_spine (security_id TEXT, cik TEXT, ticker TEXT)")      # the re-key rule reads it
     return con
 
 
@@ -286,4 +287,73 @@ def test_a_changed_alpaca_action_replaces_the_one_served(live, monkeypatch):
     row = _serve()
     assert [r["amount"] for r in _q("SELECT amount FROM corporate_action WHERE source = ?",
                                     [prices_serving.ALPACA_ACTIONS])] == [0.27]
+    _same_as_whole(monkeypatch, row)
+
+
+OLD_AAPL = "cik:320193:AAPL"
+
+
+def test_a_re_keyed_id_moves_to_its_spine_id_and_is_not_served_twice(live):
+    """#1413 / C3 option (a): the spine's night run of 22 Nov 2026 gave five names that had bars under
+    ``cik:<CIK>:<T>`` a ``gvkey:iid`` (BRRR, IBIT, NCIQ, XRPC, GBUG). The build fetched under the new id, found no bar
+    of the old one, and carried the old id back from the live file: the name served twice, two rows a session. Now
+    the old id is moved: the new id takes every live session it has none of, and the old id is not carried back."""
+    import duckdb
+    con = duckdb.connect(str(serving.live_path("prices")))
+    try:                                        # the live file serves AAPL under its old id too, a session earlier
+        con.execute(f"INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('{OLD_AAPL}' AS security_id) "
+                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
+        old_days = sorted(r[0] for r in con.execute(
+            "SELECT session_date FROM price_bar_daily WHERE security_id = ?", [OLD_AAPL]).fetchall())
+        # and a cik: id with no spine row of its CIK and ticker: a security no source returns, carried as before
+        con.execute("INSERT INTO price_bar_daily BY NAME SELECT * REPLACE ('cik:1:GONECO' AS security_id) "
+                    "FROM price_bar_daily WHERE security_id = ?", [AAPL])
+    finally:
+        con.close()
+    first = old_days[0]
+    # The build: the new id has every session but the oldest, the old id none (no source keys it any more).
+    build = _shrunk_build(f"security_id IN ('{OLD_AAPL}', 'cik:1:GONECO') "
+                          f"OR (security_id = '{AAPL}' AND session_date = '{first}')")
+    try:
+        build.execute("INSERT INTO stg_spine VALUES (?, '320193', 'AAPL')", [AAPL])
+        ctx = base.RunContext(run_id="t", dataset=prices_serving.NAME)
+        prices_serving._refuse_shrink(ctx, build)
+        assert build.execute("SELECT count(*) FROM price_bar_daily WHERE security_id = ?",
+                             [OLD_AAPL]).fetchone()[0] == 0, "the old id came back: served twice"
+        new_days = sorted(r[0] for r in build.execute(
+            "SELECT session_date FROM price_bar_daily WHERE security_id = ?", [AAPL]).fetchall())
+        assert new_days == old_days                                         # the oldest session moved over
+        assert any("re-keyed" in n and f"{OLD_AAPL} -> {AAPL}" in n for n in ctx.notes), ctx.notes
+        assert build.execute("SELECT count(*) FROM price_bar_daily WHERE security_id = 'cik:1:GONECO'"
+                             ).fetchone()[0] > 0                            # the un-re-keyed id is carried
+    finally:
+        build.close()
+
+
+NEWF_FIGI = "figi:BBG00NEWF0X1"
+
+
+def test_a_yahoo_name_the_spine_picks_up_moves_to_its_new_id(live, monkeypatch):
+    """Review N2, avo's D1 (24 Nov 2026, "Yeni id'ye taşı"): NEWF, a fund only Yahoo prices, is served under the id
+    the fetch saw (``sym:NEWF``). The spine then gives it its own id: Yahoo's rows are served under that id, nothing
+    keys the old one any more, and the build carried ``sym:NEWF`` back frozen, one fund under two ids. Now the old id's
+    bars move to the new id, as C3 moves a re-keyed ``cik:`` id."""
+    from revenuechaser.rcdata.build.prices import yahoo_bars
+
+    from .test_prices_wrds import _spine_etf_table
+    days = ["2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27"]
+    answer = [{"date": d, "open": 8.0, "high": 8.0, "low": 8.0, "close": 8.0, "volume": 1000.0, "split": 0}
+              for d in days]
+    monkeypatch.setattr(yahoo_bars, "_lookup", lambda t: [dict(r) for r in answer])
+    _spine_etf_table([("NEWF", 5e9)])
+    row = base.run_request({"dataset": yahoo_bars.NAME, "params": {"as_of": "2026-10-27", "names": ["NEWF"]}})
+    assert row["result"] != "failed", row
+    assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = 'sym:NEWF'")) == len(days)
+    _respine(SPINE + [{"ticker": "NEWF", "cik": None, "name": "NEW FUND", "exchange": "NYSE", "tier": "B",
+                       "security_type": "etf", "gvkey": None, "iid": None, "composite_figi": NEWF_FIGI[5:]}])
+    _spine_etf_table([("NEWF", 5e9)])
+    row = _serve()
+    assert not _q("SELECT 1 FROM price_bar_daily WHERE security_id = 'sym:NEWF'"), "the old id is still served"
+    assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [NEWF_FIGI])) == len(days)
+    assert f"sym:NEWF -> {NEWF_FIGI}" in _note(row), _note(row)
     _same_as_whole(monkeypatch, row)

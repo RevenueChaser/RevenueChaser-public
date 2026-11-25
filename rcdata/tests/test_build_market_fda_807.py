@@ -51,8 +51,9 @@ def test_the_calendar_lands_typed_and_reads_back(http_mock):
         date(2026, 11, 20), date(2026, 12, 4), "IOVA", "Lifileucel")
     assert r["catalyst"] == "PDUFA Date" and r["indication"] == "Advanced Melanoma"
     # UW's own ``status`` is served as ``application_status``: ``read`` keeps ``status`` for the dataset's
-    # freshness and stamps it on every row it hands back.
-    assert r["application_status"] == "NDA" and r["status"] == "changed"
+    # freshness and stamps it on every row it hands back. That freshness is the keyless feed's since UW was switched
+    # off (#1433): a run of UW alone leaves it unchecked.
+    assert r["application_status"] == "NDA" and r["status"] == read.NEVER_CHECKED
     assert r["target_text"] == "2026-12-04" and r["target_precision"] == fda.DAY
     assert r["has_options"] is True and r["marketcap"] == 1_000_000_000.0
     assert r["outcome"] is None and r["source_link"].startswith("https://www.fda.gov/")
@@ -132,10 +133,10 @@ def test_no_market_file_reads_as_no_rows():
 
 def test_the_dataset_is_an_hourly_market_source_and_the_kind_is_market_5(http_mock):
     from revenuechaser.rcdata import scaffold
-    assert serving.SERVING_SCHEMA_VERSION["market"] == 5
+    assert serving.SERVING_SCHEMA_VERSION["market"] >= 5      # 6 since #1433: ``source`` joined the key
     assert DATASETS[fda.NAME].cadence == "hourly" and DATASETS[fda.NAME].kind == "market"
     assert scaffold.SCHEMA_OF_KIND["market"][fda.TABLE] == list(fda.SCHEMA)
-    assert read.DATASET_OF_TABLE[fda.TABLE] == fda.NAME and read.KIND_OF_TABLE[fda.TABLE] == "market"
+    assert read.DATASET_OF_TABLE[fda.TABLE] == "public/fda_calendar" and read.KIND_OF_TABLE[fda.TABLE] == "market"
 
 
 def test_an_hourly_dataset_is_due_again_an_hour_after_its_run(http_mock, monkeypatch):
