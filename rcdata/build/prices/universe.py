@@ -122,6 +122,13 @@ ETF_TIC_RECENT_DAYS = 14
 #: the one priced most recently, then the larger dollar volume on that day, then the lower id. More than one is the
 #: ``universe_etf_ticker_shared`` issue: two stored would give the fund two rows per session in ``price_bars_daily``,
 #: each its own key, and no check would see it (review D1 of #420).
+#:
+#: A claimed series must also reach the fund's **own** trading window (``_etf_own_start``, review S1 / #1510): a
+#: series whose newest priced day falls before the first session the fund's own ticker was ever seen trading is the
+#: earlier fund of a reused ticker, and its whole history would be served as this fund's. The recent window alone
+#: does not stop it: the earlier fund can have stopped trading days before the new one started. The claim is dropped
+#: rather than cut by date, so the fund keeps one id -- its own -- with the bars its own sources give (Grok round 2:
+#: a date cut cannot tell a reused ticker from a fund's own pre-coverage days).
 ETF_TIC_SERIES_SQL = f"""
     WITH newest AS (SELECT max(datadate) AS day FROM stg_wrds_secd WHERE {secd.PRICED}
                     AND datadate <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')),
@@ -135,7 +142,8 @@ ETF_TIC_SERIES_SQL = f"""
            row_number() OVER (PARTITION BY s.tic ORDER BY s.datadate DESC, s.dollars DESC NULLS LAST, s.gid) AS pick
     FROM series s
     WHERE s.tic IN (SELECT tic FROM routeless)
-      AND s.gid NOT IN (SELECT security_id FROM stg_spine WHERE security_id IS NOT NULL)"""
+      AND s.gid NOT IN (SELECT security_id FROM stg_spine WHERE security_id IS NOT NULL)
+      AND NOT EXISTS (SELECT 1 FROM _etf_own_start o WHERE o.tic = s.tic AND s.datadate < o.first_day)"""
 #: ``security_id IN`` the universe, the filter every stored source goes through.
 IN_UNIVERSE = "{sid} IN (SELECT security_id FROM _universe)"
 
