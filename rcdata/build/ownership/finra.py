@@ -51,6 +51,7 @@ SCHEMA = [("settlement_date", "DATE"), ("symbol", "TEXT"), ("issue_name", "TEXT"
           ("split_flag", "TEXT"), ("revision_flag", "TEXT"), ("source_symbol", "TEXT"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 SERVED = SCHEMA[:2] + [("ticker", "TEXT"), ("ticker_source", "TEXT")] + SCHEMA[2:] + [("source", "TEXT")]
+NAMING = common.BY_SYMBOL._replace(date="settlement_date")   # a row is named by the symbol of its day
 # FINRA's field names, by the column each one fills.
 FIELDS = {"issue_name": "issueName", "market_class": "marketClassCode",
           "current_short": "currentShortPositionQuantity", "previous_short": "previousShortPositionQuantity",
@@ -222,7 +223,7 @@ class FinraShortInterest:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {TABLE: common.build_keyed(ctx, con, NAME, TABLE, SERVED, partitions(parquet_dir(), "date"),
-                                          "settlement_date", "settlement_date, symbol", common.BY_SYMBOL)}
+                                          "settlement_date", "settlement_date, symbol", NAMING)}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         cols = ["settlement_date", "symbol", "ticker", "current_short", "days_to_cover"]

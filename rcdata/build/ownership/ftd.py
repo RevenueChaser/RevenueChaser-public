@@ -51,6 +51,7 @@ SCHEMA = [("settlement_date", "DATE"), ("cusip", "TEXT"), ("symbol", "TEXT"), ("
           ("quantity", "BIGINT"), ("description", "TEXT"), ("price", "DOUBLE"), ("half", "TEXT"),
           ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 SERVED = SCHEMA[:3] + [("ticker", "TEXT"), ("ticker_source", "TEXT")] + SCHEMA[3:] + [("source", "TEXT")]
+NAMING = common.BY_SYMBOL._replace(date="settlement_date")   # a row is named by the symbol of its day
 
 
 def half_of(d: date) -> str:
@@ -260,7 +261,7 @@ class SecFtd:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {TABLE: common.build_keyed(ctx, con, NAME, TABLE, SERVED, partitions(parquet_dir(), "half"),
-                                          "half", "settlement_date, cusip, symbol", common.BY_SYMBOL)}
+                                          "half", "settlement_date, cusip, symbol", NAMING)}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         added, removed = base.compare_with_live(con, KIND, TABLE, ["settlement_date", "cusip", "symbol", "quantity"])
