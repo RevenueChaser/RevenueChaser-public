@@ -112,6 +112,16 @@ def test_n3_allow_shrink_reaches_the_request(monkeypatch):
     assert seen[1]["params"]["allow_shrink"] is True
 
 
+def test_allow_shrink_table_reaches_the_request_by_name(monkeypatch):
+    from revenuechaser.rcdata.build import base
+    seen = []
+    monkeypatch.setattr(base, "run_request", lambda req, **kw: (seen.append(req), ops.latest_check("x") or {
+        "dataset": req["dataset"], "result": "changed", "source_as_of": None, "rows": 0, "added": 0,
+        "removed": 0, "calls": 0, "note": None})[1])
+    assert cli.main(["run", "--once", "--dataset", "market_series", "--allow-shrink-table", "market_series"]) == 0
+    assert seen[0]["params"] == {"allow_shrink_tables": ["market_series"]}
+
+
 def test_f5_allow_shrink_or_as_of_without_a_dataset_is_an_error(capsys):
     import pytest
     for argv in (["run", "--once", "--allow-shrink"], ["run", "--once", "--as-of", "2026-10-27"]):
