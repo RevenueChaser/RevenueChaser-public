@@ -55,7 +55,7 @@ class Input:
     rules_version: str = ""
     #: What decides staleness when it is not ``text`` itself: the text without its context lines, so a reclassified
     #: sector or a re-extracted customer list does not pay for the answer again (the Relatedness rule,
-    #: ``module_relatedness.profiles.input_hash``).
+    #: ``rcdata.sec_profile_input``).
     hash_text: str | None = None
     #: What was read (``section:business``, ``whole:120000``, ``note:DebtDisclosureTextBlock``) and the filing's form,
     #: so a fallback is visible on the answer.

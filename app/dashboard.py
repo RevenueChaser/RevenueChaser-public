@@ -292,7 +292,6 @@ jobs.register("module_value_chain", runners.run_value_chain, ["module_value_chai
 # ``job_control`` checkpoint, so it is not cancellable.
 jobs.register("module_relatedness", runners.run_relatedness, ["module_relatedness"], requires_uw=False, lane="long")
 # The Relatedness writer comparison (#370): one provider + model on at most 100 names, no board table written.
-jobs.register("relatedness_compare", runners.run_relatedness_compare, [], requires_uw=False, lane="long")
 # Implied Probability (decision B): store-only, reads the nightly options build.
 jobs.register("module_oipd", runners.run_oipd, ["module_oipd"], requires_uw=False)
 # News (S9, S16): store-only; builds boards/news.duckdb from market.economic_event, then renders.
@@ -894,31 +893,6 @@ def run_earnings():
     if err:
         return err
     return _submit("earnings", params)
-
-
-@app.route("/run/relatedness-compare", methods=["POST"])
-def run_relatedness_compare():
-    """Queue the writer comparison (#370): JSON ``{provider, model, tickers}``, checked before anything is queued."""
-    from revenuechaser.core import llm_writers as writers
-    from revenuechaser.module_relatedness import compare
-
-    body = request.get_json(silent=True) or {}
-    provider, model, raw = body.get("provider"), body.get("model"), body.get("tickers")
-    names = [t.strip().upper() for t in raw if isinstance(t, str)] if isinstance(raw, list) else []
-    bad = isinstance(raw, list) and (len(names) != len(raw) or not all(_valid_ticker(t) for t in names))
-    names = list(dict.fromkeys(t for t in names if t))     # one run per name (review nit)
-    error = None
-    if not isinstance(provider, str) or provider not in writers.WRITERS:
-        error = f"provider must be one of {', '.join(writers.WRITERS)}"
-    elif not isinstance(model, str) or model not in writers.get(provider).models:
-        error = f"model must be one of {provider}'s: {', '.join(writers.get(provider).models)}"
-    elif bad or not names or len(names) > compare.MAX_NAMES:
-        error = f"tickers must be a list of 1 to {compare.MAX_NAMES} ticker symbols"
-    elif writers.missing_text(provider):
-        error = f"{provider} cannot run: {writers.missing_text(provider)}"
-    if error:
-        return jsonify({"ok": False, "error": error}), 400
-    return _submit("relatedness_compare", {"provider": provider, "model": model, "tickers": names})
 
 
 #: Why the LEAPS Fetch answers 409 instead of starting a scan (#730).

@@ -5,15 +5,12 @@ report (``rcdata/sec_profile.py``, prompt ``v3d``); the Relatedness and Value Ch
 ``business.locate`` asks where that section is, from the document's heading list, for a filing whose rule cut is
 suspect (``rcdata/sec_locator.py``); only ``company.profile`` reads its answer.
 
-**Both are registered** by ``rcdata.build`` (:func:`register_all`; the owner's word, 16 Nov 2026). The stored
-Relatedness profiles are imported first (``module_relatedness/service_import.py``). Until they are, a run asks
-nothing by itself: a question with no ``ok`` answer under its prompt is on its first pass, which waits for
-``reread`` (``reads.stale_reason``).
+**Both are registered** by ``rcdata.build`` (:func:`register_all`; the owner's word, 16 Nov 2026). A question with
+no ``ok`` answer under its prompt is on its first pass, which waits for ``reread`` (``reads.stale_reason``).
 
-What is sent is what the Relatedness board sends today for the same filing, byte for byte; a test asks both and
-compares the requests (``module_relatedness/tests/test_service_profile_bytes.py``). The board's own input code stays
-in ``module_relatedness/engine.py`` until the board reads the service; until then the two are kept equal by that
-test.
+The one-off import of the Relatedness board's stored profiles ran with #894 step 3b and its module is gone with the
+board's own writer (#1520), as is the test that compared the two requests byte for byte: there is only one request
+now, and the input code it sends is this service's own (``rcdata/sec_profile_input.py``).
 
 **One company's text at a time.** ``inputs`` returns each company's staleness hash and filing, never its text
 (``Input.hash``); ``fill`` reads the text of the one company being asked.
@@ -41,7 +38,7 @@ logger = logging.getLogger(__name__)
 PROFILE_ID, LOCATE_ID = "company.profile", "business.locate"
 OWNER = "sec_reads"
 #: The rule version the business sections must be cut with before anything is asked: a run on another cut would be
-#: paid for again once ``sec/forms`` re-cuts (``module_relatedness.config.FORMS_RULES_VERSION``).
+#: paid for again once ``sec/forms`` re-cuts (the Relatedness board's own rule until #1520).
 FORMS_RULES_VERSION = sec_forms_label.forms_rows_version()
 #: The most of a business section a profile reads, or None for no cap (the owner's choice, 13 Nov 2026).
 MAX_BUSINESS_CHARS: int | None = None

@@ -99,7 +99,8 @@ def _summary(**kwargs) -> str:
 def _free_run(provider: str, chosen, limit: int | None, model: str | None = None) -> int:
     """``--run`` with EVREN (#360): the summary names the provider, the model and the calls (0 USD
     each). ``limit`` caps the calls; none by default (avo, 2 Nov 2026)."""
-    mod = engine.profiles_mod.llm(provider)
+    from revenuechaser.core import llm_writers
+    mod = llm_writers.client(provider)
     before = mod.calls()
     try:
         payload = engine.run(tickers=chosen, provider=provider, max_calls=limit, **_model_kw(model))

@@ -26,10 +26,10 @@ A reader that the boards' filters call keeps its caller's lenience: ``core.unive
 contract (:func:`pinned_run_id`), because the guards that refuse to rebuild or prune the current run must not read
 a failure as "no current run".
 
-The eleven tables (``core/rawstore.py`` owns their columns, ``docs/data_architecture.md`` the contract):
+The nine tables (``core/rawstore.py`` owns their columns, ``docs/data_architecture.md`` the contract). It was
+eleven until #1520: ``relatedness_profiles`` and ``relatedness_attributes`` were the board's own profile writer's,
+and the profile is the SEC reading service's answer now (#894 step 3b), read where it is and copied nowhere.
 
-- ``relatedness_profiles`` one row per ticker: the profile text the model wrote, and ``profile_json``.
-- ``relatedness_attributes`` the tags parsed out of a profile, one row per ``(ticker, attribute)``.
 - ``relatedness_embeddings`` one row per ticker: the profile's vector, as bytes.
 - ``relatedness_scores`` the board's peer rows.
 - ``theme_runs`` one row per theme run; exactly one carries ``is_current = 1`` (the pinned run).
@@ -51,10 +51,8 @@ from revenuechaser.core import rawstore
 #: The board's DuckDB file, as ``rawstore`` names it.
 DB = "relatedness"
 
-#: The eleven table names. Every reader here, every writer in the board and every caller outside it takes them
+#: The nine table names. Every reader here, every writer in the board and every caller outside it takes them
 #: from this module, so a rename is a change to one file (the point of #217).
-PROFILES = "relatedness_profiles"
-ATTRIBUTES = "relatedness_attributes"
 EMBEDDINGS = "relatedness_embeddings"
 SCORES = "relatedness_scores"
 THEME_RUNS = "theme_runs"

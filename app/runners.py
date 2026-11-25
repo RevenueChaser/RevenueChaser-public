@@ -1106,20 +1106,6 @@ def _value_chain_layer_message(payload: dict) -> str:
     return msg + "."
 
 
-def run_relatedness_compare(uw=None, provider: str = "", model: str = "", tickers: list | None = None) -> None:
-    """The writer comparison (#370): ``tickers`` (at most 100) with one provider + model; no board table is written.
-    The counts are the job's message; the scores file is under ``.cache/research/360/``."""
-    from revenuechaser.core import job_lock
-    from revenuechaser.module_relatedness import compare
-
-    # The Relatedness Fetch's lock (PR 371 review S3): a comparison never spends beside a scheduled run.
-    with job_lock.acquire("relatedness", wait=0) as got:
-        if not got:
-            raise JobMessage("Another Relatedness run is already in progress; the comparison did not start.")
-        out = compare.run(list(tickers or []), provider=provider, model=model)
-    raise JobMessage(json.dumps(out, ensure_ascii=False))
-
-
 def _write_relatedness_peers(peers: dict) -> None:
     """One ``{"peers": [...]}`` file per focal ticker: the board fetches only the one it shows (a whole-board
     list inlined was 32 of the page's 35 MB). Built in a sibling folder and swapped in, so no stale ticker stays."""

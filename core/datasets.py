@@ -200,10 +200,16 @@ REGISTRY: tuple[DatasetSpec, ...] = (
         freshness=NO_CLAIM,
     ),
     DatasetSpec(
-        key="relatedness", label="Relatedness profiles",
-        tables=("relatedness_profiles", "relatedness_scores", "relatedness_attributes", "relatedness_embeddings"),
+        key="relatedness", label="Relatedness scores and vectors",
+        tables=("relatedness_scores", "relatedness_embeddings"),
         db="relatedness", source=Source.derived, writer="RC-Relatedness-OffPeak",
-        freshness=("relatedness_profiles", "fetched_at"),
+        # It was ``relatedness_profiles.fetched_at`` until #1520. The profiles are the SEC reading service's
+        # answers now, read where they are and copied nowhere (#894 step 3b), and both of the board's own profile
+        # tables are retired; neither of the two tables left carries a timestamp, so the producing run is the only
+        # claim this dataset can make. The service's own answers have their own freshness, under ``sec_reads``.
+        freshness=FROM_RUN_LOG,
+        freshness_note=FROM_RUN_LOG_CAVEAT,
+        writer_note="the profiles it scores are the SEC reading service's company.profile answers (#894, #1520)",
     ),
 
     # Watch lists (#786, avo 12 Nov 2026): his own named lists in boards/watchlists.duckdb, typed by hand. Its own

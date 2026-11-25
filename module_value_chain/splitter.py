@@ -32,8 +32,9 @@ from __future__ import annotations
 from ..rcdata import sec_sections as _rule
 
 #: The version of the cut this board reads. See the module docstring for why it is pinned and not taken by default.
-#: Moving it moves the cut, the labels (:func:`cut_flag` is handed this same constant by both stores) and what
-#: ``module_relatedness.locator.asks()`` pays a model to re-cut, so it moves with a re-slice and nothing else.
+#: Moving it moves the cut and the labels (:func:`cut_flag` is handed this same constant by both stores), so it
+#: moves with a re-slice and nothing else. The locator that paid a model to re-cut was the board's own and is
+#: gone (#1520); the SEC reading service has its own (``rcdata/sec_locator.py``).
 VERSION = _rule.OURS_2
 
 # The rule's own helpers, re-exported for the callers and tests that read them (``_LINE_START`` is asserted on

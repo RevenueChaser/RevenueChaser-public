@@ -68,7 +68,10 @@ class Job:
 
 JOBS: dict[str, Job] = {
     j.id: j for j in (
-        Job("relatedness.profiles", "Relatedness · company profiles", "module_relatedness/profiles.py"),
+        # The Relatedness board called this writer itself until #1520; the SEC reading service owns the profile
+        # now (#894 step 3b), so the picker only sets what the board's CLI banner and its Fetch report. Taking the
+        # card off the Settings screen is a Settings-board change of its own, so the job stays.
+        Job("relatedness.profiles", "Relatedness · company profiles", "module_relatedness/settings.py"),
         # Theme naming had no picker and a fixed paid import until #404 (``module_relatedness/naming.py``).
         Job("relatedness.naming", "Relatedness · theme naming", "module_relatedness/naming.py"),
         # The SEC reading service's three questions. One switch set all three before #404; it still sets their

@@ -137,7 +137,7 @@ def complete(system: str, user: str, *, thinking: bool = False,
              validate: Callable[[str], bool] | None = None,
              model: str | None = None, usage: dict | None = None) -> str:
     """One chat completion: cache, then the key, then HTTP. ``thinking`` / ``reasoning_effort`` / ``now`` are
-    accepted for the writer signature (``module_relatedness.profiles``) and not sent. ``model`` is the board's
+    accepted for the writer signature and not sent. ``model`` is the board's
     (#360), else ``MODEL``; it is a parameter, never a module-level swap."""
     model = model or MODEL
     key = _cache_key(system, user, model)
