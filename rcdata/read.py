@@ -2395,23 +2395,28 @@ KIND_OF_TABLE.update({"read_answer": "sec_reads"})
 
 
 def sec_reads(ciks: Iterable = (), question: str | None = None, *, provider: str | None = None,
-              model: str | None = None, raw: bool = False) -> list[dict]:
+              model: str | None = None, raw: bool = False,
+              statuses: Iterable[str] = ("ok", "partial")) -> list[dict]:
     """Per company the newest answer to ``question`` (``sec.read``), one each; a company with none is absent.
 
     An answer is current whoever wrote it, so every writer's rows are read: an answer under the question's current
     prompt version wins over any other, then the newest filing, then the newest asked. In a process that has not
     registered the question the prompt version is not known and the newest filing decides. ``provider`` / ``model`` narrow the read to
     one writer (a comparison). ``answer`` is the parsed JSON; only ``ok`` and ``partial`` rows are
-    answers. ``raw=False`` leaves the replies out.
+    answers. ``statuses`` widens the read to other rows (``no_text``: the service found no text to read).
+    ``raw=False`` leaves the replies out.
     """
     wanted = sorted({_cik(c) for c in ciks if str(c or "").strip()})
     if not wanted or not question:
         return []
     from .build.sec_reads.questions import QUESTIONS
     q = QUESTIONS.get(str(question))
+    states = [str(x) for x in statuses]
+    if not states:
+        return []
     sql = (f"SELECT {'*' if raw else '* EXCLUDE (raw)'} FROM read_answer WHERE question = ? "
-           f"AND status IN ('ok', 'partial') AND cik IN ({', '.join('?' * len(wanted))})")
-    params: list = [str(question), *wanted]
+           f"AND status IN ({', '.join('?' * len(states))}) AND cik IN ({', '.join('?' * len(wanted))})")
+    params: list = [str(question), *states, *wanted]
     for col, value in (("provider", provider), ("model", model)):
         if value:
             sql += f" AND {col} = ?"
