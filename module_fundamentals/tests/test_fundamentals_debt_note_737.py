@@ -70,9 +70,9 @@ def test_a_note_that_fails_a_guard_is_not_used(bad):
 def test_a_note_total_its_years_interest_could_not_be_paid_on_is_a_scale_error(field):
     """IPGP (review plan step 4, 25 Nov 2026): a note in thousands read as dollars gave 1,060 USD of debt for a
     company paying interest on 17.2 m. Interest above a quarter of the total is not a loan rate; the note is not used."""
-    rec = year(interest_expense=None, **{field: 201.0})[0]
+    rec = year(**{"interest_expense": None, field: 201.0})[0]
     assert debt.note_debt(rec, note()) is None
-    assert debt.note_debt(year(interest_expense=None, **{field: 200.0})[0], note()) == 800.0
+    assert debt.note_debt(year(**{"interest_expense": None, field: 200.0})[0], note()) == 800.0
 
 
 def test_a_52_53_week_year_end_a_few_days_off_still_matches():
