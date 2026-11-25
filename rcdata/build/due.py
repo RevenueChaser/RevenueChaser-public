@@ -241,13 +241,12 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     return False, f"{cadence}: last checked {age} days ago"
 
 
-#: The Amsterdam hours the storage fetch takes a kind's sources at, for a kind that is built on a timer of its own
-#: (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each before its build at 09:25 and 00:25, not hourly). A
-#: fetch that failed tries once more the next hour, before that build. A kind's row in ``ops.kind_fetch_hours`` (set
-#: from Grafana, avo 24 Nov 2026: "fetch timer duckdb bazli olmali") wins over this table; a kind in neither is
-#: fetched every hour.
-FETCH_HOURS = {"market": (7, 22)}
 #: The minute of the storage fetch timer (home-server ``life-rc-store-fetch.timer``, ``*:45`` Europe/Amsterdam).
+#: Which of those ticks take a kind's sources is the kind's own row in ``ops.kind_fetch_hours``, set from Grafana
+#: (avo, 24 Nov 2026: "fetch timer duckdb bazli olmali"); a kind with no row is fetched every hour. There is no
+#: second, code-side table of hours: market's ``(7, 22)`` lived in a ``FETCH_HOURS`` constant here until its row was
+#: seeded live on 25 Nov 2026, and a kind's hours now have one home. A fetch that failed tries once more the next
+#: hour, before that kind's build.
 FETCH_MINUTE = 45
 
 
@@ -266,13 +265,11 @@ def parse_hours(text) -> tuple[int, ...]:
 
 
 def fetch_hours(kind: str) -> tuple[tuple[int, ...] | None, str]:
-    """``(hours, source)``: the kind's row, else ``FETCH_HOURS``, else ``(None, "every hour")``. A row that does not
-    parse raises: a fetch must never fall back to every hour because its hours were unreadable."""
+    """``(hours, source)``: the kind's row, else ``(None, "every hour")``. A row that does not parse raises: a fetch
+    must never fall back to every hour because its hours were unreadable."""
     row = ops.fetch_hours_get(kind)
     if row is not None:
         return parse_hours(row["hours"]), "kind_fetch_hours"
-    if kind in FETCH_HOURS:
-        return tuple(FETCH_HOURS[kind]), "FETCH_HOURS"
     return None, "every hour"
 
 

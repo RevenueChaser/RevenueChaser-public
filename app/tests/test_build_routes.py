@@ -442,11 +442,13 @@ def test_a_duckdbs_fetch_hours_are_set_from_the_panel_and_every_hour_drops_the_r
     assert client.post("/api/build/fetch-hours/nope", json={"hours": [7]}, headers=head).status_code == 400
     r = client.post(url, json={"hours": "every"}, headers=head)
     assert r.status_code == 200 and ops.fetch_hours_get("market") is None
-    assert r.get_json()["source"] == "FETCH_HOURS", "every hour is the code's own hours while it names the kind"
+    assert r.get_json()["source"] == "every hour", "no row is every hour: the hours live only in the row"
 
 
 def test_the_kinds_rows_create_nothing_and_name_their_source(client):
     rows = {k["kind"]: k for k in client.get("/api/build/kinds").get_json()["kinds"]}
-    assert rows["market"]["hours"] == [7, 22] and rows["market"]["source"] == "FETCH_HOURS"
+    ops.fetch_hours_set("market", "7,22")
+    rows["market"] = {k["kind"]: k for k in client.get("/api/build/kinds").get_json()["kinds"]}["market"]
+    assert rows["market"]["hours"] == [7, 22] and rows["market"]["source"] == "kind_fetch_hours"
     assert rows["spine"]["hours"] is None and rows["spine"]["next_fetch"].endswith(("+01:00", "+02:00"))
     assert rows["spine"]["switch_on"] is True and ops.fetch_hours_get("spine") is None
