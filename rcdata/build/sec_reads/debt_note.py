@@ -1,11 +1,14 @@
 """The question ``debt.note`` (#737): the scope and the inputs; the prompt and parse are ``rcdata/sec_debt_note.py``.
 
-**Scope.** A company of the classification universe (``company_profile.companies``, the boards' operating-only set),
-outside the two sectors the Fundamentals board never scores, whose newest annual record in the facts layer has no
-``total_debt``. The debt note itself narrows it further: a company with no allowed debt block (see
-``sec_debt_note.choose``), a 40-F, or a combined registrant gets a ``no_text`` row and no call. The board's own
-"debt-free" reading is not repeated here: a filer that tags nothing and pays no interest seldom carries a debt
-note, and when it does, the note is the better answer (``module_fundamentals.debt``: filed > note > inferred).
+**Scope** (avo, 16 Nov 2026, decision 1, kept on 24 Nov 2026 23:43, card D2 "A"). A company of the classification
+universe (``company_profile.companies``, the boards' operating-only set), outside the two sectors the Fundamentals
+board never scores, whose newest annual record in the facts layer has no ``total_debt``, tags no long-term or whole
+debt line (:data:`NONCURRENT_LINES`; those wait for #830's fallback flag) and **either** tags a current or short-term
+line (:data:`CURRENT_LINES`) **or** reports interest above :data:`INTEREST_FLOOR_USD`. Measured 25 Nov 2026 on homesrv
+(review plan step 2): of 971 ``no_text`` companies under the old, wider scope, 668 tagged nothing and paid no
+interest and 108 had a total by then, so their missing note was the right answer. The debt note narrows it further:
+a company with no allowed debt block (see ``sec_debt_note.choose``), a 40-F, or a combined registrant gets a
+``no_text`` row and no call.
 
 **Registered by ``rcdata.build``** (:func:`register_all`, after ``company_profile``'s two, so it runs last), so the
 board's reader knows the current prompt version. Nothing is asked by that alone: the dataset ``starts_by_hand``, its automation is off, and a question's first pass waits for a
@@ -24,7 +27,7 @@ import logging
 
 from ... import read, sec_debt_note as note
 from .. import base
-from ..fundamentals import common
+from ..fundamentals import common, facts
 from . import company_profile
 from .questions import Input, Question, register, writer_for
 
@@ -40,6 +43,15 @@ EXCLUDED_SECTORS = ("Financial Services", "Real Estate")
 MAX_CALLS = 200
 #: Companies whose note rows one read holds at once.
 BATCH = 200
+#: Decision 1's lines. A current or short-term line alone gives no total (``facts`` docstring), so its filer owes an
+#: amount the facts cannot sum. ``rcdata`` imports no board module, so the floor and the interest labels are copied
+#: from ``module_fundamentals.debt`` (``INTEREST_FLOOR_USD``, ``INTEREST_FIELDS``).
+CURRENT_LINES = ("debt_current", "lt_debt_current", "short_term_borrowings", "convertible_debt_current") \
+    + facts.FALLBACK_CURRENT_DEBT + facts.FALLBACK_SHORT_TERM_DEBT
+NONCURRENT_LINES = tuple(f for f in facts.DEBT_LINES if f not in CURRENT_LINES) \
+    + facts.FALLBACK_WHOLE_DEBT + facts.FALLBACK_LONG_TERM_DEBT
+INTEREST_FIELDS = ("interest_expense", "interest_expense_borrowings", "interest_expense_other")
+INTEREST_FLOOR_USD = 100_000.0
 
 
 def _ready() -> None:
@@ -48,10 +60,19 @@ def _ready() -> None:
         raise base.SourceError(f"{ID}: {why}; nothing is asked")
 
 
+def _in_scope(fields: dict) -> bool:
+    """Decision 1 on one newest annual record (``{field: value}``): no total, no non-current line, and a current or
+    short-term line or interest above the floor."""
+    if fields.get("total_debt") is not None or any(fields.get(f) is not None for f in NONCURRENT_LINES):
+        return False
+    return any(fields.get(f) is not None for f in CURRENT_LINES) \
+        or any((v := fields.get(f)) is not None and v > INTEREST_FLOOR_USD for f in INTEREST_FIELDS)
+
+
 def _no_total(ciks: list[str]) -> set[str]:
-    """The companies of ``ciks`` whose newest filed annual record holds no ``total_debt``."""
+    """The companies of ``ciks`` whose newest filed annual record is in decision 1's scope (:func:`_in_scope`)."""
     newest: dict[str, int] = {}
-    with_total: set[tuple[str, int]] = set()
+    fields: dict[tuple[str, int], dict] = {}
     for r in read.statements_many(ciks, 1, 0):
         if r.get("period_type") != "annual" or r.get("preliminary"):
             continue
@@ -59,9 +80,9 @@ def _no_total(ciks: list[str]) -> set[str]:
         if year is None:
             continue
         newest[cik] = max(newest.get(cik, year), year)
-        if r.get("field") == "total_debt" and r.get("value") is not None:
-            with_total.add((cik, year))
-    return {cik for cik, year in newest.items() if (cik, year) not in with_total}
+        if r.get("value") is not None:
+            fields.setdefault((cik, year), {})[r.get("field")] = float(r["value"])
+    return {cik for cik, year in newest.items() if _in_scope(fields.get((cik, year), {}))}
 
 
 def scope() -> list[str]:
