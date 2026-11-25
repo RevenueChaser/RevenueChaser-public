@@ -12,6 +12,8 @@ last dataset of the kind, ``prices/serving``, builds the served tables and the b
 - ``sec/cover_shares`` (daily): the shares outstanding per class from the cover page of each new 10-K and 10-Q
   (the filing's XBRL), found through the SEC's daily index;
 - ``tradingview/float`` (daily): TradingView's float of every asked name, one scanner request a run, the main float;
+- ``yfinance/bars`` (daily): Yahoo's daily bars of the names Compustat has not priced in 14 days, served only
+  where Compustat has no row (F28);
 - ``yfinance/float`` (daily): Yahoo's float of every Tier A name, the check of TradingView's, not paced, stopped
   on a 401 or 429;
 - ``wrds/prices`` (attended, monthly; **code only until Phase 8**): Compustat ``secd`` from 1984 and CRSP

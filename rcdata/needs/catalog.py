@@ -163,12 +163,13 @@ _NEEDS = (
     # window as its sibling: both are one UW snapshot of a closed session.
     Need("market.spx_greek_expiry_strike", "spx_greek_expiry_strike", "spx_greek_expiry_strike", "session_date",
          "expiry", 1, providers=("uw",)),
-    # #643: UW's economic calendar, fetched hourly; a day is its newest snapshot. A day old is late.
+    # #643: the economic calendar, fetched hourly; a day is its newest snapshot. A day old is late. Market 6 (#1433):
+    # TradingView and the Fed stand beside UW, and ``read`` prefers them for a day that has them.
     Need("market.economic_calendar", "economic_calendar", "economic_event", "snapshot_date", "event", 1,
-         max_lag_unit=DAYS, providers=("uw",)),
+         max_lag_unit=DAYS, providers=("tradingview", "fed", "uw")),
     # #807: UW's FDA calendar, fetched hourly beside the economic one; a day is its newest snapshot. A day old is late.
     Need("market.fda_calendar", "fda_calendar", "fda_event", "snapshot_date", "ticker", 1,
-         max_lag_unit=DAYS, providers=("uw",)),
+         max_lag_unit=DAYS, providers=("sec", "federalregister", "uw")),
     # ── The delisted history (serving kind ``delisted``, #1219) ─────────────────────────────────────────────────
     # Served through the needs layer so its readers are visible in the registry and on Settings (avo's shape of
     # 20 Nov 2026). **No live board reads them**: the measuring paths only (forecast-ledger hit rate, AG-score

@@ -1982,7 +1982,9 @@ def api_build_schedule(dataset: str, action: str):
     ``cadence`` takes a JSON body
     ``{"cadence": "daily|weekly|monthly", "next_due": "YYYY-MM-DD" | ""}``: the frequency the schedule reads
     (``due.py``) and a hold until that day, which an empty value clears. The three actions are separate, so
-    setting a frequency never resumes a dataset a person paused.
+    setting a frequency never resumes a dataset a person paused. A body with ``at`` also sets the start time
+    (avo, 24 Nov 2026): ``"HH:MM"`` Amsterdam, ``""`` any time, and ``day`` (``Mon`` ... ``Sun``) for a weekly one;
+    left out, the start stays as it is. An unchanged start keeps the time it was set at.
     """
     from revenuechaser.rcdata import ops
     from revenuechaser.rcdata.build import due
@@ -2004,13 +2006,26 @@ def api_build_schedule(dataset: str, action: str):
                 hold = date.fromisoformat(hold).isoformat()
             except ValueError:
                 return jsonify({"ok": False, "error": f"next_due {hold!r} is not a YYYY-MM-DD date"}), 400
+        slot = None
+        if "at" in body:
+            at = str(body.get("at") or "").strip()
+            if at and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", at):
+                return jsonify({"ok": False, "error": f"at {at!r} is not an HH:MM time"}), 400
+            day = str(body.get("day") or "Mon").strip()
+            if day not in due.DAYS:
+                return jsonify({"ok": False, "error": f"unknown day {day!r}; known: {', '.join(due.DAYS)}"}), 400
+            slot = (at or None, due.DAYS.index(day) if at and cadence == "weekly" else None)
         ops.schedule_set(dataset, cadence, hold or None)
+        was = ops.slot_get(dataset) or {}
+        if slot is not None and slot != (was.get("at"), was.get("weekday")):
+            ops.slot_set(dataset, *slot)
     elif action == "pause":
         # #492 PR (ii): the pause also cancels the queued request; a running fetch stops itself at its next call
         cancelled = ops.schedule_pause(dataset, by=_requested_by())
     else:
         ops.schedule_resume(dataset)
-    return jsonify({"ok": True, "dataset": dataset, "schedule": ops.schedule_get(dataset), "cancelled": cancelled})
+    return jsonify({"ok": True, "dataset": dataset, "schedule": ops.schedule_get(dataset), "slot": ops.slot_get(dataset),
+                    "cancelled": cancelled})
 
 
 @app.route("/api/build/automation-ds/<path:dataset>", methods=["POST"])
@@ -2051,6 +2066,55 @@ def api_build_timer():
         words = (done.stderr or done.stdout or f"exit {done.returncode}").strip()
         return jsonify({"ok": False, "error": words[:300]}), 502
     return jsonify({"ok": True, "on": on, "said": (done.stdout or "").strip()[:300]})
+
+
+@app.route("/api/build/kinds")
+def api_build_kinds():
+    """One row per serving DuckDB for the Grafana Jobs board (avo, 24 Nov 2026: a fetch time per DuckDB, steered from
+    Grafana): ``kind``, ``hours`` (Amsterdam, None = every hour), ``source`` (``kind_fetch_hours``, ``FETCH_HOURS`` or
+    ``every hour``), ``next_fetch`` (ISO, the next ``:45`` that takes it) and ``switch_on`` (its ``file-<kind>`` switch).
+    Read-only: no row is created."""
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build import due
+
+    rows = []
+    for kind in ops.FILE_KINDS:
+        try:
+            hours, source = due.fetch_hours(kind)
+            nxt, error = due.next_fetch(kind).isoformat(), None
+        except ValueError as exc:                    # a row that does not parse: named, never shown as hourly
+            hours, source, nxt, error = None, "kind_fetch_hours", None, str(exc)
+        rows.append({"kind": kind, "hours": list(hours) if hours else None, "source": source, "next_fetch": nxt,
+                     "error": error, "switch_on": ops.switch_off(f"file-{kind}") is None})
+    return jsonify({"ok": True, "minute": due.FETCH_MINUTE, "kinds": rows})
+
+
+@app.route("/api/build/fetch-hours/<kind>", methods=["POST"])
+def api_build_fetch_hours(kind: str):
+    """Set the Amsterdam hours the storage fetch takes one serving file's sources at: ``{"hours": [7, 22]}``, or
+    ``{"hours": "every"}`` to drop the row (the code's own hours, ``due.FETCH_HOURS``, else every hour). 400 for an
+    unknown kind, a body without ``hours``, an empty list, all 24 hours, or anything but whole hours 0-23."""
+    from revenuechaser.rcdata import ops
+    from revenuechaser.rcdata.build import due
+
+    if kind not in ops.FILE_KINDS:
+        return jsonify({"ok": False, "error": f"unknown kind {kind!r}; known: {', '.join(ops.FILE_KINDS)}"}), 400
+    body = request.get_json(silent=True) or {}
+    if "hours" not in body:
+        return jsonify({"ok": False, "error": "hours is required: a list of hours 0-23, or \"every\""}), 400
+    if body["hours"] == "every":
+        ops.fetch_hours_set(kind, None)
+    else:
+        if not isinstance(body["hours"], list):
+            return jsonify({"ok": False, "error": "hours must be a list of hours 0-23, or \"every\""}), 400
+        try:
+            hours = due.parse_hours(body["hours"])
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        ops.fetch_hours_set(kind, ",".join(str(h) for h in hours))
+    got, source = due.fetch_hours(kind)
+    return jsonify({"ok": True, "kind": kind, "hours": list(got) if got else None, "source": source,
+                    "next_fetch": due.next_fetch(kind).isoformat()})
 
 
 @app.route("/api/build/switch/<name>", methods=["POST"])

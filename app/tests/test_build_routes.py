@@ -289,6 +289,30 @@ def test_an_empty_hold_clears_the_one_that_was_there(client):
     assert row.get("cadence") == "monthly" and row.get("next_due") is None
 
 
+def test_the_cadence_action_sets_a_start_time_and_a_weekly_ones_day(client, monkeypatch):
+    """avo, 24 Nov 2026: daily starts at a time, weekly on a day and a time (Amsterdam); ``at`` left out keeps it."""
+    from datetime import datetime, timezone
+
+    url, head = "/api/build/schedule/market_series/cadence", {"X-RC-Panel": "settings"}
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, 13, 0, tzinfo=timezone.utc))
+    r = client.post(url, json={"cadence": "weekly", "next_due": "", "at": "22:00", "day": "Fri"}, headers=head)
+    assert r.status_code == 200, r.get_json()
+    assert {k: r.get_json()["slot"][k] for k in ("at", "weekday")} == {"at": "22:00", "weekday": 4}
+    set_at = ops.slot_get("market_series")["set_at"]
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 25, 13, 0, tzinfo=timezone.utc))
+    client.post(url, json={"cadence": "weekly", "next_due": "2026-12-01", "at": "22:00", "day": "Fri"}, headers=head)
+    assert ops.slot_get("market_series")["set_at"] == set_at, "an unchanged start keeps the time it was set at"
+    client.post(url, json={"cadence": "daily", "next_due": ""}, headers=head)
+    assert ops.slot_get("market_series")["at"] == "22:00", "a body without at leaves the start as it is"
+    for bad in ({"at": "25:00"}, {"at": "22:00", "day": "Funday"}):
+        r = client.post(url, json={"cadence": "monthly", **bad}, headers=head)
+        assert r.status_code == 400 and _sched().get("cadence") == "daily", bad
+    client.post(url, json={"cadence": "daily", "at": "07:30"}, headers=head)
+    assert {k: ops.slot_get("market_series")[k] for k in ("at", "weekday")} == {"at": "07:30", "weekday": None}
+    client.post(url, json={"cadence": "daily", "at": ""}, headers=head)
+    assert ops.slot_get("market_series") is None, "an empty at is any time of day"
+
+
 def test_the_cadence_action_needs_a_dataset_the_builder_knows(client):
     r = client.post("/api/build/schedule/not/a/dataset/cadence", json={"cadence": "daily"},
                     headers={"X-RC-Panel": "settings"})
@@ -405,3 +429,24 @@ def test_reading_the_queue_closes_a_request_whose_run_was_killed(client):
     body = client.get("/api/build/queue").get_json()
     assert body["active"] == []
     assert body["finished"][0]["id"] == rid and body["finished"][0]["status"] == "failed"
+
+
+def test_a_duckdbs_fetch_hours_are_set_from_the_panel_and_every_hour_drops_the_row(client):
+    """avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali ... Grafana bu sekilde kontrol edilmeli")."""
+    url, head = "/api/build/fetch-hours/market", {"X-RC-Panel": "grafana"}
+    r = client.post(url, json={"hours": [22, 7]}, headers=head)
+    assert r.status_code == 200 and r.get_json()["hours"] == [7, 22] and ops.fetch_hours_get("market")["hours"] == "7,22"
+    for bad in ({}, {"hours": []}, {"hours": list(range(24))}, {"hours": ["x"]}, {"hours": "7"}, {"hours": None}):
+        assert client.post(url, json=bad, headers=head).status_code == 400, bad
+    assert ops.fetch_hours_get("market")["hours"] == "7,22", "a refused body changes nothing"
+    assert client.post("/api/build/fetch-hours/nope", json={"hours": [7]}, headers=head).status_code == 400
+    r = client.post(url, json={"hours": "every"}, headers=head)
+    assert r.status_code == 200 and ops.fetch_hours_get("market") is None
+    assert r.get_json()["source"] == "FETCH_HOURS", "every hour is the code's own hours while it names the kind"
+
+
+def test_the_kinds_rows_create_nothing_and_name_their_source(client):
+    rows = {k["kind"]: k for k in client.get("/api/build/kinds").get_json()["kinds"]}
+    assert rows["market"]["hours"] == [7, 22] and rows["market"]["source"] == "FETCH_HOURS"
+    assert rows["spine"]["hours"] is None and rows["spine"]["next_fetch"].endswith(("+01:00", "+02:00"))
+    assert rows["spine"]["switch_on"] is True and ops.fetch_hours_get("spine") is None

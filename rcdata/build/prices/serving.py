@@ -3,7 +3,7 @@
 **Tables** (``prices.duckdb``, serving schema version 1), every one keyed on the security id (``prices.security_id``):
 
 - ``price_bar_daily``: one bar per security and New York session, **nominal** (the prices as traded that day):
-  the WRDS history (Alpaca's bars are the tester's, ``prices.tester``, and never served) -- ``wrds/prices``'s
+  Yahoo's (``yfinance/bars``) only on a session Compustat has no row of the security (F28), else the WRDS history (Alpaca's bars are the tester's, ``prices.tester``, and never served) -- ``wrds/prices``'s
   Compustat on every day it prices and lists, a day without ``trfd`` too, its return read with ``trfd`` = 1 and the
   day's dividend flagged; **CRSP serves no bar** (avo, 4 Nov 2026: the cross-check only) -- and the S&P 500 index
   level from the market store's Cboe file (``index:SPX``, the close only);
@@ -31,7 +31,8 @@
   both keep their row with ``market_cap`` and ``shares`` NULL and ``shares_source`` ``zero_count`` or ``adr_no_ratio``;
 - ``price_revision``: the values a later read replaced (Alpaca's re-read of the last sessions, the monthly WRDS
   refresh), with when and by which run;
-- ``wrds_price_diff``: the WRDS difference report (``wrds_history.COMPARISONS``), one row per comparison: the closes
+- ``wrds_price_diff``: the WRDS difference report (``wrds_history.COMPARISONS``), one row per comparison and ``as_of``
+  (a whole build keeps the live file's older reports, ``stage.carry_reports``): the closes
   of CRSP against Compustat and of each against Alpaca on the sessions both have, and each WRDS source's own day
   return against the store's (its closes, the store's factors) on consecutive sessions; a difference over 1 bp
   counts. Shown on the ``wrds/prices`` Settings card.
@@ -63,7 +64,7 @@ import duckdb
 
 from ... import ops
 from .. import base, secd
-from . import KIND, incremental, stage, universe, wrds_history
+from . import KIND, incremental, stage, universe, wrds_history, yahoo_bars
 from .cover_shares import DEI_SOURCE as DEI
 
 logger = logging.getLogger(__name__)
@@ -364,11 +365,24 @@ def _spine(con: duckdb.DuckDBPyConnection) -> int:
     try:
         has_etf = con.execute("SELECT count(*) FROM duckdb_tables() WHERE database_name = 'live_spine' "
                               "AND table_name = 'etf'").fetchone()[0]
-        etf = ("LEFT JOIN (SELECT ticker AS etf_ticker, inception FROM live_spine.etf) e ON e.etf_ticker = ticker"
-               if has_etf else "LEFT JOIN (SELECT NULL AS etf_ticker, CAST(NULL AS DATE) AS inception) e ON false")
+        etf_ids = has_etf and con.execute(
+            "SELECT count(*) FROM duckdb_columns() WHERE database_name = 'live_spine' AND table_name = 'etf' "
+            "AND column_name IN ('gvkey', 'iid')").fetchone()[0] == 2
+        ids = "gvkey AS etf_gvkey, iid AS etf_iid" if etf_ids else "NULL AS etf_gvkey, NULL AS etf_iid"
+        etf = (f"LEFT JOIN (SELECT ticker AS etf_ticker, inception, {ids} FROM live_spine.etf) e "
+               "ON e.etf_ticker = ticker" if has_etf else
+               "LEFT JOIN (SELECT NULL AS etf_ticker, CAST(NULL AS DATE) AS inception, NULL AS etf_gvkey, "
+               "NULL AS etf_iid) e ON false")
+        # Plan v4 step 4 (#1413): a fund the security table keys only by CIK takes the etf table's Compustat
+        # series, so it is served as gvkey:iid; the old cik: id is moved by the re-key guard (_move_rekeyed).
+        bare = ("nullif(s.gvkey, '') IS NULL AND nullif(s.composite_figi, '') IS NULL "
+                "AND nullif(e.etf_gvkey, '') IS NOT NULL AND nullif(e.etf_iid, '') IS NOT NULL")
         con.execute(f"INSERT INTO stg_spine SELECT ticker, cik, tier, security_type, gvkey, iid, composite_figi, "
-                    f"{SPINE_ID}, nullif(cusip, ''), e.etf_ticker IS NOT NULL, e.inception "
-                    f"FROM live_spine.security {etf}")
+                    f"{SPINE_ID}, cusip, is_etf, inception FROM (SELECT s.ticker, s.cik, s.tier, s.security_type, "
+                    f"CASE WHEN {bare} THEN e.etf_gvkey ELSE s.gvkey END AS gvkey, "
+                    f"CASE WHEN {bare} THEN e.etf_iid ELSE s.iid END AS iid, s.composite_figi, "
+                    f"nullif(s.cusip, '') AS cusip, e.etf_ticker IS NOT NULL AS is_etf, e.inception "
+                    f"FROM live_spine.security s {etf})")
         if has_etf:
             con.execute("INSERT INTO stg_etf SELECT ticker, aum, is_etn, is_cef FROM live_spine.etf")
         has_mine = con.execute("SELECT count(*) FROM duckdb_tables() WHERE database_name = 'live_spine' "
@@ -401,6 +415,11 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe_etf AS {universe.UNIVERSE_ETF_SQL}")
     con.execute(f"CREATE OR REPLACE TEMP TABLE _etf_tic_series AS {universe.ETF_TIC_SERIES_SQL}")
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe AS {universe.UNIVERSE_SQL}")
+    # A fund only Yahoo prices (no spine row, no Alpaca bar, no Compustat series) is in the universe by its ticker,
+    # never by its CIK: a CIK reaches an issuer's other classes (review of #1490, findings 3 and 4).
+    con.execute(f"""INSERT INTO _universe SELECT DISTINCT {yahoo_bars.ID} FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
+                    WHERE y.ticker IN (SELECT ticker FROM _universe_ticker) AND {yahoo_bars.SERVED}
+                    EXCEPT SELECT security_id FROM _universe""")
     # A name that left the universe keeps its stored bars (avo, DECISIONS S18: the store collects everything and is
     # never narrowed; #1079 dropped 20 securities when names left ``my_universe``). It stops getting new fetches
     # (``prices.scope``), but every id the live file serves stays in what this build stores.
@@ -447,6 +466,24 @@ REKEYED_SQL = """
     GROUP BY 1 HAVING count(DISTINCT s.security_id) = 1"""
 
 
+# A live id the Yahoo fetch saw (``sym:T``, ``figi:X``) whose Yahoo rows this build serves under another id: Compustat
+# or the spine picked the name up (``yahoo_bars.ID``), Yahoo is not asked for it any more, and the old id would be
+# carried frozen beside the new one (review N2, avo's D1 of 24 Nov 2026 "Yeni id'ye taşı": moved as C3 moves).
+YAHOO_REKEYED_SQL = f"""
+    SELECT y.security_id AS old_id, any_value({yahoo_bars.ID}) AS new_id
+    FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
+    WHERE y.security_id IN (SELECT unnest(?)) AND {yahoo_bars.ID} <> y.security_id AND {yahoo_bars.SERVED}
+      AND {yahoo_bars.ID} IN (SELECT DISTINCT security_id FROM price_bar_daily)
+      AND y.security_id NOT IN (SELECT DISTINCT security_id FROM price_bar_daily)
+    GROUP BY 1 HAVING count(DISTINCT {yahoo_bars.ID}) = 1"""
+
+
+def _has(con: duckdb.DuckDBPyConnection, *names: str) -> bool:
+    """Every one of ``names`` is a table or view of ``con``."""
+    return con.execute("SELECT count(DISTINCT table_name) FROM information_schema.tables WHERE table_name IN "
+                       "(SELECT unnest(?))", [list(names)]).fetchone()[0] == len(set(names))
+
+
 def _move_rekeyed(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, live: dict[str, int]) -> set[str]:
     """C3 option (a), #1413: a re-keyed id is **moved**, not lost and not served twice. The new id takes the old
     id's live bars for every session it has none of (its own bar wins a session both hold), and the old id is not
@@ -454,9 +491,9 @@ def _move_rekeyed(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, live: di
     ``price_bars_daily``. The old id's rows leave the served file with it: avo's word (C3), so the build that first
     does it is a whole build with a backup."""
     old = sorted(sid for sid in live if sid.startswith("cik:"))
-    if not old:
-        return set()
-    pairs = dict(con.execute(REKEYED_SQL, [old]).fetchall())
+    pairs = dict(con.execute(REKEYED_SQL, [old]).fetchall()) if old else {}
+    if _has(con, yahoo_bars.STAGING, "_etf_tic_series", "stg_spine"):
+        pairs |= dict(con.execute(YAHOO_REKEYED_SQL, [sorted(set(live) - set(pairs))]).fetchall())
     if pairs:
         carried = stage.carry_live_as(con, pairs)
         ctx.notes.append(f"{len(pairs)} re-keyed ids moved to their spine id with {carried:,} live bars the new id "
@@ -579,8 +616,21 @@ CREATE OR REPLACE TEMP TABLE _gvkey_alias AS {alias};
 BUILD_HIST_SQL = """
 CREATE OR REPLACE TEMP TABLE _secd_listed AS {listed};
 CREATE OR REPLACE TEMP TABLE _hist_all AS
-    SELECT * FROM ({crsp}) UNION ALL BY NAME SELECT * FROM ({comp});
+    SELECT * FROM ({crsp}) UNION ALL BY NAME SELECT * FROM ({comp}) UNION ALL BY NAME SELECT * FROM ({yahoo});
 """
+# Yahoo's bars (``yfinance/bars``, avo 24 Nov 2026, F28): asked only for the names Compustat has not priced lately,
+# priority 3, so ``HIST_FIRST`` serves one only on a session no Compustat row of the security has. Keyed by
+# ``yahoo_bars.ID``: the Compustat series claiming a fund's ticker, else the spine's id, else the fetch's; a ``class:``
+# id never (review of #1490, findings 2 and 3).
+YAHOO_BARS = f"""
+    SELECT {yahoo_bars.ID} AS security_id, y.session_date, y.ticker AS symbol, y.cik,
+           y.open, y.high, y.low, y.close, y.volume, CAST(NULL AS DOUBLE) AS vwap, CAST(NULL AS BIGINT) AS trade_count,
+           CAST(NULL AS DOUBLE) AS shares_outstanding, '{yahoo_bars.NAME}' AS source, y.source_as_of, y.fetched_at,
+           y.run_id, 3 AS priority, {yahoo_bars.ID} AS series
+    FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
+    WHERE y.session_date <= coalesce(getvariable('rc_build_date'), DATE '9999-12-31')
+      AND {yahoo_bars.ID} IN (SELECT security_id FROM _universe) AND {yahoo_bars.SERVED}
+    QUALIFY row_number() OVER (PARTITION BY {yahoo_bars.ID}, y.session_date ORDER BY y.fetched_at DESC) = 1"""
 # The kind of an action for "the same action on the same day": a split, a reverse split and a stock dividend are one
 # kind, each a step of the share basis (review SHOULD 3 of #382: Compustat's ajexdi step and an Alpaca stock dividend
 # of the same day were both applied).
@@ -590,7 +640,11 @@ ACTION_KIND = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split', 
 # The ratio and the amount ``corporate_action`` serves of an Alpaca action, over its raw rates.
 ACTION_RATIO = ("CASE WHEN {a}.action_type IN ('forward_split', 'reverse_split') AND {a}.old_rate > 0 "
                 "AND {a}.new_rate > 0 THEN {a}.new_rate / {a}.old_rate "
+                "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 1 THEN {a}.rate "
                 "WHEN {a}.action_type = 'stock_dividend' AND {a}.rate > 0 THEN 1 + {a}.rate END")
+# Alpaca writes a stock dividend's ``rate`` as the share ratio (new over old): all 8 in the tree on 24 Nov 2026 lie
+# between 1 and 1.5 (SCCO 1.0106 = Compustat's ajexdi step), so ``1 + rate`` doubled every factor (#1413).
+# shortcut: a rate at or below 1 is still read as a fraction (no live example of one), revisit when Alpaca shows one.
 ACTION_AMOUNT = "CASE WHEN {a}.action_type IN ('cash_dividend', 'capital_gains_distribution') THEN {a}.rate END"
 # Compustat's split that Alpaca has a day or few off is the same split (#268): Compustat's ``datadate`` is the first
 # session on the new basis and Alpaca's ``ex_date`` is not always that day, so the same-day rule in
@@ -615,6 +669,13 @@ ALPACA_STOCK_DIV_BESIDE = f"""(a.source = '{ALPACA_ACTIONS}' AND a.action_type =
     AND EXISTS (SELECT 1 FROM _act w WHERE w.security_id = a.security_id AND w.source = '{wrds_history.NAME}'
                 AND {ACTION_KIND.format(a='w')} = 'split'
                 AND abs(date_diff('day', w.ex_date, a.ex_date)) <= {SPLIT_SAME_DAYS}))"""
+
+# Alpaca's cash dividend that copies the rate of its own stock dividend the same day and security: a mislabelled twin
+# of the stock dividend, never cash (SCCO, 3 Nov 2026: a stock dividend at 1.0106 and two cash rows, 1.30 and 1.0106,
+# read by the parquet check of #1413). Held back with ``not_applied_why``. Over ``_act`` and an alias ``a``.
+ALPACA_CASH_TWIN_OF_STOCK_DIV = f"""(a.source = '{ALPACA_ACTIONS}' AND a.action_type = 'cash_dividend'
+    AND EXISTS (SELECT 1 FROM _act s WHERE s.security_id = a.security_id AND s.source = '{ALPACA_ACTIONS}'
+                AND s.action_type = 'stock_dividend' AND s.ex_date = a.ex_date AND s.rate = a.rate))"""
 
 
 class PricesServing:
@@ -684,7 +745,7 @@ class PricesServing:
         chunked = None if live or stage.chunks() == 1 else Chunked(ctx, con, stage.chunks())
         if chunked is None:
             con.execute(BUILD_HIST_SQL.format(crsp=wrds_history.CRSP_BARS, comp=wrds_history.COMP_BARS,
-                                              listed=wrds_history.SECD_LISTED))
+                                              listed=wrds_history.SECD_LISTED, yahoo=YAHOO_BARS))
             # Alpaca's bar wins its session; of the history bars, Compustat's (priority 1) before CRSP's.
             bars_sql = f"SELECT * FROM ({_index_levels(con)}) UNION ALL {HIST_BARS}"
             counts["price_bar_daily"] = _create(con, "price_bar_daily", bars_sql, live, rows)
@@ -736,6 +797,8 @@ class PricesServing:
         else:
             counts["wrds_price_diff"], alpaca = chunked.report()
             chunked.note()
+        if not live:
+            counts["wrds_price_diff"] += stage.carry_reports(con)
         self._views(con)
         found += self._issues(con, have, live, alpaca)
         ctx.pending[NAME] = found
@@ -794,6 +857,13 @@ class PricesServing:
               AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = w.security_id AND p.ex_date = w.ex_date
                               AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='w')}
                               AND p.action_type <> 'stock_dividend')""")
+        # Yahoo's splits and dividends (D2, 24 Nov 2026), only on a day whose served bar is Yahoo's and that holds no
+        # Alpaca or Compustat action of the kind: a Yahoo-only name had no total return at all (review of #1490, 1).
+        con.execute(f"""INSERT INTO _act BY NAME SELECT y.* FROM ({yahoo_bars.ACTIONS_SQL}) y
+            WHERE EXISTS (SELECT 1 FROM price_bar_daily b WHERE b.security_id = y.security_id
+                          AND b.session_date = y.ex_date AND b.source = '{yahoo_bars.NAME}'){mine.replace('w.', 'y.')}
+              AND NOT EXISTS (SELECT 1 FROM _act p WHERE p.security_id = y.security_id AND p.ex_date = y.ex_date
+                              AND {ACTION_KIND.format(a='p')} = {ACTION_KIND.format(a='y')})""")
         # The split Alpaca and Compustat both know, its day a session or two apart (``SPLIT_TWIN_SQL``, #268); the
         # dropped ones are counted for the build note.
         splits = con.execute(SPLIT_TWIN_SQL.format(mine=mine)).fetchone()[0]
@@ -992,6 +1062,8 @@ class PricesServing:
         restated_by = ("(SELECT max(r.crsp_ex_date) FROM _split_restated_by_crsp r "
                        "WHERE r.security_id = a.security_id AND r.dup_ex_date = a.ex_date)")
         why = f"""CASE
+            WHEN {ALPACA_CASH_TWIN_OF_STOCK_DIV}
+                THEN 'the same rate as Alpaca''s stock dividend that day: a mislabelled copy of it, not cash (#1413)'
             WHEN {ALPACA_STOCK_DIV_BESIDE}
                 THEN 'Compustat records this step within {SPLIT_SAME_DAYS} days and its row is the applied one '
                      || '(an Alpaca stock dividend never stands in for it, #1413)'
@@ -1600,7 +1672,7 @@ class Chunked:
                              ("dsf", "permno IN (SELECT permno FROM _bpermno)")):
             name = w.STAGING[table]
             con.execute(f"CREATE OR REPLACE TEMP TABLE {name} AS SELECT * FROM {name}{incremental.WHOLE} WHERE {where}")
-        con.execute(BUILD_HIST_SQL.format(crsp=w.CRSP_BARS, comp=w.COMP_BARS, listed=w.SECD_LISTED))
+        con.execute(BUILD_HIST_SQL.format(crsp=w.CRSP_BARS, comp=w.COMP_BARS, listed=w.SECD_LISTED, yahoo=YAHOO_BARS))
         # A PERMNO linked to two securities is staged in both chunks: each keeps only its own.
         con.execute("DELETE FROM _hist_all WHERE security_id NOT IN (SELECT security_id FROM _bucket)")
 

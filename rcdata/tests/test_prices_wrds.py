@@ -828,6 +828,50 @@ def test_an_alpaca_stock_dividend_beside_compustats_step_is_held_back_compustats
     assert view["2025-06-03"]["close"] == pytest.approx(202.0 / 2 / 1.0106)
 
 
+def test_an_alpaca_cash_dividend_copying_its_stock_dividends_rate_is_held_back(fake, http_mock):
+    """#1413, the parquet check of 24 Nov 2026: Alpaca lists SCCO's 3 Nov stock dividend at 1.0106 and two cash
+    dividends the same day, 1.30 and 1.0106. The second copies the stock dividend's rate: a mislabelled twin, never
+    cash. It stays in ``corporate_action``, unapplied, naming why; the real cash dividend is applied."""
+    conn, _ = fake
+    conn.data["comp.sec_split"].append({"gvkey": "001690", "iid": "01", "datadate": "2026-10-27", "split": 1.0106})
+    http_mock.routes[:] = [r for r in http_mock.routes if "/v1/corporate-actions" not in r[0]]
+    cash = {"special": False, "foreign": False, "process_date": "2026-10-26", "ex_date": "2026-10-26",
+            "currency": "USD", "symbol": "AAPL"}
+    http_mock.add("/v1/corporate-actions", {"corporate_actions": {
+        "cash_dividends": [{**cash, "id": "cd-1", "rate": 1.30}, {**cash, "id": "cd-2", "rate": 1.0106}],
+        "stock_dividends": [{"id": "sd-1", "symbol": "AAPL", "rate": 1.0106, "process_date": "2026-10-26",
+                             "ex_date": "2026-10-26"}]}, "next_page_token": None})
+    assert _backfill()["result"] == "changed"
+    assert base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})["result"] != "failed"
+    row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    assert row["result"] != "failed", row
+    cash_rows = {a["amount"]: a for a in _q(
+        "SELECT amount, applied, not_applied_why FROM corporate_action WHERE security_id = ? AND source = ? "
+        "AND action = 'cash_dividend' AND ex_date = '2026-10-26'", [AAPL, actions.NAME])}
+    assert cash_rows[1.30]["applied"]
+    assert not cash_rows[1.0106]["applied"] and "mislabelled copy" in cash_rows[1.0106]["not_applied_why"]
+
+
+def test_an_alpaca_stock_dividend_alone_is_applied_at_its_rate_not_one_plus_it(fake, http_mock):
+    """#1413, the parquet count of 24 Nov 2026: Alpaca's 8 stock dividends carry the share ratio itself (1.03 to
+    1.08; SCCO's 1.0106 is Compustat's ajexdi step), so ``1 + rate`` halved every close before one Compustat had not
+    recorded yet. A 1.05 stock dividend steps the June close by 1.05."""
+    http_mock.routes[:] = [r for r in http_mock.routes if "/v1/corporate-actions" not in r[0]]
+    http_mock.add("/v1/corporate-actions", {"corporate_actions": {
+        "stock_dividends": [{"id": "sd-1", "symbol": "AAPL", "rate": 1.05, "process_date": "2026-10-26",
+                             "ex_date": "2026-10-26"}]}, "next_page_token": None})
+    assert _backfill()["result"] == "changed"
+    assert base.run_request({"dataset": actions.NAME, "params": {"as_of": "2026-10-27"}})["result"] != "failed"
+    row = base.run_request({"dataset": bars.NAME, "params": {"as_of": "2026-10-27"}})
+    assert row["result"] != "failed", row
+    [act] = _q("SELECT ratio, applied FROM corporate_action WHERE security_id = ? AND source = ? "
+               "AND action = 'stock_dividend'", [AAPL, actions.NAME])
+    assert act["applied"] and act["ratio"] == pytest.approx(1.05)
+    view = {str(r["session_date"]): r for r in _q(
+        "SELECT session_date, close FROM price_bars_daily WHERE ticker = 'AAPL'")}
+    assert view["2025-06-03"]["close"] == pytest.approx(202.0 / 2 / 1.05)
+
+
 def test_a_compustat_split_alpaca_has_a_day_off_is_not_applied_a_second_time(fake, http_mock):
     """#268: Compustat's ``datadate`` is the first session on the new basis and Alpaca's ``ex_date`` is not always
     that day, so a same-day check alone let both sources' rows in and the share basis stepped twice. Alpaca goes ex a
@@ -886,9 +930,14 @@ def test_the_monthly_refresh_keeps_the_values_it_replaces_as_revisions(whole_bui
     revs = _q("SELECT * FROM price_revision WHERE source = ?", [wrds_history.COMPUSTAT])
     assert [(r["security_id"], str(r["session_date"]), r["close"]) for r in revs] == [(AAPL, "2025-06-03", 202.0)]
     assert revs[0]["revised_by"] == ops.latest_check(wrds_history.NAME)["run_id"]
-    report = {r["comparison"]: r for r in _q("SELECT * FROM wrds_price_diff")}
+    report = {r["comparison"]: r for r in _q("SELECT * FROM wrds_price_diff WHERE as_of = '2026-11-27'")}
+    assert set(report) == set(wrds_history.COMPARISONS)
     assert report["crsp_vs_compustat"]["max_close_diff"] == pytest.approx(0.4 / 202.5)
-    assert {str(r["as_of"]) for r in report.values()} == {"2026-11-27"}
+    # The whole build keeps the month before's report beside the new one: the ``as_of`` series (#1413 P-C).
+    kept = {r["comparison"]: r for r in _q("SELECT * FROM wrds_price_diff WHERE as_of = '2026-10-27'")}
+    assert set(kept) == set(wrds_history.COMPARISONS)
+    assert kept["crsp_vs_compustat"]["max_close_diff"] == pytest.approx(0.1 / 202.0)
+    assert _q("SELECT count(*) AS n FROM wrds_price_diff")[0]["n"] == 2 * len(wrds_history.COMPARISONS)
 
 
 def _placeholder(gvkey, iid, day, tic, cusip="037833100", exchg=14):

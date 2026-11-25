@@ -36,7 +36,7 @@ from revenuechaser.rcdata.build.sec_forms import cutter
 STUB_INIT = '''
 import json, os, socket
 
-__version__ = "6.0.0"
+__version__ = "6.3.0"
 
 # The probe runs here as well as in ``documents``, because the handshake imports this module and the network must
 # already be gone by then: a block installed after the import would leave the library's module-level clients a
@@ -286,7 +286,7 @@ def test_the_pin_is_read_from_the_requirements_file_and_nowhere_else():
     the point -- so only executable lines are checked.
     """
     assert cutter.REQUIREMENTS.exists(), "the cutter's requirements file is the pin's home"
-    assert cutter.pinned_version() == "6.0.0"
+    assert cutter.pinned_version() == "6.3.0"
     assert "edgartools==" in cutter.REQUIREMENTS.read_text(encoding="utf-8")
 
     import ast
@@ -685,7 +685,7 @@ def test_a_negative_count_is_not_a_cut_document(tmp_path, monkeypatch):
     # "nothing is cached" assertion below holds for the script and not for the worker, because the client's own
     # rescue path would hand the renamed file back as a cut document.
     script.write_text('import gzip, json, sys\n'
-                      'print(json.dumps({"edgar_version": "6.0.0"}), flush=True)\n'
+                      'print(json.dumps({"edgar_version": "6.3.0"}), flush=True)\n'
                       'for line in sys.stdin:\n'
                       '    out = json.loads(line)["out"]\n'
                       '    with gzip.open(out, "wt", encoding="utf-8") as fh:\n'
@@ -791,10 +791,10 @@ def test_the_worker_reports_its_version_before_anything_is_asked_of_it(stub, tmp
 
 
 def test_a_venv_with_the_wrong_version_fails_the_run(stub, monkeypatch, tmp_path):
-    """A venv upgraded underneath us would otherwise write rows labelled 6.0.0 that another version cut, and
+    """A venv upgraded underneath us would otherwise write rows labelled with the pin that another version cut, and
     nothing downstream could tell them apart."""
     (tmp_path / "stub" / "edgar" / "__init__.py").write_text('__version__ = "6.1.0"\n', encoding="utf-8")
-    # The pin is 6.0.0 and this venv says 6.1.0.
+    # The pin is 6.3.0 and this venv says 6.1.0.
     with pytest.raises(cutter.CutterUnusable, match="6.1.0"):
         cutter.Worker()
 
@@ -1050,7 +1050,7 @@ def test_an_answer_out_of_protocol_stops_the_worker_instead_of_being_read_past(t
     monkeypatch.setenv(cutter.PYTHON_ENV, sys.executable)
     script = tmp_path / "noise.py"
     script.write_text('import json, sys\n'
-                      'print(json.dumps({"edgar_version": "6.0.0"}), flush=True)\n'
+                      'print(json.dumps({"edgar_version": "6.3.0"}), flush=True)\n'
                       'for line in sys.stdin:\n'
                       '    print("Downloading... 42%", flush=True)\n', encoding="utf-8")
     monkeypatch.setattr(cutter, "WORKER", script)
@@ -1156,7 +1156,7 @@ def test_an_answer_that_claims_a_cut_without_a_count_is_out_of_protocol(tmp_path
     # handed back a file written by a worker that could not say what was in it, and that path skips the
     # empty-text check too.
     script.write_text('import gzip, json, sys\n'
-                      'print(json.dumps({"edgar_version": "6.0.0"}), flush=True)\n'
+                      'print(json.dumps({"edgar_version": "6.3.0"}), flush=True)\n'
                       'for line in sys.stdin:\n'
                       '    out = json.loads(line)["out"]\n'
                       '    with gzip.open(out, "wt", encoding="utf-8") as fh:\n'
@@ -2098,7 +2098,7 @@ def test_sections_with_no_text_and_a_swallowed_failure_are_not_charged_to_the_fi
     monkeypatch.setenv(cutter.PYTHON_ENV, sys.executable)
     script = tmp_path / "textless.py"
     script.write_text('import gzip, json, sys\n'
-                      'print(json.dumps({"edgar_version": "6.0.0"}), flush=True)\n'
+                      'print(json.dumps({"edgar_version": "6.3.0"}), flush=True)\n'
                       'for line in sys.stdin:\n'
                       '    out = json.loads(line)["out"]\n'
                       '    with gzip.open(out, "wt", encoding="utf-8") as fh:\n'

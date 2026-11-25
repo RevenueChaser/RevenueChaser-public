@@ -16,7 +16,9 @@
   ``etp`` rows of ``security`` (``etf.py``, #346).
 
 Every period is ``valid_from`` inclusive and ``valid_to`` exclusive (the first day it no longer holds); ``valid_to``
-is NULL while it holds. Compustat's inclusive end dates (``effthru``, ``indthru``, ``thru``) are moved one day on.
+is NULL while it holds. Compustat's inclusive end dates (``effthru``, ``indthru``, ``thru``) are moved one day on;
+an open ``comp.sec_idhist`` period, which Compustat ends on 2900-01-01, is NULL like any other open one (review M4,
+24 Nov 2026: 94,854 rows ended 2900-01-02). ``co_hgic`` and ``idxcst_his`` leave an open period's end NULL.
 
 **The link.** A ticker's CIK finds its Compustat companies (``comp.company.cik``); among their securities the one
 whose ticker (``tic``, ``BRK.B`` -> ``BRK-B``) is the SEC ticker is the link (``link_source`` ``tic``). With no ticker
@@ -188,6 +190,14 @@ ISSUE_KINDS = {
                              "the SEC holds no fund record for: no etf row (key: the ticker)"),
     "etf_category_unmapped": ("a TickerInside category with no asset class in etf.CATEGORY_ASSET_CLASS: the funds "
                               "of it keep asset_class NULL (key: the category id)"),
+    "etf_ticker_sources_disagree": ("the SEC fund file lists an N-CEN series under another ticker and Compustat "
+                                    "still prices N-CEN's, not the file's: N-CEN's ticker kept, no rename "
+                                    "(key: the series id)"),
+    "etf_series_id_shared": ("two etf rows carry one series id: one fund under two tickers; my_universe keeps one "
+                             "of them (key: the series id)"),
+    "etf_series_file_disagrees": ("an etf row whose series id (N-CEN's, else TickerInside's) is none the SEC fund "
+                                  "file lists for its ticker as an ETF, and that etf._settle_series cannot settle: "
+                                  "kept (key: the ticker)"),
     "etf_class_manual_unknown": ("a line of the manual ETF class file naming a ticker that is no ETF of "
                                  "my_universe (key: the ticker)"),
 }
@@ -213,6 +223,10 @@ def _rows(con: duckdb.DuckDBPyConnection, sql: str) -> list[dict]:
     cur = con.execute(sql)
     cols = [d[0] for d in cur.description]
     return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+#: ``security_history.valid_to`` of a ``comp.sec_idhist`` row: the day after ``effthru``, NULL for an open period.
+_OPEN_END = "CASE WHEN h.effthru >= DATE '2900-01-01' THEN NULL ELSE h.effthru + 1 END"
 
 
 def _next_day(d: date | None) -> date | None:
@@ -723,7 +737,7 @@ class SpineSecurity:
         base.rows_table(con, "_gvkey_cik", [("gvkey", "TEXT"), ("cik", "TEXT")],
                         [{"gvkey": g, "cik": c} for g, c in cik_of_gvkey.items()])
         con.execute(f"""INSERT INTO security_history
-            SELECT l.ticker, c.cik, h.gvkey, h.iid, lower(h.item), h.itemvalue, h.efffrom, h.effthru + 1,
+            SELECT l.ticker, c.cik, h.gvkey, h.iid, lower(h.item), h.itemvalue, h.efffrom, {_OPEN_END},
                    '{SEC_IDHIST.name}'
             FROM stg_wrds_idhist h
             JOIN (SELECT DISTINCT gvkey FROM _linked) g ON g.gvkey = h.gvkey
@@ -748,6 +762,18 @@ class SpineSecurity:
         found += member_issues
         counts["index_membership"] = _create(con, "index_membership", members)
         counts[etf.TABLE] = _create(con, etf.TABLE, etf.rows(ctx, con, found))  # reads ``security``: after it
+        # A fund from the fund file is linked to no SEC equity row, so its Compustat history (ticker renames: PHB ->
+        # IFLN) came in only through ``_linked``. Its own gvkey/iid brings it in under its current ticker (avo, 24 Nov
+        # 2026, the ticker rename research); a gvkey already copied above is not copied twice.
+        con.execute(f"""INSERT INTO security_history
+            SELECT e.ticker, e.cik, h.gvkey, h.iid, lower(h.item), h.itemvalue, h.efffrom, {_OPEN_END},
+                   '{SEC_IDHIST.name}'
+            FROM stg_wrds_idhist h
+            JOIN {etf.TABLE} e ON e.gvkey = h.gvkey AND e.iid = h.iid
+            WHERE h.gvkey NOT IN (SELECT gvkey FROM security_history
+                                  WHERE source = '{SEC_IDHIST.name}' AND gvkey IS NOT NULL)
+            ORDER BY h.gvkey, h.iid, h.item, h.efffrom""")
+        counts["security_history"] = stage.count(con, "security_history")
         mine, changes, mine_issues = my_universe.rows(ctx, con)                # reads both of them: after both
         found += mine_issues
         counts[my_universe.TABLE] = _create(con, my_universe.TABLE, mine)

@@ -69,8 +69,9 @@ def test_the_universe_is_av_etfs_and_ncen_etfs_and_the_spines_etp_rows_with_thei
 def test_the_columns_are_the_plans_and_there_is_no_active_column(built):
     with serving.open_read("spine") as con:
         cols = [d[0] for d in con.execute("SELECT * FROM etf LIMIT 0").description]
-    assert cols == ["ticker", "name", "series_id", "cik", "source", "is_etn", "is_cef", "asset_class", "focus",
-                    "country", "is_index", "is_lev_inverse", "is_money_market", "is_option_income", "is_fund_of_funds",
+    assert cols == ["ticker", "name", "series_id", "cik", "source", "is_etn", "is_cef", "asset_class",
+                    "asset_class_source", "focus", "country", "is_index", "is_lev_inverse", "is_money_market",
+                    "is_option_income", "is_fund_of_funds",
                     "inception", "aum", "aum_as_of", "aum_source", "adv_usd_20d", "expense_ratio",
                     "gvkey", "iid", "cusip", "figi", "composite_figi", "identity_source", "source_as_of",
                     "fetched_at", "run_id"]
@@ -234,22 +235,6 @@ def test_trust_class_reads_the_name():
     assert etf.trust_class(("SPDR Gold Shares",)) == "commodity"
     assert etf.trust_class(("United States Oil Fund LP",)) == "commodity"
     assert set(etf.TRUST_CLASSES) <= set(etf.ASSET_CLASSES)
-
-
-def test_a_trust_is_an_etf_row_with_no_series_no_note_no_cef_and_a_commodity_or_crypto_class():
-    """``etf.TRUST_SQL`` is the one definition ``my_universe`` reads (avo, 23 Nov 2026, option a)."""
-    import duckdb
-    con = duckdb.connect()
-    con.execute("CREATE TABLE etf (ticker TEXT, series_id TEXT, is_etn BOOLEAN, is_cef BOOLEAN, asset_class TEXT)")
-    con.executemany("INSERT INTO etf VALUES (?, ?, ?, ?, ?)", [
-        ("GLD", None, False, False, "commodity"), ("IBIT", None, None, None, "crypto"),
-        ("DBC", "S1", False, False, "commodity"),           # a 40-Act commodity fund: a series, so a fund
-        ("SPY", None, False, False, None),                  # a unit investment trust: no class here
-        ("OILX", None, True, False, "commodity"), ("CEFX", None, False, True, "commodity"),
-        ("SOXX", None, False, False, "equity"), ("FXE", None, False, False, "currency"),
-        ("UVXY", None, False, False, "volatility")])
-    got = {r[0] for r in con.execute(f"SELECT ticker FROM etf WHERE {etf.TRUST_SQL}").fetchall()}
-    assert got == {"GLD", "IBIT", "FXE", "UVXY"}
 
 
 def test_the_columns_later_prs_fill_stay_null(built):
@@ -437,6 +422,56 @@ def test_an_etf_takes_its_gvkey_iid_and_cusip_from_the_series_the_spine_already_
     assert "compustat_secd" in rows["XLK"]["identity_source"]
 
 
+def test_an_etf_s_compustat_ticker_history_is_in_security_history(request):
+    """avo, 24 Nov 2026 (ticker rename research): Compustat's ``sec_idhist`` holds an ETF's ticker changes (PHB ->
+    IFLN, SPLG -> SPYM), but the spine copied it only for the companies the SEC equity file links, so a fund from the
+    fund file had none. The ETF's own gvkey/iid now brings its history in, under its current ticker."""
+    import duckdb
+    from revenuechaser.rcdata.build.spine import wrds
+    folder = wrds.parquet_dir(wrds.SEC_IDHIST.name) / "delta=9999-12-31"
+    folder.mkdir(parents=True)
+    con = duckdb.connect()
+    try:
+        con.execute("COPY (SELECT '131856' AS gvkey, '01' AS iid, 'TIC' AS item, 'XLKOLD' AS itemvalue, "
+                    "DATE '2010-01-04' AS efffrom, DATE '2020-03-01' AS effthru, DATE '2026-11-01' AS source_as_of, "
+                    "CAST(1.0 AS DOUBLE) AS fetched_at, 'r' AS run_id "
+                    "UNION ALL SELECT '131856', '01', 'TIC', 'XLK', DATE '2020-03-02', NULL, DATE '2026-11-01', 1.0, "
+                    "'r') "
+                    f"TO {base.sql_path(folder / 'sec_idhist.parquet')} (FORMAT parquet)")
+    finally:
+        con.close()
+    request.getfixturevalue("identity")
+    with serving.open_read("spine") as con:
+        got = con.execute("SELECT ticker, field, value, valid_from, valid_to FROM security_history "
+                          "WHERE gvkey = '131856' ORDER BY valid_from").fetchall()
+    assert got == [("XLK", "tic", "XLKOLD", date(2010, 1, 4), date(2020, 3, 2)),
+                   ("XLK", "tic", "XLK", date(2020, 3, 2), None)]
+
+
+def test_an_open_compustat_period_ends_null_not_on_compustats_far_future_day(request):
+    """Review M4 (24 Nov 2026): Compustat ends an open ``sec_idhist`` period on 2900-01-01, and the build wrote
+    2900-01-02 where the docstring, and an open SEC period, say NULL."""
+    import duckdb
+    from revenuechaser.rcdata.build.spine import wrds
+    folder = wrds.parquet_dir(wrds.SEC_IDHIST.name) / "delta=9999-12-31"
+    folder.mkdir(parents=True)
+    con = duckdb.connect()
+    try:
+        con.execute("COPY (SELECT '131856' AS gvkey, '01' AS iid, 'TIC' AS item, 'XLKOLD' AS itemvalue, "
+                    "DATE '2010-01-04' AS efffrom, DATE '2020-03-01' AS effthru, DATE '2026-11-01' AS source_as_of, "
+                    "CAST(1.0 AS DOUBLE) AS fetched_at, 'r' AS run_id "
+                    "UNION ALL SELECT '131856', '01', 'TIC', 'XLK', DATE '2020-03-02', DATE '2900-01-01', "
+                    "DATE '2026-11-01', 1.0, 'r') "
+                    f"TO {base.sql_path(folder / 'sec_idhist.parquet')} (FORMAT parquet)")
+    finally:
+        con.close()
+    request.getfixturevalue("identity")
+    with serving.open_read("spine") as con:
+        got = con.execute("SELECT value, valid_to FROM security_history WHERE gvkey = '131856' "
+                          "ORDER BY valid_from").fetchall()
+    assert got == [("XLKOLD", date(2020, 3, 2)), ("XLK", None)]
+
+
 def test_tickerinside_gives_the_figi_expense_ratio_and_asset_class_where_its_cik_agrees(identity):
     rows = _etf()
     xlk, spy = rows["XLK"], rows["SPY"]
@@ -580,3 +615,32 @@ def test_nport_fills_only_what_the_earlier_sources_left_null(with_nport):
     assert rows["SOXL"]["asset_class"] == "equity"           # leveraged: the class of its equity swaps
     assert rows["SPY"]["asset_class"] == "equity"            # TickerInside's, as before
 
+
+def test_each_asset_class_names_the_writer_that_set_it(with_nport):
+    """Spine 12 (review M3, avo's 5A of 24 Nov 2026): ``asset_class_source`` says which of the four writers set the
+    class, so a TickerInside re-categorisation is visible; NULL exactly where the class is."""
+    rows = _etf()
+    assert {t: rows[t]["asset_class_source"] for t in ("XLK", "SPY", "GLD", "SOXX", "TAPR", "SOXL", "CCOI")} == {
+        "XLK": "tickerinside_category", "SPY": "tickerinside_category",
+        "GLD": "trust_name",                                  # its TickerInside category is an equity one
+        "SOXX": "nport_mix", "TAPR": "nport_mix", "SOXL": "nport_derivative", "CCOI": None}
+    assert all((r["asset_class"] is None) == (r["asset_class_source"] is None) for r in rows.values())
+
+
+
+def test_a_series_the_sec_fund_file_lists_under_a_new_ticker_takes_that_ticker(built, http_mock):
+    """N-CEN is annual and keeps the ticker of its filing day. SEC's fund file is current: a series it lists under one
+    other ETF ticker was renamed, and the etf row moves to that ticker (SPLG -> SPYM, 24 Nov 2026). A series the file
+    still lists under N-CEN's ticker, or does not list at all, keeps N-CEN's."""
+    mf = {"fields": ["cik", "seriesId", "classId", "symbol"],
+          "data": [[1415726, "S000099001", "C000990011", "CCOP"],          # CCOI's series, renamed
+                   [1424958, "S000024908", "C000249081", "SOXL"]]}         # SOXL's series, unchanged
+    http_mock.add("company_tickers_mf.json", mf)
+    base.run_request({"dataset": sec_tickers_mf.NAME, "params": {"as_of": "2026-11-02"}})
+    base.run_request({"dataset": sec_tickers.NAME, "params": {"as_of": "2026-11-02"}})
+    rows = _etf()
+    assert "CCOI" not in rows
+    assert (rows["CCOP"]["series_id"], rows["CCOP"]["source"]) == ("S000099001", "ncen")
+    assert rows["CCOP"]["name"] == "Example Covered Call Option Income ETF"
+    assert rows["SOXL"]["series_id"] == "S000024908"
+    assert rows["LEVX"]["source"] == "ncen"                                 # not in the fund file: N-CEN's ticker

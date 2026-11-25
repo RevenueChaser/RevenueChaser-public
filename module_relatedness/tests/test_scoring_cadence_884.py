@@ -8,14 +8,12 @@ server (measured 20 Nov 2026, #884), not the ~2 h the cadence options were sized
 
 What that needs of ``engine.score`` (``--score``), on top of what ``test_weekly_scoring_884.py`` already pins:
 
-- on the service path it **mirrors** the service's new ``company.profile`` answers first, inside the job lock.
-  Without the mirror its "is anything newer than the saved payload" gate would never see a new profile -- a
-  ``--score`` run reads the stored profiles only (``build_profiles(use_llm=False)``), so the board would stay on
-  the payload of the last Fetch for ever;
-- the mirror is free: no model call and no SEC request, and an answer already stored is left alone, so a week the
-  service read nothing really is a week with nothing to do;
-- the gate then still decides, so an unchanged week writes nothing;
-- on the own-writer path (``PROFILES_FROM == "own"``) there is nothing to mirror.
+- on the service path its gate reads the service's ``company.profile`` answers where they are, the whole board,
+  inside the job lock (#894 step 3b: it copied them into the board's tables until then). Each answer carries the
+  time the service asked, so a new answer is seen the day it lands;
+- reading them is free: no model call and no SEC request, so a week the service read nothing really is a week with
+  nothing to do, and an unchanged week writes nothing;
+- on the own-writer path (``PROFILES_FROM == "own"``) the gate reads the board's own table.
 
 And the row itself (``RC-Relatedness-Score``): weekly Saturday 07:30, chained on the SEC reads, no cap and
 no writer. Its sibling ``RC-Relatedness-OffPeak`` (the writer run) is weekly too, Sunday 22:15 -- what the
@@ -50,12 +48,11 @@ def saved_payload(tmp_path, monkeypatch):
     return PAYLOAD
 
 
-def _profiles(monkeypatch, fetched_at):
-    monkeypatch.setattr(rawstore, "get_all", lambda table, *a, **k: [{"ticker": "AAA", "fetched_at": fetched_at}])
-
-
-def _mirror(monkeypatch, seen: list):
-    monkeypatch.setattr(engine, "mirror_service", lambda tickers: seen.append(list(tickers)) or {})
+def _answers(monkeypatch, seen: list, fetched_at):
+    """The service's answers, as ``engine.service_rows`` reads them: one company, asked at ``fetched_at``."""
+    monkeypatch.setattr(engine, "service_rows",
+                        lambda tickers=None: seen.append(tickers) or [{"ticker": "AAA", "fetched_at": fetched_at}])
+    monkeypatch.setattr(rawstore, "get_all", lambda *a, **k: pytest.fail("the board's own table was read"))
 
 
 def _fake_run(monkeypatch, calls: list):
@@ -66,51 +63,46 @@ def _fake_run(monkeypatch, calls: list):
     monkeypatch.setattr(engine, "_run", run)
 
 
-# ── the mirror, and that it decides nothing by itself ───────────────────────
+# ── the service's answers, read where they are ──────────────────────────────
 
-def test_the_step_mirrors_the_services_answers_before_it_looks_for_work(saved_payload, monkeypatch):
-    """The whole board goes to the mirror, and what it wrote is what the gate then sees."""
+def test_a_new_answer_from_the_service_is_scored(saved_payload, monkeypatch):
+    """The gate reads the whole board's answers from the service; one newer than the payload is work."""
     seen, calls = [], []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
-    _mirror(monkeypatch, seen)
-    _profiles(monkeypatch, (NOW + timedelta(minutes=5)).timestamp())    # the mirror wrote a newer profile
+    _answers(monkeypatch, seen, (NOW + timedelta(minutes=5)).timestamp())
     _fake_run(monkeypatch, calls)
     payload = engine.score()
-    assert seen == [BOARD]                      # every name, never a slice
+    assert seen == [None]                       # every name, never a slice
     assert "skipped" not in payload and len(calls) == 1
     assert calls[0]["no_fetch"] is True and calls[0]["write"] is True   # no call, and the vectors are cached
 
 
-def test_a_week_the_service_answered_nothing_is_skipped_after_the_mirror(saved_payload, monkeypatch):
-    """The mirror still runs -- it is how we learn there is nothing -- and then nothing is scored or written."""
+def test_a_week_the_service_answered_nothing_is_skipped(saved_payload, monkeypatch):
     seen = []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
-    _mirror(monkeypatch, seen)
-    _profiles(monkeypatch, (NOW - timedelta(days=1)).timestamp())
+    _answers(monkeypatch, seen, (NOW - timedelta(days=1)).timestamp())
     monkeypatch.setattr(engine, "_run", lambda *a, **k: pytest.fail("nothing to rescore"))
     monkeypatch.setattr("revenuechaser.module_relatedness.store.save_scores",
                         lambda p: pytest.fail("nothing to persist"))
     out = engine.score()
-    assert seen == [BOARD]
+    assert seen == [None]
     assert out["skipped"] and out["as_of"] == PAYLOAD["as_of"]
 
 
 def test_force_scores_even_when_the_service_answered_nothing(saved_payload, monkeypatch):
     seen, calls = [], []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
-    _mirror(monkeypatch, seen)
-    _profiles(monkeypatch, (NOW - timedelta(days=1)).timestamp())
+    _answers(monkeypatch, seen, (NOW - timedelta(days=1)).timestamp())
     _fake_run(monkeypatch, calls)
     assert "skipped" not in engine.score(only_if_new=False)
-    assert seen == [BOARD] and len(calls) == 1
+    assert seen == [] and len(calls) == 1      # --force does not even look
 
 
-def test_the_mirror_waits_for_the_lock_like_the_scoring_does(saved_payload, monkeypatch):
-    """A Fetch holds the board: the scoring step writes no profile either, not even the mirror's."""
+def test_the_gate_waits_for_the_lock(saved_payload, monkeypatch):
+    """A Fetch holds the board: the scoring step reads nothing and writes nothing."""
     seen = []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "service")
-    _mirror(monkeypatch, seen)
-    _profiles(monkeypatch, (NOW + timedelta(minutes=5)).timestamp())
+    _answers(monkeypatch, seen, (NOW + timedelta(minutes=5)).timestamp())
     monkeypatch.setattr(engine, "_run", lambda *a, **k: pytest.fail("the lock was not honoured"))
     with job_lock.acquire("relatedness", wait=0) as got:
         assert got
@@ -119,14 +111,15 @@ def test_the_mirror_waits_for_the_lock_like_the_scoring_does(saved_payload, monk
     assert seen == []
 
 
-def test_the_own_writer_path_mirrors_nothing(saved_payload, monkeypatch):
-    seen, calls = [], []
+def test_the_own_writer_path_reads_its_own_table(saved_payload, monkeypatch):
+    calls = []
     monkeypatch.setattr(engine.config, "PROFILES_FROM", "own")
-    _mirror(monkeypatch, seen)
-    _profiles(monkeypatch, (NOW + timedelta(minutes=5)).timestamp())
+    monkeypatch.setattr(engine, "service_rows", lambda tickers=None: pytest.fail("the service was read"))
+    monkeypatch.setattr(rawstore, "get_all",
+                        lambda *a, **k: [{"ticker": "AAA", "fetched_at": (NOW + timedelta(minutes=5)).timestamp()}])
     _fake_run(monkeypatch, calls)
     assert "skipped" not in engine.score()
-    assert seen == [] and len(calls) == 1
+    assert len(calls) == 1
 
 
 # ── the row the server installs ─────────────────────────────────────────────
@@ -144,8 +137,8 @@ def test_the_scoring_row_costs_nothing_and_is_not_off_peak_gated():
     e = A.entry("RC-Relatedness-Score")
     assert "--cap" not in e.args and "--provider" not in e.args     # --score refuses both: it calls no writer
     assert e.offpeak_gated is False                                 # no paid call to defer
-    assert set(e.tables_written) == {"relatedness_profiles", "relatedness_attributes", "relatedness_embeddings",
-                                     "relatedness_scores"}
+    # It reads the service's answers and copies none into the board's profile tables (#894 step 3b).
+    assert set(e.tables_written) == {"relatedness_embeddings", "relatedness_scores"}
     assert "llm_cache" not in e.tables_written
 
 

@@ -186,7 +186,7 @@ def funnel(nd: dict, *, rules_path: Path | None = None) -> dict:
                 f"volume at or over {_usd(rules.etf_adv_floor)}")
     stocks = [
         {"step": "in the SEC ticker file", "n": _n(steps.get("sec")), "drops": ""},
-        {"step": "listed on Nasdaq, NYSE or Cboe", "n": _n(steps.get("listed")),
+        {"step": "listed on an exchange (tier A or B)", "n": _n(steps.get("listed")),
          "drops": "over the counter, or no exchange in the file"},
         {"step": f"tier {tiers}; {types}", "n": counted(by_rule, "stock"),
          "drops": f"a tier other than {tiers}, or a type other than {types}"},

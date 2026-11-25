@@ -324,7 +324,7 @@ read_queue = queue_view
 
 def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
                  only: Iterable[str] | None = None, by: str | None = None,
-                 fetch_only: bool = False) -> dict | None:
+                 fetch_only: bool = False, or_by: str | None = None) -> dict | None:
     skip = tuple(skip)
     if skip and only is not None:
         raise ValueError("next_request takes skip or only, not both")
@@ -334,7 +334,9 @@ def next_request(dataset: str | None = None, *, skip: Iterable[str] = (),
         for r in _active():
             if (r["status"] == "queued" and dataset in (None, r["dataset"]) and r["dataset"] not in skip
                     and by in (None, r["requested_by"]) and (names is None or r["dataset"] in names)
-                    and (not fetch_only or ops.is_fetch_only(r.get("params")))):
+                    and (not fetch_only or ops.is_fetch_only(r.get("params"))
+                         or (or_by is not None and r["requested_by"] == or_by
+                             and not ops.params_of(r.get("params")).get("build_only")))):
                 row = {**r, "status": "running", "started_at": time.time()}
                 return ops._request(row), lambda p: _put(p, "build_requests", row)
         return None, None
@@ -901,6 +903,34 @@ def schedule_get(dataset: str) -> dict | None:
 
 
 read_schedule = schedule_get
+
+
+def slot_set(dataset: str, at: str | None, weekday: int | None) -> None:
+    if not at:
+        row = _one("dataset_slot", dataset)
+        if row is not None:
+            _transaction(["dataset_slot"], lambda: (None, lambda p: _delete(p, "dataset_slot", row)))
+        return
+    row = {"dataset": dataset, "at": at, "weekday": weekday, "set_at": ops.calendar._now().timestamp()}
+    _transaction(["dataset_slot"], lambda: (None, lambda p: _put(p, "dataset_slot", row)))
+
+
+def slot_get(dataset: str) -> dict | None:
+    return _one("dataset_slot", dataset)
+
+
+def fetch_hours_set(kind: str, hours: str | None) -> None:
+    if hours is None:
+        row = _one("kind_fetch_hours", kind)
+        if row is not None:
+            _transaction(["kind_fetch_hours"], lambda: (None, lambda p: _delete(p, "kind_fetch_hours", row)))
+        return
+    row = {"kind": kind, "hours": hours, "set_at": ops.calendar._now().timestamp()}
+    _transaction(["kind_fetch_hours"], lambda: (None, lambda p: _put(p, "kind_fetch_hours", row)))
+
+
+def fetch_hours_get(kind: str) -> dict | None:
+    return _one("kind_fetch_hours", kind)
 
 
 def kind_mode_set(kind: str, mode: str, *, by: str) -> None:

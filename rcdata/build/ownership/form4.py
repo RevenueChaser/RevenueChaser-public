@@ -43,6 +43,7 @@ ROWS = [("accession", "TEXT"), ("form", "TEXT"), ("filed", "DATE"), ("index_day"
         ("expiration_date", "DATE"), ("status", "TEXT"), ("detail", "TEXT"), ("fetched_at", "DOUBLE"),
         ("run_id", "TEXT")]
 SERVED = ROWS[:8] + [("ticker", "TEXT"), ("ticker_source", "TEXT")] + ROWS[8:] + [("source", "TEXT")]
+NAMING = common.BY_ISSUER._replace(date="filed")   # an old symbol is read as of the filing day
 TABLES = (("non_derivative", "nonderivativetable/nonderivativetransaction"),
           ("derivative", "derivativetable/derivativetransaction"))
 SETS_SCHEMA = {"forms": FORMS, "rows": ROWS}
@@ -150,7 +151,7 @@ class SecForm4(edgar.Feed):
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         return {TABLE: self.build_rows(ctx, con, TABLE, SERVED, "rows", "filed, accession, tx_table, line",
-                                       common.BY_ISSUER, unique=("accession", "tx_table", "line"))}
+                                       NAMING, unique=("accession", "tx_table", "line"))}
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
         added, removed = base.compare_with_live(con, self.kind, TABLE, ["accession", "tx_table", "line", "status"])

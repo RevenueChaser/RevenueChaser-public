@@ -11,9 +11,16 @@ live file it deletes the rows of the dirty keys (a changed, new or gone partitio
 partition is gone) and loads only those partitions. Its tickers come from the live spine, which changes without a
 partition changing, so it then names every row again from a map over the table's own distinct symbols and rewrites
 the rows whose name moved (:func:`restate`). A map is per symbol (``symbol_tickers``, ``issuer_tickers``,
-``cusip_issuer_map``), so the result is the whole build's, row for row. A new source of the kind (N-PORT, ETF review
-D2) uses the same two calls: a ``dirty`` of :func:`keyed_dirty` over its partition field and a ``build`` of
-:func:`build_keyed`.
+``cusip_issuer_map``) and day range, so the result is the whole build's, row for row. A new source of the kind
+(N-PORT, ETF review D2) uses the same two calls: a ``dirty`` of :func:`keyed_dirty` over its partition field and a
+``build`` of :func:`build_keyed`.
+
+**Naming by date** (K-E step 2). A source that writes the symbol of its row's day (FINRA, FTD, IBKR, Reg SHO, a
+Form 4's symbol) names each row by that day (:class:`Naming` ``date``) through Compustat's ``tic`` periods
+(``ticker_history``): an old symbol inside its period is the security's current ticker (``spine:renamed``; BK until
+2026-05-21 is BNY), and a current ticker's row from before its holder took it goes to that day's holder
+(``spine:reused``; GOLD in 2024 is Barrick's, B), or to no one when none is known and the row is more than
+:data:`GRACE` early (decision C2; FINRA's SUPN before 2026-11-03 is Supernus, not Indivior).
 """
 from __future__ import annotations
 
@@ -26,12 +33,21 @@ import duckdb
 from ....core import calendar
 from ....core.identity.sources import norm_ticker
 from ... import serving
-from .. import base, cik_history, dirty
+from .. import base, cik_history, dirty, ticker_history
 from ..spine.security import squash
 
 SPINE = "spine"
 # How a source's symbol became a ticker (``ticker_source``).
 EXACT, SQUASHED = "spine:exact", "spine:squash"
+RENAMED, REUSED = "spine:renamed", "spine:reused"
+# A row this little before its ticker's first day keeps it: Compustat's change day can trail the source's (IBKR
+# lists a new ticker 1-3 days early, 24 Nov 2026).
+GRACE = timedelta(days=7)
+# A map row's days run from ``valid_from`` up to, not including, ``valid_to``; every key's rows cover every day once.
+FIRST, LAST = date.min, date.max
+# The day an undated row, or an undated naming, is named on: the open end, so today's name.
+OPEN_DAY = "DATE '9999-12-30'"
+MAP_DAYS = [("valid_from", "DATE"), ("valid_to", "DATE")]
 
 
 def norm_symbol(raw) -> str:
@@ -41,13 +57,15 @@ def norm_symbol(raw) -> str:
 
 
 def spine_tickers() -> set[str] | None:
-    """Every ticker of the live spine's ``security`` table; None when there is no spine file yet."""
+    """Every ticker of the live spine's ``security`` and ``etf`` tables (an ETF's ticker is only in ``etf``: FINRA,
+    FTD, IBKR and Reg SHO list ETFs too); None when there is no spine file yet."""
     try:
         con = serving.open_read(SPINE)
     except serving.ServingFileMissing:
         return None
     try:
-        return {r[0] for r in con.execute("SELECT ticker FROM security").fetchall()}
+        sql = "SELECT ticker FROM security" + (" UNION SELECT ticker FROM etf" if has_table(con, "etf") else "")
+        return {r[0] for r in con.execute(sql).fetchall()}
     finally:
         con.close()
 
@@ -112,18 +130,58 @@ def temp_rows(con: duckdb.DuckDBPyConnection, name: str, schema: list[tuple[str,
         con.unregister("_temp_rows_frame")
 
 
+def by_date(name: tuple, start: date | None, held: list[tuple[date, date, tuple]]) -> list[tuple[tuple, date, date]]:
+    """``[(name, valid_from, valid_to)]`` covering every day once: ``name`` from ``start`` on; before it a period's
+    name on its days (``held``: ``[(valid_from, valid_to, name)]``), else ``name`` when there is no ``start``, else
+    no name. Today's holder wins from its start on, so a period Compustat closes later changes nothing there."""
+    cuts = sorted({start, *(d for f, to, _ in held for d in (f, to))} - {None})
+    out: list[tuple[tuple, date, date]] = []
+    for lo, hi in zip([FIRST, *cuts], [*cuts, LAST]):
+        if start is not None and lo >= start:
+            hit = name
+        else:
+            hit = next((n for f, to, n in held if f <= lo < to), None) or (name if start is None else (None, None))
+        if out and out[-1][0] == hit:
+            out[-1] = (hit, out[-1][1], hi)
+        else:
+            out.append((hit, lo, hi))
+    return out
+
+
+def old_symbols(tickers) -> tuple[dict[str, list[ticker_history.Period]], dict[str, date]]:
+    """``({symbol: its periods as an old symbol of a ticker in tickers}, {ticker: its first day})``; empty with no
+    spine."""
+    if not tickers:
+        return {}, {}
+    held: dict[str, list[ticker_history.Period]] = {}
+    for p in ticker_history.periods():
+        if p.ticker in tickers:
+            held.setdefault(p.symbol, []).append(p)
+    return held, ticker_history.starts()
+
+
 def symbol_map(con: duckdb.DuckDBPyConnection, symbols_sql: str, notes: list[str], label: str) -> int:
-    """``_symbol_map(symbol, ticker, ticker_source)`` (TEMP) for the distinct symbols ``symbols_sql`` selects; the
-    number it names. With no spine every ticker is NULL and ``notes`` says why."""
+    """``_symbol_map(symbol, ticker, ticker_source, valid_from, valid_to)`` (TEMP) for the distinct symbols
+    ``symbols_sql`` selects, by day (:func:`by_date`): an old symbol's period names its current ticker, a reused
+    ticker's names the holder of those days, and today's name runs from :data:`GRACE` before its ticker's first day
+    on; the number of symbols it names on some day. With no spine every ticker is NULL and ``notes`` says why."""
     symbols = [r[0] for r in con.execute(f"SELECT DISTINCT symbol FROM ({symbols_sql}) WHERE symbol IS NOT NULL")
                .fetchall()]
     tickers = spine_tickers()
     if tickers is None and symbols:
         notes.append(f"{label}: no spine file yet, so no symbol is named a ticker")
     named = symbol_tickers(symbols, tickers)
-    temp_rows(con, "_symbol_map", [("symbol", "TEXT"), ("ticker", "TEXT"), ("ticker_source", "TEXT")],
-              [{"symbol": s, "ticker": t, "ticker_source": src} for s, (t, src) in named.items()])
-    return sum(1 for t, _ in named.values() if t)
+    held, starts = old_symbols(tickers)
+    rows = []
+    for s, name in named.items():
+        start = starts[name[0]] - GRACE if name[0] in starts else None
+        src = REUSED if s in starts else RENAMED
+        days = by_date(name, start, [(p.valid_from, p.valid_to, (p.ticker, src)) for p in held.get(s, [])])
+        rows += [{"symbol": s, "ticker": t, "ticker_source": ts, "valid_from": f, "valid_to": to}
+                 for (t, ts), f, to in days]
+    temp_rows(con, "_symbol_map", [("symbol", "TEXT"), ("ticker", "TEXT"), ("ticker_source", "TEXT"), *MAP_DAYS],
+              rows)
+    return len({r["symbol"] for r in rows if r["ticker"]})
 
 
 # ── Sessions ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -241,16 +299,24 @@ def issuer_tickers(pairs: Iterable[tuple[str | None, str | None]], spine: dict[s
 
 
 def issuer_map(con: duckdb.DuckDBPyConnection, pairs_sql: str, notes: list[str], label: str) -> None:
-    """``_issuer_map(issuer_cik, symbol, ticker, ticker_source)`` (TEMP) for the distinct pairs ``pairs_sql``
-    selects (columns ``issuer_cik``, ``symbol``); join it with ``IS NOT DISTINCT FROM``."""
+    """``_issuer_map(issuer_cik, symbol, ticker, ticker_source, valid_from, valid_to)`` (TEMP) for the distinct pairs
+    ``pairs_sql`` selects (columns ``issuer_cik``, ``symbol``); join it with ``IS NOT DISTINCT FROM``. A pair
+    :func:`issuer_tickers` names no one is named, on the days of an old symbol's period, its current ticker when
+    that ticker's spine CIK is the issuer's (or the filing names none): the symbol is the fallback, the CIK decides."""
     pairs = [tuple(r) for r in con.execute(f"SELECT DISTINCT issuer_cik, symbol FROM ({pairs_sql})").fetchall()]
     spine = spine_ciks()
     if spine is None and pairs:
         notes.append(f"{label}: no spine file yet, so no issuer is named a ticker")
     named = issuer_tickers(pairs, spine, spine_former_ciks())
+    held, _ = old_symbols(spine)
+    rows = []
+    for (c, s), name in named.items():
+        own = [] if name[0] else [(p.valid_from, p.valid_to, (p.ticker, RENAMED)) for p in held.get(s, [])
+                                  if c is None or spine.get(p.ticker) == c]
+        rows += [{"issuer_cik": c, "symbol": s, "ticker": t, "ticker_source": src, "valid_from": f, "valid_to": to}
+                 for (t, src), f, to in by_date(name, None, own)]
     temp_rows(con, "_issuer_map", [("issuer_cik", "TEXT"), ("symbol", "TEXT"), ("ticker", "TEXT"),
-                                   ("ticker_source", "TEXT")],
-              [{"issuer_cik": c, "symbol": s, "ticker": t, "ticker_source": src} for (c, s), (t, src) in named.items()])
+                                   ("ticker_source", "TEXT"), *MAP_DAYS], rows)
 
 
 ISSUER_CUSIP = "spine:cusip"
@@ -282,19 +348,22 @@ def cusip_issuer_map(con: duckdb.DuckDBPyConnection, pairs_sql: str, notes: list
     for cik, cusip in pairs:
         hit = (by_cusip or {}).get(cusip) if cusip else None
         ticker, src = (hit, ISSUER_CUSIP) if hit else by_cik.get((cik, None), (None, None))
-        rows.append({"issuer_cik": cik, "cusip": cusip, "ticker": ticker, "ticker_source": src})
+        rows.append({"issuer_cik": cik, "cusip": cusip, "ticker": ticker, "ticker_source": src,
+                     "valid_from": FIRST, "valid_to": LAST})
     temp_rows(con, "_cusip_issuer_map", [("issuer_cik", "TEXT"), ("cusip", "TEXT"), ("ticker", "TEXT"),
-                                         ("ticker_source", "TEXT")], rows)
+                                         ("ticker_source", "TEXT"), *MAP_DAYS], rows)
 
 
 # ── The build on the live copy (#446) ─────────────────────────────────────────────────────────────────────────
 
 class Naming(NamedTuple):
     """How a source's rows get their ticker: the columns the map is keyed by, the function that writes it (TEMP,
-    over a query selecting those columns) and the TEMP table's name."""
+    over a query selecting those columns), the TEMP table's name, and the row's date column it is named on (None:
+    every row is named as of today). A source passes its own: ``BY_SYMBOL._replace(date="settlement_date")``."""
     cols: tuple[str, ...]
     make: Callable[[duckdb.DuckDBPyConnection, str, list, str], object]
     temp: str
+    date: str | None = None
 
 
 BY_SYMBOL = Naming(("symbol",), symbol_map, "_symbol_map")
@@ -313,7 +382,11 @@ def has_table(con: duckdb.DuckDBPyConnection, table: str) -> bool:
 
 
 def _on(naming: Naming, left: str, right: str) -> str:
-    return " AND ".join(f'{right}."{c}" IS NOT DISTINCT FROM {left}."{c}"' for c in naming.cols)
+    """The join of a row (``left``) with its one map row (``right``): the key, then the day inside the map row's
+    range. An equi-join on the key with a range filter on a handful of rows per key, so it stays a hash join."""
+    day = f'coalesce({left}."{naming.date}", {OPEN_DAY})' if naming.date else OPEN_DAY
+    keys = " AND ".join(f'{right}."{c}" IS NOT DISTINCT FROM {left}."{c}"' for c in naming.cols)
+    return f"{keys} AND {day} >= {right}.valid_from AND {day} < {right}.valid_to"
 
 
 def build_keyed(ctx, con: duckdb.DuckDBPyConnection, name: str, table: str, schema: list[tuple[str, str]],

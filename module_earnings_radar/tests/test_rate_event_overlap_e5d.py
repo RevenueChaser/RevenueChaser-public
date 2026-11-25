@@ -114,7 +114,7 @@ def test_fomc_inside_the_window_is_a_rate_event():
     assert stored_inputs.rate_event_overlap(REPORT) is True
 
 
-@pytest.mark.parametrize("event", ["CPI", "CPI, Y/Y%", "Core CPI, M/M%"])
+@pytest.mark.parametrize("event", ["CPI", "CPI, Y/Y%", "Core CPI, M/M%", "Inflation Rate YoY", "Core Inflation Rate MoM"])
 def test_cpi_named_events_are_rate_events(event):
     _serve(_rate_event_in_span(event=event))
     assert stored_inputs.rate_event_overlap(REPORT) is True

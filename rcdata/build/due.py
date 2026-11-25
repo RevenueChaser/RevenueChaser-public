@@ -42,6 +42,10 @@ A dataset is due (``is_due``) when nothing holds it and its last run is old enou
   waits for the next night;
 - ``weekly`` / ``monthly`` / ``quarterly``: due 7 / 30 / 91 days after the last check's ``checked_on``. The cadence is the
   ``dataset_schedule`` row's, else the dataset's own ``cadence`` attribute (the spine's weekly sources), else daily.
+- a start time (``ops.dataset_slot``, avo 24 Nov 2026: "daily ise ne zaman başlayacağını, weekly ise gün ve saat"):
+  a daily or weekly dataset with one waits until its newest start (Amsterdam) has passed with no run since it. A
+  weekly one is then due; a daily one still needs its next session as above. A start that passed before it was set
+  is not owed, so setting Monday 22:00 on a Tuesday waits for the next Monday.
 
 The request goes in through ``ops.enqueue_once`` (check and insert in one ``BEGIN IMMEDIATE``), so a dataset that
 already has a request queued or running gets no second one, whoever queued the first.
@@ -49,7 +53,8 @@ already has a request queued or running gets no second one, whoever queued the f
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from ...core import calendar
 from .. import ops
@@ -63,6 +68,10 @@ CYCLE_DAYS = {"weekly": 7, "monthly": 30, "quarterly": 91}
 #: Under 60 so a pass that starts a few minutes early (timer jitter, a long pass before it) still finds it due.
 HOURLY_MIN = 55
 REQUESTED_BY = "schedule"
+#: A start time is an Amsterdam clock (avo's), for these cadences only; a weekly one names its day too.
+AMS = ZoneInfo("Europe/Amsterdam")
+SLOT_CADENCES = ("daily", "weekly")
+DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 ATTENDED_WHY = "attended: run from the CLI on the server (a person logs in; WRDS_USERNAME must be set)"
 WRDS_FAILED_WHY = ("the last WRDS run failed today: again on the next New York day (no hourly retry, so no hourly "
                    "login; the last snapshot stays); a run by a person (Fetch or CLI) that does not fail clears it")
@@ -87,6 +96,51 @@ BY_HAND_WHY = "starts by hand: not due until a first run from the CLI or a Fetch
 #: The stage notes a partial run leaves (``base.skip_note``), by the modes whose run they complete: a raw + Parquet
 #: run also completes a raw-only mode, a raw-only run does not complete a raw + Parquet one.
 STAGE_DONE = {"raw": (base.NO_PARQUET_NOTE, base.NO_DUCKDB_NOTE), "parquet": (base.NO_DUCKDB_NOTE,)}
+
+
+def last_slot(slot: dict | None, cadence: str, now: datetime) -> datetime | None:
+    """The newest start of ``slot`` (an ``ops.dataset_slot`` row) at or before ``now``, in Amsterdam; None without a
+    slot or for a cadence that has none. Day arithmetic on the local clock, so 22:00 stays 22:00 across a DST change."""
+    if not slot or not slot.get("at") or cadence not in SLOT_CADENCES:
+        return None
+    hour, minute = (int(x) for x in str(slot["at"]).split(":"))
+    local = now.astimezone(AMS)
+    at = datetime.combine(local.date(), time(hour, minute), tzinfo=AMS)
+    step = 7 if cadence == "weekly" else 1
+    if cadence == "weekly":
+        at -= timedelta(days=(local.weekday() - int(slot.get("weekday") or 0)) % 7)
+    return at if at <= now else at - timedelta(days=step)
+
+
+def first_slot(slot: dict | None, cadence: str, after: datetime) -> datetime | None:
+    """The first start of ``slot`` at or after ``after``; None as ``last_slot``."""
+    last = last_slot(slot, cadence, after)
+    if last is None or last == after:
+        return last
+    return last + timedelta(days=7 if cadence == "weekly" else 1)
+
+
+def slot_words(slot: dict, cadence: str) -> str:
+    """``Mon 22:00`` for a weekly start, ``22:00`` for a daily one (Amsterdam)."""
+    return (f"{DAYS[int(slot.get('weekday') or 0)]} " if cadence == "weekly" else "") + f"{slot['at']} Amsterdam"
+
+
+def _slot_waits(ds, check: dict, cadence: str) -> tuple[bool, str] | None:
+    """``is_due``'s answer from the start time: ``(False, why)`` before it, ``(True, why)`` for a weekly dataset
+    whose start passed with no run since; None when no start applies (or a daily one's passed: the session rule)."""
+    slot = ops.slot_get(ds.name) if cadence in SLOT_CADENCES else None
+    start = last_slot(slot, cadence, calendar._now())
+    if start is None:
+        return None
+    words = slot_words(slot, cadence)
+    if start.timestamp() < float(slot.get("set_at") or 0):
+        return False, f"starts {words}: set after the last one"
+    started = ops.run_started_at(check["run_id"]) if check.get("run_id") else None
+    ran = (float(started) >= start.timestamp() if started is not None
+           else str(check.get("checked_on"))[:10] >= start.astimezone(calendar.NY).date().isoformat())
+    if ran:
+        return False, f"starts {words}: ran since the last one"
+    return (True, f"{words} passed") if cadence == "weekly" else None
 
 
 def _stage_done(check: dict, mode: str) -> bool:
@@ -122,7 +176,10 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
         return False, ATTENDED_WHY
     if mode == "off":                       # after attended: the Settings row reads "by hand only" first too
         return False, f"automation off for {ds.kind}"
-    if getattr(ds, "starts_by_hand", False) and not ops.ever_built(ds.name):
+    if getattr(ds, "starts_by_hand", False) and not ops.ever_built(ds.name) \
+            and not (mode in STAGE_DONE and _stage_done(ops.latest_check(ds.name) or {"result": None}, mode)):
+        # Under a partial mode a person's first staged run is its first run: the storage fetch builds nothing, so
+        # waiting for a build would keep the source off the hourly fetch for good (avo, 24 Nov 2026).
         return False, BY_HAND_WHY
     schedule = ops.schedule_get(ds.name) or {}
     if schedule.get("paused_at") is not None:
@@ -152,6 +209,9 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
         return True, f"the last check {'failed' if check['result'] == 'failed' else 'was skipped'}"
     cadence = schedule.get("cadence") if schedule.get("cadence") in CADENCES else getattr(ds, "cadence", None)
     cadence = cadence if cadence in CADENCES else DEFAULT_CADENCE
+    waits = _slot_waits(ds, check, cadence)
+    if waits is not None:
+        return waits
     if cadence == "daily":
         nxt = check.get("next_check_due")
         as_of = ds.default_as_of().isoformat()
@@ -166,6 +226,10 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
             return False, f"no next session known; ran for {ran}"
         return (True, f"next check {nxt} reached") if as_of >= nxt else (False, f"next check {nxt}")
     if cadence == "hourly":
+        if mode in STAGE_DONE and not _stage_done(check, mode):
+            # Under a partial mode the hour is the fetch's: a build of what it staged (the storage build at :05) is
+            # no fetch, and counting from it made the :45 fetch skip every second hour (review of #1483)
+            return True, "hourly: the newest check is a build, not a fetch"
         started = ops.run_started_at(check["run_id"]) if check.get("run_id") else None
         if started is None:
             return True, "hourly: the last check names no run"
@@ -177,16 +241,107 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     return False, f"{cadence}: last checked {age} days ago"
 
 
-def enqueue_due(datasets: dict | None = None) -> list[tuple[str, str, int | None, bool]]:
+#: The Amsterdam hours the storage fetch takes a kind's sources at, for a kind that is built on a timer of its own
+#: (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each before its build at 09:25 and 00:25, not hourly). A
+#: fetch that failed tries once more the next hour, before that build. A kind's row in ``ops.kind_fetch_hours`` (set
+#: from Grafana, avo 24 Nov 2026: "fetch timer duckdb bazli olmali") wins over this table; a kind in neither is
+#: fetched every hour.
+FETCH_HOURS = {"market": (7, 22)}
+#: The minute of the storage fetch timer (home-server ``life-rc-store-fetch.timer``, ``*:45`` Europe/Amsterdam).
+FETCH_MINUTE = 45
+
+
+def parse_hours(text) -> tuple[int, ...]:
+    """``"7,22"`` (or a list of ints) as sorted Amsterdam hours; ValueError for anything else, including no hour or
+    all 24 (that is "every hour", which is no row)."""
+    items = text.split(",") if isinstance(text, str) else list(text or ())
+    hours = []
+    for item in items:
+        if isinstance(item, bool) or not isinstance(item, (int, str)) or not str(item).strip().isdigit():
+            raise ValueError(f"hour {item!r} is not a whole number 0-23")
+        hours.append(int(str(item).strip()))
+    if not hours or any(h > 23 for h in hours) or len(set(hours)) == 24:
+        raise ValueError(f"hours {text!r}: one or more of 0-23, and not all 24 (every hour is no row)")
+    return tuple(sorted(set(hours)))
+
+
+def fetch_hours(kind: str) -> tuple[tuple[int, ...] | None, str]:
+    """``(hours, source)``: the kind's row, else ``FETCH_HOURS``, else ``(None, "every hour")``. A row that does not
+    parse raises: a fetch must never fall back to every hour because its hours were unreadable."""
+    row = ops.fetch_hours_get(kind)
+    if row is not None:
+        return parse_hours(row["hours"]), "kind_fetch_hours"
+    if kind in FETCH_HOURS:
+        return tuple(FETCH_HOURS[kind]), "FETCH_HOURS"
+    return None, "every hour"
+
+
+def next_fetch(kind: str, now: datetime | None = None) -> datetime:
+    """The next storage fetch (``*:45`` Amsterdam) at or after ``now`` that takes ``kind``, by ``fetch_hours``.
+    shortcut: the one retry the hour after a failed fetch is a dataset's, not shown here; add it if the board needs it."""
+    hours, _ = fetch_hours(kind)
+    at = (now or calendar._now()).astimezone(AMS)
+    p = at.replace(minute=FETCH_MINUTE, second=0, microsecond=0)
+    p = p if p >= at else p + timedelta(hours=1)
+    while hours is not None and p.hour not in hours:
+        p += timedelta(hours=1)
+    return p
+
+
+def _fetch_hour(ds) -> str | None:
+    """Why the storage fetch leaves ``ds`` for a later hour, or None."""
+    hours, source = fetch_hours(ds.kind)
+    if hours is None:
+        return None
+    hour = calendar._now().astimezone(AMS).hour
+    if hour in hours:
+        return None
+    check = ops.latest_check(ds.name)
+    if (hour - 1) % 24 in hours and check is not None and check["result"] == "failed":
+        return None                           # the one retry of a failed fetch
+    return f"{ds.kind} is fetched at " + " and ".join(f"{h:02d}:{FETCH_MINUTE}" for h in hours) + f" ({source})"
+
+
+def _hour_gate_words(ds, stage: str | None) -> str:
+    """What let ``ds`` through the fetch's hour gate, for its due line ("" when no gate applies): the source is named, so
+    a live 07:45 tick shows whether the row or the code's table let market in (review of the per-DuckDB fetch plan)."""
+    if stage != "fetch":
+        return ""
+    hours, source = fetch_hours(ds.kind)
+    return "" if hours is None else f"; hour gate {source} " + ",".join(f"{h:02d}" for h in hours)
+
+
+def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
+    """``(mode, why not)`` for the split passes (avo, 24 Nov 2026: a storage fetch timer always on, a storage build
+    timer he switches). ``fetch``: a ``full`` source is queued as ``parquet``, so the pass never builds DuckDB.
+    ``build``: only a ``full`` source whose newest check is a Parquet stage is queued, and as ``full``: the build of
+    what the fetch timer staged, at no provider call (the raw file is the resume marker)."""
+    if stage == "fetch":
+        return ("parquet" if mode == "full" else mode), _fetch_hour(ds)
+    if stage == "build":
+        if mode != "full":
+            return mode, f"automation {mode}: the build pass builds only full sources"
+        check = ops.latest_check(ds.name)
+        if not (check and _stage_done(check, "parquet")):
+            return mode, "no staged Parquet waiting for a build"
+    return mode, None
+
+
+def enqueue_due(datasets: dict | None = None, stage: str | None = None,
+                kinds: tuple[str, ...] = ()) -> list[tuple[str, str, int | None, bool]]:
     """Queue every due dataset once; ``(name, why, request id or None, error)`` per dataset, in registry order.
 
     No id: not due, already queued or running, or an error (``why`` says which). ``error`` is True when the due check
     raised or ``ops.sqlite`` stayed locked past its busy timeout; one dataset's error does not stop the others.
+    ``stage`` is the split pass (``run --fetch-only`` / ``--build-only``, ``_pass_mode``); None is the old whole pass.
+    ``kinds``, when given, leaves every other kind's dataset out (``run --build-only --kind market``).
     """
     if datasets is None:
         from . import DATASETS as datasets
     out = []
     for name in datasets:                     # registry order: sources before the kind's derived datasets (PR A)
+        if kinds and datasets[name].kind not in kinds:
+            continue
         try:
             # avo, 10 Nov 2026 ("burada yaptigim her ayarin uygulanabilir oldugundan emin ol"): a dataset the fetch
             # switch or its file's switch holds is not queued at all, so a held file leaves no hourly skipped rows
@@ -195,7 +350,9 @@ def enqueue_due(datasets: dict | None = None) -> list[tuple[str, str, int | None
                 out.append((name, f"not due (held: {ops.switch_words(*held)})", None, False))
                 continue
             mode = ops.dataset_mode(name, datasets[name].kind)   # #527: a source's own mode wins over its kind's
-            due, why = is_due(datasets[name], mode)
+            mode, not_now = _pass_mode(datasets[name], mode, stage)
+            due, why = (False, not_now) if not_now else is_due(datasets[name], mode)
+            why += _hour_gate_words(datasets[name], stage) if due else ""
         except Exception as e:  # noqa: BLE001 - a calendar past its table for one dataset must not stop the rest
             out.append((name, f"due check failed: {type(e).__name__}: {e}"[:300], None, True))
             continue
@@ -203,7 +360,8 @@ def enqueue_due(datasets: dict | None = None) -> list[tuple[str, str, int | None
             out.append((name, f"not due ({why})", None, False))
             continue
         try:
-            rid = ops.enqueue_once(name, base.STAGE_PARAMS[mode] or None, by=REQUESTED_BY)
+            params = {"build_only": True} if stage == "build" else base.STAGE_PARAMS[mode] or None
+            rid = ops.enqueue_once(name, params, by=REQUESTED_BY)
         except ops.BUSY_ERRORS as e:
             # ops.sqlite held past busy_timeout, or Redis not answering (as in _run_queue): this dataset waits for
             # the next pass.

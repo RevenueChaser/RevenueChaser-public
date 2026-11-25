@@ -10,6 +10,7 @@ import os
 
 from revenuechaser.core import llm_prices, llm_writers
 from revenuechaser.core.config import OUTPUT_DIR
+from revenuechaser.rcdata import sec_forms_label
 from revenuechaser.module_value_chain import config as vc_config
 
 RELATEDNESS_LATEST = OUTPUT_DIR / "relatedness_latest.html"
@@ -56,14 +57,16 @@ PROMPT_VERSION = "v3d"
 # Not the ``MAX_INPUT_CHARS`` v2 cut every text at (removed by v3, #400).
 MAX_BUSINESS_CHARS: int | None = None
 
-# Where a profile run gets its profiles (avo, 16 Nov 2026): ``service`` mirrors the SEC reading service's answers to
-# ``company.profile`` into ``relatedness_profiles`` and calls no model; ``own`` is the board's own writer, kept until
-# the clean-up for the tests of it and for the writer comparison.
+# Where the board gets its profiles (avo, 16 Nov 2026): ``service`` reads the SEC reading service's answers to
+# ``company.profile`` where they are, as Value Chain does, copies none and calls no model (#894 step 3b; avo, 24 Nov
+# 2026: "Relatedness da Value chain gibi olsun, ek kopyalamaya gerek yok"); ``own`` is the board's own writer and its
+# ``relatedness_profiles`` / ``relatedness_attributes``, kept until the clean-up for the tests of it and the writer
+# comparison.
 PROFILES_FROM = "service"
 
 # The rule version the business sections must be cut with before a profile run reads them (``_forms_ready``,
 # #841). None turns the check off.
-FORMS_RULES_VERSION = "ours-2"
+FORMS_RULES_VERSION = sec_forms_label.forms_rows_version()
 
 # $ hard-stop: cap the number of LLM calls per run (~1.5x the expected spend).
 # The cap's cost per call, measured on DeepSeek Flash: the 10 Nov 2026 pilot wrote 400 names in 668 calls for about

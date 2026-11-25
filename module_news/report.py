@@ -152,10 +152,11 @@ def fda_vals_html(e: dict) -> str:
 
 
 def _fda_sub(e: dict) -> str:
-    """The small line under the name: UW's own target text when it is not a day, and the outcome once there is one."""
+    """The small line under the name: the source's own target words when it is not a day, and the outcome once there
+    is one."""
     parts = []
     if not dated(e) and e.get("target_text"):
-        parts.append(f'Unusual Whales serves this one as {e["target_text"]}, not a day')
+        parts.append(f'The source gives this one as {e["target_text"]}, not a day')
     if e.get("outcome"):
         parts.append(f'Outcome: {_clip(e["outcome"])}')
     return f'<div class="sub">{esc(" · ".join(parts))}</div>' if parts else ""
@@ -427,7 +428,7 @@ def _group_li(key: str, rows: list[dict]) -> str:
     seen = sum(1 for r in rows if _check(r).get("status") == "seen")
     opts = sum(1 for r in rows if r.get("kind") == "option")
     conf = (f' · <span class="vb {"ok" if seen else "wait"}"><b aria-hidden="true">{"✓" if seen else "–"}</b>'
-            f'{seen}/{opts} UW confirmed</span>') if opts else ""
+            f'{seen}/{opts} UW confirmed</span>') if opts and seen else ""   # no new UW check since 6 Dec 2026
     with_px = [r for r in rows if _check(r).get("px")]
     chart = ""
     if with_px:
@@ -973,17 +974,17 @@ HELP = help_html(
     "list and the largest US companies (<b>Stocks</b>), IBKR's market-wide news tape (<b>Market</b>) and the posts "
     "in RC's own X account feed (<b>X</b>; every post's X id is checked "
     "against its own time, the \"other\" kind and repeats of the same contract are dropped). An option post's "
-    "contract is looked up in Unusual Whales (badge: \u2713 UW confirmed, \u2717 not in UW, \u25f7 waiting; a "
-    "non-option post carries \u2713 X id) and the posts are grouped by stock, with the session's 5-minute price "
+    "contract was looked up in Unusual Whales until its subscription ended on 6 Dec 2026 (badge: \u2713 UW "
+    "confirmed, \u2717 not in UW, \u25f7 waiting); a post checked since then carries \u2713 X id and the posts are grouped by stock, with the session's 5-minute price "
     "and the tweet moments drawn above each group: from 4 hours before the tweet to 15 minutes after it, that "
     "contract's trades over $25k (size, contract, premium, ask/bid side) and the next day's open-interest change. "
     "The actual value is not shown: forecast and previous value.</p>"
     "<p><b>The week strip</b> stands above the calendar: one button a day, Monday to Sunday, with that day's "
     "number of economic releases and of FDA catalysts, and today marked. Pressing a day shows that day under "
     "both the <b>Economic</b> and the <b>FDA</b> tab; the line above each list is the next one still to come.</p>"
-    "<p><b>FDA</b> is Unusual Whales' FDA calendar: a PDUFA date, an advisory committee meeting or a decision, "
-    "with what the drug is for and where its application stands. Unusual Whales does not give every catalyst a "
-    "day — some are served as a quarter, a half year, \"mid\" or \"late\" in a year. Those carry a <b>no day "
+    "<p><b>FDA</b> is the FDA calendar read from companies' 8-K filings at the SEC (PDUFA dates) and from the "
+    "Federal Register (advisory committee meetings), with where an application stands when the filing says. A "
+    "filing does not give every catalyst a day — some are served as a quarter, a half year, \"mid\" or \"late\" in a year. Those carry a <b>no day "
     "yet</b> chip and stand together under <b>Later, no day yet</b>, never snapped onto a day they do not have. "
     "An FDA catalyst has a date and no time of day, so it shows no clock.</p>"
     "<p><b>Earnings</b> is next week, Monday to Friday: the report day of every name on your watch lists, from "
@@ -1038,7 +1039,7 @@ def render_html(now: float | None = None, provider_health: dict | None = None) -
 </div></div>
 <div id="pg-heads" role="tabpanel" hidden>{_ticker_box()}<div class="cols">{lanes["market"]}{lanes["stocks"]}</div></div>
 <div id="pg-x" role="tabpanel" hidden>{lanes["x"]}</div>
-<p class="foot">Source: economic and FDA calendar Unusual Whales, earnings days Alpha Vantage, headlines Dow Jones (IBKR), X posts RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
+<p class="foot">Source: economic calendar TradingView and the Federal Reserve, FDA calendar SEC 8-K filings and the Federal Register, earnings days Alpha Vantage, headlines Dow Jones (IBKR), X posts RC's own X reader · Times Europe/Amsterdam · Importance: ●●● high ●●○ medium ●○○ low</p>
 {HELP}
 </div>{watchlist_html("news")}<script>{FILTERS_JS}</script>
 <script>var NEWS_SINCE = {since!r}, HEAD_LIMIT = {HEADLINE_LIMIT}, TQ_PICK = {script_json(_picker())};{_JS}{_TQ_JS}</script>

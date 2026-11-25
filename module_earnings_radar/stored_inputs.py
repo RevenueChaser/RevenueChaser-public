@@ -290,7 +290,7 @@ def _is_rate_event(row: dict) -> bool:
     if kind != "report":
         return False
     text = str(row.get("event") or "").lower()
-    return "cpi" in text or "consumer price" in text
+    return "cpi" in text or "consumer price" in text or "inflation rate" in text   # TradingView: "Inflation Rate YoY"
 
 
 def rate_events() -> list[dict]:

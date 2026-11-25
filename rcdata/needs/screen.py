@@ -52,8 +52,10 @@ ROLES = ("first", "only source", "fills", "cross-check", "build")
 #: The screen's card per dataset. A dataset the store knows and this map does not raises in CI.
 DATASETS: dict[str, DatasetCard] = {
     'alpaca/bars': DatasetCard('Daily bars (Alpaca, the tester: compared, never served)', coverage_target=0.99, step=8,
-                                role='cross-check'),
-    'alpaca/corporate_actions': DatasetCard('Corporate actions (Alpaca)', step=8, role='first'),
+                                role='cross-check', about='Daily bars of the universe, compared with the served ones.',
+                                short='Alpaca bars'),
+    'alpaca/corporate_actions': DatasetCard('Corporate actions (Alpaca)', step=8, role='first',
+                                             about='Splits, dividends and symbol changes.', short='Alpaca actions'),
     'alphavantage/listing_status': DatasetCard('Every US listing, the ETF list (Alpha Vantage)', step=1, role='first',
                                                about='Active and delisted US names.',
                                                short='Alpha Vantage listing'),
@@ -78,7 +80,9 @@ DATASETS: dict[str, DatasetCard] = {
                                 about='CUSIP to FIGI and security type (stock, ETF, preferred).',
                                 short='OpenFIGI map'),
     'ownership/serve': DatasetCard('13F totals per ticker and quarter', step=10, role='build'),
-    'prices/serving': DatasetCard('Prices store (bars, actions, factors, shares, market cap)', step=8, role='build'),
+    'prices/serving': DatasetCard('Prices store (bars, actions, factors, shares, market cap)', step=8, role='build',
+                                   about='Bars, actions, factors, shares and market cap into prices.duckdb.',
+                                   short='Prices build'),
     # #1219: the delisted history, its own file beside prices (survivorship). Attended, with the monthly WRDS run.
     'delisted/serving': DatasetCard('Delisted history: dead names\' bars, actions and delistings (CRSP)',
                                     cadence='monthly', coverage_target=None, step=8, role='build'),
@@ -101,7 +105,9 @@ DATASETS: dict[str, DatasetCard] = {
                             about="Funds' annual reports: ETF facts.",
                             short='SEC N-CEN'),
     'sec/companyfacts': DatasetCard('SEC company facts (re-read on the filing day)', step=9, role='first'),
-    'sec/cover_shares': DatasetCard('Shares per class (SEC filing covers)', step=8, role='first'),
+    'sec/cover_shares': DatasetCard('Shares per class (SEC filing covers)', step=8, role='first',
+                                     about='Shares outstanding per class, from 10-K and 10-Q covers.',
+                                     short='SEC cover shares'),
     'sec/filings': DatasetCard('SEC filing lists, 8-K items and report texts', step=9, role='first'),
     'sec/form4': DatasetCard('Insider transactions (Form 4)', step=10, role='first'),
     'sec/fsds': DatasetCard('SEC Financial Statement Data Sets (the check)', step=9, role='fills'),
@@ -121,9 +127,14 @@ DATASETS: dict[str, DatasetCard] = {
     'uw/spot_expiry_strike': DatasetCard('SPX expiry-strike (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
     # shortcut: the hourly dataset's card (#643) says daily, so the screen reads it late after a day without a run,
     # not an hour; an "hourly" card cadence needs newdata's CYCLE_DAYS to learn it first.
-    'uw/economic_calendar': DatasetCard('Economic calendar, this week and next (Unusual Whales)', step=11, role='only source'),
-    'uw/fda_calendar': DatasetCard('FDA calendar: PDUFA dates, advisory meetings and decisions (Unusual Whales)',
-                                   step=11, role='only source'),
+    'uw/economic_calendar': DatasetCard('Economic calendar, this week and next (Unusual Whales; builds the table)',
+                                        step=11, role='build'),
+    'public/economic_calendar': DatasetCard('Economic calendar: US releases (TradingView) and Fed speeches, FOMC and '
+                                            'the Beige Book (Fed)', step=11, role='first'),
+    'uw/fda_calendar': DatasetCard('FDA calendar: PDUFA dates, advisory meetings and decisions (Unusual Whales; '
+                                   'builds the table)', step=11, role='build'),
+    'public/fda_calendar': DatasetCard("FDA calendar: PDUFA dates from the companies' 8-Ks (SEC) and advisory "
+                                       'committee meetings (Federal Register)', step=11, role='first'),
     'uw/institutions': DatasetCard('Every 13F institution, its tags and its successions (Unusual Whales)',
                                   cadence='quarterly', step=10, role='only source'),
     'uw/greek_expiry_strike': DatasetCard('SPX greek exposure by expiry and strike, whole chain (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
@@ -138,15 +149,23 @@ DATASETS: dict[str, DatasetCard] = {
     'wrds/idxcst_his': DatasetCard('Compustat index constituents (WRDS, the membership check)', step=6, role='cross-check',
                                    about='S&P 500 / 400 / 600 membership over time.',
                                    short='S&P constituents history'),
-    'wrds/prices': DatasetCard('Price history and actions (WRDS: Compustat, CRSP)', step=8, role='first'),
+    'wrds/prices': DatasetCard('Price history and actions (WRDS: Compustat, CRSP)', step=8, role='first',
+                                 about='Daily prices, splits and dividends since 1983; the served history.',
+                                 short='Compustat prices'),
     'wrds/sec_idhist': DatasetCard('Compustat securities and identifier history (WRDS)', step=3, role='fills',
                                    about='gvkey, CUSIP, active or delisted, delisting date.',
                                    short='Compustat securities'),
     'wrds/segments': DatasetCard('Compustat segments and customers (WRDS)', step=9, role='fills'),
     'yfinance/estimates': DatasetCard('Analyst estimates (yfinance)', step=9, role='first'),
     'yfinance/fx': DatasetCard('Daily exchange rates for non-USD filers (Yahoo)', step=9, role='fills'),
-    'tradingview/float': DatasetCard('Float (TradingView)', step=8, role='first'),
-    'yfinance/float': DatasetCard('Float check (Yahoo)', step=8, role='cross-check'),
+    'tradingview/float': DatasetCard('Float (TradingView)', step=8, role='first',
+                                       about='Free float per name, the served float.', short='TradingView float'),
+    'yfinance/float': DatasetCard('Float check (Yahoo)', step=8, role='cross-check',
+                                    about="Float and shares outstanding, the check of TradingView's.",
+                                    short='Yahoo float'),
+    'yfinance/bars': DatasetCard('Daily bars where Compustat has none (Yahoo)', step=8, role='fills',
+                                   about="Bars, splits and dividends of the names Compustat does not price.",
+                                   short='Yahoo bars'),
 }
 
 #: The column whose newest value dates a serving table's last write. Never ``Need.day_column``; see the note above.
@@ -328,6 +347,8 @@ NO_TIER_DATASET_WORDS: dict[str, str] = {
     "alphavantage/earnings_calendar": "one call brings the whole calendar, every name at once.",
     "sec/fsds": "one file a quarter holds every filer at once.",
     "uw/economic_calendar": "one call brings the whole calendar, no names.",
+    "public/economic_calendar": "two calls bring both calendars, no names.",
+    "public/fda_calendar": "one full-text search brings every 8-K that names a PDUFA date, no names asked.",
     "uw/fda_calendar": "one call brings the whole calendar, no names.",
     "sec/ncen": "one file a quarter holds every fund at once.",
 }
@@ -439,7 +460,11 @@ PROVIDERS: dict[str, ProviderWords] = {
     "evren": ProviderWords("EVREN", "the SEC reader tool's answers (no fee)", "1 request at a time"),
     "deepseek": ProviderWords("DeepSeek API", "the SEC reader tool's answers (Flash only, off-peak)",
                               "8 requests at a time", paid=True),
-    "fed": ProviderWords("Fed", "policy rates"),
+    "fed": ProviderWords("Fed", "policy rates, the FOMC dates and the Board's calendar"),
+    "federalregister": ProviderWords("Federal Register", "FDA advisory committee meeting notices",
+                                     "one request a run", "none published"),
+    "tradingview": ProviderWords("TradingView", "the US economic calendar", "one request a run",
+                                 "no key and no quota published (a public page's own endpoint)"),
     "bls": ProviderWords("BLS", "CPI and jobs"),
 }
 

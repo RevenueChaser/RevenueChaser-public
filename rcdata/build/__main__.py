@@ -1,7 +1,11 @@
 """``python -m revenuechaser.rcdata.build`` — the builder CLI.
 
-    run [--once] [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread] [--no-duckdb] [--no-parquet]
+    run [--once] [--fetch-only | --build-only]
+        [--dataset X [--as-of YYYY-MM-DD] [--allow-shrink] [--reread [Q ...]] [--no-duckdb] [--no-parquet]
                   [--tiers A,B] [--names KO,MSFT]]
+                                        --fetch-only / --build-only (no --dataset): the two hourly timers (avo, 24
+                                        Nov 2026), the storage fetch (raw and Parquet, never DuckDB) and the
+                                        storage build (what the fetch staged, then the queue); ``due._pass_mode``
                                         take queued requests in order (FIFO) and run each; without --dataset, every
                                         dataset that is due (``due.py``) is queued first (by "schedule", once);
                                         with --dataset, a dataset with nothing queued (or any, with --as-of) is
@@ -202,7 +206,8 @@ def _take_the_turn(stack: contextlib.ExitStack, wait: float) -> tuple[bool, str 
         time.sleep(min(WAIT_POLL_S, max(0.0, deadline - time.monotonic())))
 
 
-def _claim_kind(req: dict, *, skip=(), only=None, by=None) -> list[dict]:
+def _claim_kind(req: dict, *, skip=(), only=None, by=None, fetch_only: bool = False,
+                or_by: str | None = None) -> list[dict]:
     """``req`` and every other request of its kind queued now, in registry order (PR A): the pass builds the
     kind's file once for all of them. A request queued after this moment waits for the next turn of its kind.
 
@@ -223,7 +228,7 @@ def _claim_kind(req: dict, *, skip=(), only=None, by=None) -> list[dict]:
     try:
         while names:
             try:
-                more = ops.next_request(only=names, by=by)
+                more = ops.next_request(only=names, by=by, fetch_only=fetch_only, or_by=or_by)
             except ops.BUSY_ERRORS as e:
                 # a locked ops store while claiming: run what is claimed; the rest waits for the next turn
                 print(f"{ds.kind}: ops store busy while claiming: {e}", file=sys.stderr, flush=True)
@@ -260,7 +265,8 @@ def _build_line(batch: list[dict], rows: list[dict], seconds: float) -> str | No
 
 
 def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
-               attended_ok: bool = False, fetch_only: bool = False, reasons: list[str] | None = None) -> int:
+               attended_ok: bool = False, fetch_only: bool = False, or_by: str | None = None,
+               reasons: list[str] | None = None) -> int:
     """Drain the queue: one batch per turn, and **one heavy dataset per process** (#812).
 
     After a batch that ran a heavy dataset (``base.heavy``), the rest of this process leaves every heavy request
@@ -275,7 +281,7 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
         # ``next_request`` takes skip or only, never both; the attended runner is the only caller with ``only``.
         skip_now = tuple({*skip, *base.heavy_names()}) if ran_heavy and only is None and dataset is None else skip
         try:
-            req = ops.next_request(dataset, skip=skip_now, only=only, by=by, fetch_only=fetch_only)
+            req = ops.next_request(dataset, skip=skip_now, only=only, by=by, fetch_only=fetch_only, or_by=or_by)
         except ops.BUSY_ERRORS as e:
             # ops.sqlite held past busy_timeout (a long backup, a stuck writer), or Redis not answering: wait and ask
             # again, never die.
@@ -289,7 +295,8 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
                 return worst
             time.sleep(POLL_S)
             continue
-        batch = [req] if dataset is not None else _claim_kind(req, skip=skip_now, only=only, by=by)
+        batch = [req] if dataset is not None else _claim_kind(req, skip=skip_now, only=only, by=by,
+                                                              fetch_only=fetch_only, or_by=or_by)
         from . import DATASETS as registry          # read here, so a test's registry is this loop's too
         mine = [r["dataset"] for r in batch if base.heavy(registry.get(r["dataset"]))]
         if mine and not ran_heavy:
@@ -360,9 +367,13 @@ def main(argv: list[str] | None = None) -> int:
                    "without it a table that empties or loses more than 1%% of its rows refuses the swap, and "
                    "another dataset's table keeps that guard even with it")
     run.add_argument("--allow-shrink", action="store_true", help="with --dataset: " + shrink_help)
-    run.add_argument("--reread", action="store_true",
+    run.add_argument("--allow-shrink-table", dest="shrink_tables", action="append", metavar="TABLE",
+                     help="with --dataset: let only this table of the dataset's shrink (repeatable); every other "
+                          "guard stays on, unlike --allow-shrink")
+    run.add_argument("--reread", nargs="*", metavar="QUESTION", default=None,
                      help="with --dataset sec/reads: the owner's word for a mass re-read. Without it a run asks only "
-                          "new filings and retries, up to the day cap; with it every stale company is asked")
+                          "new filings and retries, up to the day cap; with it every stale company is asked. Named "
+                          "questions (--reread debt.note) limit the word to those; the others run as usual")
     scope_help = ("with --dataset: ask only these spine tiers (A,B,C,D) / only these tickers, instead of the "
                   "dataset's own set; a dataset that cannot narrow its fetch says so on its check row (#265)")
     group_help = ("the extra groups to ask besides the tiers and names: anchors (the benchmarks and rotation "
@@ -380,6 +391,17 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--tiers", help=scope_help)
     run.add_argument("--names", help=scope_help)
     run.add_argument("--include", help=group_help)
+    # avo, 24 Nov 2026: two timers, a storage fetch always on and a storage build he switches (due._pass_mode).
+    split = run.add_mutually_exclusive_group()
+    split.add_argument("--fetch-only", dest="stage", action="store_const", const="fetch",
+                       help="without --dataset: the hourly storage fetch: every due source to raw and Parquet "
+                            "(a full source as parquet), never a DuckDB build")
+    split.add_argument("--build-only", dest="stage", action="store_const", const="build",
+                       help="without --dataset: the storage build: the full sources whose newest check is a "
+                            "Parquet stage, built into their serving DuckDB, then the queue")
+    run.add_argument("--kind", dest="kinds", action="append", default=[], choices=sorted(serving.KINDS),
+                     help="with --build-only: only this serving kind's datasets, queued and drained (repeatable; "
+                          "avo, 24 Nov 2026: market builds twice a day on a timer of its own)")
     at = sub.add_parser("attended")
     at.add_argument("--dataset", choices=sorted(base.attended_names()),
                     help="only this attended dataset")
@@ -411,11 +433,18 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "no_build", False):
         print("--no-build is deprecated: it is --no-duckdb (fetch and Parquet, no serving build). "
               "--no-parquet is the raw-only mode.", file=sys.stderr)
-    if args.cmd == "run" and not args.dataset and (args.as_of or args.allow_shrink or args.reread or args.no_duckdb or args.tiers
+    if args.cmd == "run" and not args.dataset and (args.as_of or args.allow_shrink or args.shrink_tables
+                                                   or args.reread is not None or args.no_duckdb or args.tiers
                                                    or args.names or args.include):
         # They only shape the request queued for --dataset; without it they would be dropped silently (F5).
-        p.error("--as-of, --allow-shrink, --reread, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
+        p.error("--as-of, --allow-shrink, --allow-shrink-table, --reread, --no-duckdb, --no-parquet (and the deprecated --no-build), --tiers, "
                 "--names and --include need --dataset")
+    stage = getattr(args, "stage", None)
+    if stage and args.dataset:
+        p.error("--fetch-only and --build-only are the hourly passes: they take no --dataset")
+    kinds = tuple(getattr(args, "kinds", None) or ())
+    if kinds and stage != "build":
+        p.error("--kind goes with --build-only")
     scope = {k: [n.strip() for n in v.split(",") if n.strip()]
              for k, v in (("tiers", getattr(args, "tiers", None)), ("names", getattr(args, "names", None)),
                           ("include", getattr(args, "include", None))) if v}
@@ -481,14 +510,17 @@ def main(argv: list[str] | None = None) -> int:
     reasons: list[str] = []
     wait = default_wait_s(args.cmd, getattr(args, "dataset", None)) if args.wait is None else max(0.0, args.wait)
     fetch_only = bool(getattr(args, "no_duckdb", False))
+    fetch_pass = stage == "fetch"
     with contextlib.ExitStack() as stack:
+        base.FETCH_ONLY_PASS = fetch_pass       # the guard under the queue's own: no request of this pass builds
+        stack.callback(setattr, base, "FETCH_ONLY_PASS", False)
         if fetch_only:
             got, problem = _take_fetch_locks(stack, _fetch_lock_names(args), wait)
         else:
             # avo's rule (#212): a live write needs a fresh verified backup. Checked before the turn, because no
             # wait makes a stale copy fresh, and only for a run that replaces a served file -- a fetch-only run
             # writes raw files and Parquet partitions, which the next build reads again.
-            stale = base.backup_problem()
+            stale = None if fetch_pass else base.backup_problem()
             got, problem = (False, stale) if stale else _take_the_turn(stack, wait)
         if not got:
             # Exit 3 is "nothing was done", but it is still a red job row with no reason anywhere, so it says
@@ -538,45 +570,56 @@ def main(argv: list[str] | None = None) -> int:
                 _say_failed(reasons)
             return worst
         mine = _own_requests_only(args.dataset) if args.dataset else None
-        if args.dataset and (args.as_of or args.allow_shrink or args.reread or args.no_duckdb or scope
-                             or not ops.queued(args.dataset, by=mine)):
+        tables = getattr(args, "shrink_tables", None)
+        if args.dataset and (args.as_of or args.allow_shrink or tables or args.reread is not None or args.no_duckdb
+                             or scope or not ops.queued(args.dataset, by=mine)):
             params = {**({"as_of": args.as_of} if args.as_of else {}),
                       **({"allow_shrink": True} if args.allow_shrink else {}),
-                      **({"reread": True} if args.reread else {}),
+                      **({"allow_shrink_tables": tables} if tables else {}),
+                      **({"reread": args.reread or True} if args.reread is not None else {}),
                       **({"no_duckdb": True, "no_build": True} if args.no_duckdb else {}),
                       **({"no_parquet": True} if args.no_parquet else {}), **scope}
             ops.enqueue(args.dataset, params or None, by="cli")
         due_failed = 0
         if not args.dataset:
-            for name, why, _, error in due.enqueue_due():
+            for name, why, _, error in due.enqueue_due(stage=stage, kinds=kinds):
                 print(f"{name}: {why}", file=sys.stderr, flush=True)
                 if error:
                     # The one reason that can fail the pass on its own, with every dataset run ok (#1119).
                     reasons.append(f"due {name}: {why}")
                 due_failed = due_failed or int(error)
-            try:
-                pruned = ops.prune_issues()
-            except ops.BUSY_ERRORS as e:                 # best effort: the next hour prunes, the queue still drains
-                print(f"build_issues: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
-            else:
-                if pruned:
-                    print(f"build_issues: {pruned} resolved row(s) pruned", file=sys.stderr, flush=True)
-            # The run rows keep a year (avo, 20 Nov 2026), and this pass is their deleter: it is the writer of this
-            # store, so there is no second writer and no new timer. Best effort, like the issues above.
-            try:
-                gone = ops.prune_runs()
-            except ops.BUSY_ERRORS as e:
-                print(f"run rows: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
-            else:
-                if any(gone.values()):
-                    print("run rows pruned past " + f"{ops.RUN_ROWS_DAYS} days: "
-                          + ", ".join(f"{t} {n}" for t, n in sorted(gone.items()) if n),
-                          file=sys.stderr, flush=True)
+            # The prunes delete ops rows, so only the pass that checked the backup runs them (not --fetch-only).
+            if not fetch_pass:
+                try:
+                    pruned = ops.prune_issues()
+                except ops.BUSY_ERRORS as e:                 # best effort: the next hour prunes, the queue still drains
+                    print(f"build_issues: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
+                else:
+                    if pruned:
+                        print(f"build_issues: {pruned} resolved row(s) pruned", file=sys.stderr, flush=True)
+                # The run rows keep a year (avo, 20 Nov 2026), and this pass is their deleter: it is the writer of this
+                # store, so there is no second writer and no new timer. Best effort, like the issues above.
+                try:
+                    gone = ops.prune_runs()
+                except ops.BUSY_ERRORS as e:
+                    print(f"run rows: prune skipped, ops store busy: {e}", file=sys.stderr, flush=True)
+                else:
+                    if any(gone.values()):
+                        print("run rows pruned past " + f"{ops.RUN_ROWS_DAYS} days: "
+                              + ", ".join(f"{t} {n}" for t, n in sorted(gone.items()) if n),
+                              file=sys.stderr, flush=True)
         # A due step that failed still drains the queue, then fails the pass, so an hourly error is not an exit 0.
         # Without --dataset this is the hourly pass, which leaves the attended requests queued for the terminal
         # that may run them.
         skip = () if args.dataset else base.attended_names()
-        code = max(_run_queue(args.dataset, args.once, skip=skip, by=mine, fetch_only=fetch_only, reasons=reasons),
+        # a kind's own build drains only that kind's requests (next_request takes skip or only, never both)
+        only = ([n for n, d in DATASETS.items() if d.kind in kinds and n not in skip] if kinds else None)
+        skip = () if kinds else skip
+        # The storage fetch also takes the schedule's own requests (a full one from before the split included) and
+        # stages them only; a person's full Fetch waits for the storage build (avo, 24 Nov 2026)
+        code = max(_run_queue(args.dataset, args.once, skip=skip, only=only, by=mine,
+                              fetch_only=fetch_only or fetch_pass,
+                              or_by=due.REQUESTED_BY if fetch_pass else None, reasons=reasons),
                    due_failed)
         if code:
             _say_failed(reasons)

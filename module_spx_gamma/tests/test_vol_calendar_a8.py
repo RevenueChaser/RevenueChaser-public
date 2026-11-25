@@ -1,6 +1,7 @@
-"""A8 (Fable report review, 5 Nov 2026): the week's volatility calendar from UW's economic calendar.
+"""A8 (Fable report review, 5 Nov 2026): the week's volatility calendar.
 
-The Fetch asks /market/economic-calendar once (live). The card lists the events from the board's day through the
+Since #1433 it is read from the market store's ``economic_event`` (TradingView and the Fed, else UW), not asked of UW
+by the Fetch; an older raw day's ``economic_calendar.json`` still loads. The card lists the events from the board's day through the
 target Friday, high-impact ones (CPI, the employment report, PPI, FOMC, PCE, GDP, retail sales) marked, times in
 Europe/Amsterdam, duplicates dropped (UW repeats rows).
 """
@@ -38,14 +39,15 @@ def test_cpi_is_high_impact():
 def test_snapshot_and_raw_day(tmp_path):
     assert nm.normalize_snapshot({"economic_calendar": PAYLOAD}, "2026-11-04")["vol_calendar"][0]["event"] == \
         "Weekly Jobless Claims"
-    assert "economic_calendar.json" in snap.LIVE_FILES
     from .conftest import store_day
     store_day("2026-11-04", {"effective_date": "2026-11-04"}, {"economic_calendar.json": PAYLOAD})
     assert load_raw_day("2026-11-04")["economic_calendar"] == PAYLOAD
 
 
-def test_the_fetch_asks_the_calendar_once():
-    assert snap.BASE_ENDPOINTS["economic_calendar"] == ("/market/economic-calendar", {})
+def test_the_fetch_no_longer_asks_uw_for_the_calendar():
+    """#1433: the week's calendar is the market store's (``store_reads.vol_calendar``), not a UW call of the Fetch."""
+    assert "economic_calendar" not in snap.BASE_ENDPOINTS
+    assert all(path != "/market/economic-calendar" for path, _ in snap.BASE_ENDPOINTS.values())
 
 
 def test_a_refresh_keeps_the_pr415_files(tmp_path):
@@ -56,3 +58,13 @@ def test_a_refresh_keeps_the_pr415_files(tmp_path):
               {f"{name}.json": {"data": [1]} for name in ("greek_flow", "vix_greeks")})
     raw = load_raw_day("2026-11-04")
     assert raw["greek_flow"] == {"data": [1]} and raw["vix_greeks"] == {"data": [1]}
+
+
+def test_tradingviews_names_for_cpi_jobs_and_the_fomc_decision_are_high_impact():
+    """TradingView (the calendar since UW ended, #1433) says "Inflation Rate", "Unemployment Rate" and, for the FOMC
+    decision, just "Interest Rate"; its rate projections are not high impact."""
+    rows = [{"event": e, "time": "2026-11-10T13:30:00Z", "type": "report"} for e in
+            ("Inflation Rate YoY", "Unemployment Rate", "Interest Rate", "Interest Rate Projection - Current")]
+    got = {r["event"]: r["high_impact"] for r in vol_calendar.week_events({"data": rows}, "2026-11-09")}
+    assert got == {"Inflation Rate YoY": True, "Unemployment Rate": True, "Interest Rate": True,
+                   "Interest Rate Projection - Current": False}

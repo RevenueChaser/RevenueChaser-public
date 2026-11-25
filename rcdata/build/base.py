@@ -39,6 +39,7 @@ import httpx
 
 from ...core import calendar, config, job_lock, notify, rawstore
 from .. import caps, ops, serving
+from . import measure
 
 logger = logging.getLogger(__name__)
 
@@ -301,7 +302,13 @@ class RunContext:
     notes: list[str] = field(default_factory=list)
     uw_sampled: bool = False
     allow_shrink: bool = False                                      # a request's explicit "allow_shrink": true
-    reread: bool = False                                            # a request's explicit "reread": true (sec/reads)
+    #: A request's ``"allow_shrink_tables"``: only these of its tables may shrink in the swap, and nothing else is
+    #: relaxed (a kind's own guards, ``prices``'s per-security bar check, stay on). The 24 Nov 2026 prices build:
+    #: ``security_symbol`` lost 186 bar-less placeholder rows of ETPs the spine moved to Tier B, 1.47 %.
+    shrink_tables: tuple[str, ...] = ()
+    #: A request's ``"reread"`` (sec/reads): ``true`` re-reads every question, a list of question ids only those
+    #: (25 Nov 2026: debt.note's 316 without company.profile's 4,769).
+    reread: bool | tuple[str, ...] = False
     full: bool = False                                              # a request's explicit "full": true (wrds/*)
     #: Whether this run is the hourly pass's own request (``_scheduled``: ``requested_by`` ``due.REQUESTED_BY``).
     #: A pass of nothing but these does not start a whole build of a kind that holds one
@@ -796,6 +803,10 @@ def _copy(con: duckdb.DuckDBPyConnection, select: str, path: Path) -> None:
                 f"(FORMAT parquet, COMPRESSION {PARQUET_COMPRESSION}, ROW_GROUP_SIZE {PARQUET_ROW_GROUP})")
 
 
+#: ``run --fetch-only`` (the storage fetch timer, avo 24 Nov 2026) sets it: every request of the pass stops after
+#: Parquet, whatever it asked, so that pass can never build a serving DuckDB.
+FETCH_ONLY_PASS = False
+
 #: True while a raw-only run (``--no-parquet``, #498) is fetching: ``write_parquet`` writes nothing, so a dataset
 #: whose ``backfill`` converts inside itself (``market_series``, the fundamentals datasets) stages raw files only.
 #: A ContextVar and not a ``RunContext`` field, because those conversions reach ``write_parquet`` without the
@@ -828,9 +839,19 @@ def write_parquet(con: duckdb.DuckDBPyConnection, select: str, final: Path) -> P
         return final
     final.parent.mkdir(parents=True, exist_ok=True)
     tmp = final.with_name(final.name + ".tmp")
+    started = time.monotonic()
     _copy(con, select, tmp)
     _publish(tmp, final)
+    measure.parquet(final, time.monotonic() - started, _parquet_rows(con, final))
     return final
+
+
+def _parquet_rows(con: duckdb.DuckDBPyConnection, path: Path) -> int | None:
+    """The row count in ``path``'s footer, for the measurement log; None when it cannot be read."""
+    try:
+        return int(con.execute(f"SELECT sum(num_rows) FROM parquet_file_metadata({sql_path(path)})").fetchone()[0])
+    except Exception:  # noqa: BLE001 - a count is a measure, never a reason to fail the write
+        return None
 
 
 def sql_path(path: Path) -> str:
@@ -1179,6 +1200,20 @@ def feeds(ds) -> tuple[str, ...]:
     return tuple(getattr(ds, "feeds", ()))
 
 
+def _reread(params: dict) -> bool | tuple[str, ...]:
+    """A request's ``"reread"``: ``true``, or a list of question ids; anything else is no word at all."""
+    named = params.get("reread")
+    if named is True:
+        return True
+    return tuple(q for q in named if isinstance(q, str)) if isinstance(named, list) else False
+
+
+def _tables(params: dict) -> tuple[str, ...]:
+    """A request's ``"allow_shrink_tables"`` (a list of table names), else none."""
+    named = params.get("allow_shrink_tables")
+    return tuple(t for t in named if isinstance(t, str)) if isinstance(named, list) else ()
+
+
 def shrink_scope(ds: Dataset) -> tuple[str, ...]:
     """The tables a request's ``allow_shrink`` may let shrink (review S-1 of #220): the dataset's own tables and the
     served tables its rows feed (:func:`feeds`), never a table its rows never reach.
@@ -1240,7 +1275,8 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
     if not parquet_root().is_dir():
         raise SourceError(f"the Parquet root {parquet_root()} is missing (RC_MARKET_RAW_DIR unset or not mounted?)")
     ctxs = {ds.name: c for ds, c in members}
-    shrink = tuple(dict.fromkeys(t for ds, c in members if c.allow_shrink for t in shrink_scope(ds)))
+    shrink = tuple(dict.fromkeys(t for ds, c in members for t in shrink_scope(ds)
+                                 if c.allow_shrink or t in c.shrink_tables))
     from . import dirty
     plan = dirty.plan(kind, lead)
     every = [lead, *ctxs.values()]
@@ -1277,6 +1313,7 @@ def build_kind_many(kind: str, members: list[tuple[Dataset, RunContext]], *, lea
                 counts.update(d.build(own, b.con))
             own.step = WAITING
             # What a dataset costs, so a chunked or SSD-spilling build is decided from a measure (#654 review).
+            measure.build(own.run_id, kind, time.monotonic() - started, peak[0])
             logger.info("build %s %s (%s): %.1f s, spill peak %.2f GB", kind, d.name, b.mode,
                         time.monotonic() - started, peak[0] / 1e9)
         if on_live:
@@ -1331,8 +1368,8 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
     params = req.get("params") or {}
     run_id = new_run_id()
     ctx = RunContext(run_id=run_id, dataset=req["dataset"], trigger=trigger, sleep=sleep, clock=clock,
-                     allow_shrink=params.get("allow_shrink") is True,
-                     reread=params.get("reread") is True, full=params.get("full") is True,
+                     allow_shrink=params.get("allow_shrink") is True, shrink_tables=_tables(params),
+                     reread=_reread(params), full=params.get("full") is True,
                      scheduled=_scheduled(req))
     ops.start_run(run_id, req["dataset"], trigger, params)
     try:
@@ -1440,13 +1477,21 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
         if unmounted:
             raise SourceError(unmounted)
         mode = params.get("mode", "daily")
+        if params.get("build_only") is True and not FETCH_ONLY_PASS:
+            # The storage build's own request (avo, 24 Nov 2026; review of #1494): what the storage fetch staged is
+            # built from Parquet, the build's only input, with no second provider call
+            ctx.as_of = ds.default_as_of()
+            ctx.check_pause(force=True)
+            return None, None
         staged: int | None = None
         # The two "do not build" switches (#498). ``no_parquet`` is raw-only and implies ``no_duckdb``, because
         # Parquet is the only input a build reads: a build with no new partition would be a no-op that still took
         # the builder lock. ``no_build`` is the old name of ``no_duckdb``, still read so that a request queued
         # before the rename keeps working.
         raw_only_mode = params.get("no_parquet") is True
-        skip_build = raw_only_mode or params.get("no_duckdb") is True or params.get("no_build") is True
+        skip_build = (raw_only_mode or params.get("no_duckdb") is True or params.get("no_build") is True
+                      or FETCH_ONLY_PASS)
+        measure.begin(ctx.run_id)
         with raw_only_run(raw_only_mode):
             if mode == "backfill":
                 if params.get("from"):
@@ -1520,8 +1565,8 @@ def run_batch(reqs: list[dict], *, trigger: str = "queue", attended_ok: bool = F
             ds = DATASETS.get(req["dataset"])
             params = req.get("params") or {}
             ctx = RunContext(run_id=new_run_id(), dataset=req["dataset"], trigger=trigger,
-                             allow_shrink=params.get("allow_shrink") is True,
-                             reread=params.get("reread") is True, full=params.get("full") is True,
+                             allow_shrink=params.get("allow_shrink") is True, shrink_tables=_tables(params),
+                             reread=_reread(params), full=params.get("full") is True,
                              scheduled=_scheduled(req))
             ops.start_run(ctx.run_id, req["dataset"], trigger, params)
             started.append((req, ctx))
@@ -1593,7 +1638,17 @@ def _finish(ctx: RunContext, req: dict, check: dict, status: str, error: str | N
     notify.build_end(ctx.dataset, status, error or notes, requested=_pressed(req))
     out = ops.latest_check(ctx.dataset)
     logger.info(format_check(out))
+    measure.finish(ctx, req, {**check, **(out or {})}, status, _served_bytes(ctx.dataset))
     return out
+
+
+def _served_bytes(dataset: str) -> int | None:
+    """The size of ``dataset``'s serving file now, for the measurement log."""
+    from . import DATASETS
+    try:
+        return serving.live_path(DATASETS[dataset].kind).stat().st_size
+    except (KeyError, OSError, ValueError, AttributeError):
+        return None
 
 
 def format_check(row: dict) -> str:

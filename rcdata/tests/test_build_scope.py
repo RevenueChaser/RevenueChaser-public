@@ -117,6 +117,8 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "market_series": "series, not names",
         "uw/economic_calendar": "a calendar, no names",
         "uw/fda_calendar": "a calendar, no names",
+        "public/economic_calendar": "two calendars, no names",
+        "public/fda_calendar": "a full-text search and a notice list, no names",
         "uw/institutions": "one list of every 13F institution at once, keyed by CIK, not by ticker",
         "openfigi/map": "the spine rows with no FIGI yet",
         "ownership/serve": "no fetch",
@@ -160,7 +162,7 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "yfinance/fx": "one request per currency, not per company",
     }
     honours = {n for n, d in DATASETS.items() if getattr(d, "honours_scope", False)}
-    assert honours == {"alpaca/bars", "yfinance/float", "tradingview/float", "funds/etf_holdings",
+    assert honours == {"alpaca/bars", "yfinance/float", "yfinance/bars", "tradingview/float", "funds/etf_holdings",
                        "alphavantage/earnings_transcripts"}, honours
     unnamed = sorted(set(DATASETS) - honours - set(ignores))
     assert not unnamed, (f"these datasets neither honour a scope nor are named as ignoring it: {unnamed}. "

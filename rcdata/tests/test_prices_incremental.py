@@ -328,3 +328,32 @@ def test_a_re_keyed_id_moves_to_its_spine_id_and_is_not_served_twice(live):
                              ).fetchone()[0] > 0                            # the un-re-keyed id is carried
     finally:
         build.close()
+
+
+NEWF_FIGI = "figi:BBG00NEWF0X1"
+
+
+def test_a_yahoo_name_the_spine_picks_up_moves_to_its_new_id(live, monkeypatch):
+    """Review N2, avo's D1 (24 Nov 2026, "Yeni id'ye taşı"): NEWF, a fund only Yahoo prices, is served under the id
+    the fetch saw (``sym:NEWF``). The spine then gives it its own id: Yahoo's rows are served under that id, nothing
+    keys the old one any more, and the build carried ``sym:NEWF`` back frozen, one fund under two ids. Now the old id's
+    bars move to the new id, as C3 moves a re-keyed ``cik:`` id."""
+    from revenuechaser.rcdata.build.prices import yahoo_bars
+
+    from .test_prices_wrds import _spine_etf_table
+    days = ["2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27"]
+    answer = [{"date": d, "open": 8.0, "high": 8.0, "low": 8.0, "close": 8.0, "volume": 1000.0, "split": 0}
+              for d in days]
+    monkeypatch.setattr(yahoo_bars, "_lookup", lambda t: [dict(r) for r in answer])
+    _spine_etf_table([("NEWF", 5e9)])
+    row = base.run_request({"dataset": yahoo_bars.NAME, "params": {"as_of": "2026-10-27", "names": ["NEWF"]}})
+    assert row["result"] != "failed", row
+    assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = 'sym:NEWF'")) == len(days)
+    _respine(SPINE + [{"ticker": "NEWF", "cik": None, "name": "NEW FUND", "exchange": "NYSE", "tier": "B",
+                       "security_type": "etf", "gvkey": None, "iid": None, "composite_figi": NEWF_FIGI[5:]}])
+    _spine_etf_table([("NEWF", 5e9)])
+    row = _serve()
+    assert not _q("SELECT 1 FROM price_bar_daily WHERE security_id = 'sym:NEWF'"), "the old id is still served"
+    assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [NEWF_FIGI])) == len(days)
+    assert f"sym:NEWF -> {NEWF_FIGI}" in _note(row), _note(row)
+    _same_as_whole(monkeypatch, row)

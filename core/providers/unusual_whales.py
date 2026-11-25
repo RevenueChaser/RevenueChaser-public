@@ -1038,14 +1038,6 @@ class UWClient:
             last = items
         return ProviderResult("ok", rows, None, ep)
 
-    def economic_calendar(self) -> list[dict]:
-        return self.economic_calendar_result().data
-
-    def economic_calendar_result(self) -> ProviderResult:
-        """The economic calendar of the current and next week (``/market/economic-calendar``): rows of ``event``,
-        ``type`` (fed-speaker, fomc or report), ``time`` (UTC text), ``forecast``, ``prev`` and ``reported_period``."""
-        return self._shaped("/market/economic-calendar", None, _list_rows)
-
     # ── ETF OHLC (used by Rotation Engine) ──
     def etf_ohlc(self, ticker: str, days: int = 70, candle_size: str = "1d") -> list[dict]:
         """``days`` candles, oldest first; daily ones are regular-session bars."""

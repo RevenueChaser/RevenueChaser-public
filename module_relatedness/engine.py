@@ -1,9 +1,9 @@
 """Relatedness engine — pilot selection, profiles, similarity.
 
-Profiles are produced off-peak by the LLM and stored durably in
-``relatedness_profiles`` / ``relatedness_attributes`` (never a ``.cache`` JSON
-file). ``no_fetch`` never calls the LLM; it re-renders from the stored profiles,
-so a dashboard Refresh is zero-network.
+Profiles are the SEC reading service's ``company.profile`` answers, read where
+they are (``service_rows``, #894 step 3b); the board's own writer (``own``) keeps
+them in ``relatedness_profiles`` / ``relatedness_attributes``. ``no_fetch`` never
+calls the LLM, so a dashboard Refresh is zero-network.
 """
 from __future__ import annotations
 
@@ -433,48 +433,66 @@ def _cik_for(tickers: list[str]) -> dict[str, str]:
 _SERVICE_INPUT = {"section:business": "item", "located": "llm_locator"}
 
 
-def mirror_service(tickers: list[str]) -> dict[str, dict]:
-    """Copy the SEC reading service's ``company.profile`` answers into ``relatedness_profiles`` /
-    ``relatedness_attributes`` and return the stored profiles (avo, 16 Nov 2026). No model call, no SEC request.
+def service_rows(tickers: list[str] | None = None) -> list[dict]:
+    """The board's profile rows, read straight from the SEC reading service's ``company.profile`` answers (#894
+    step 3b; avo, 24 Nov 2026: "Relatedness da Value chain gibi olsun, ek kopyalamaya gerek yok"). No model call,
+    no SEC request, and nothing is written: the rows have the shape of ``relatedness_profiles`` (plus
+    ``attributes``, the tag lists) so the store's readers serve them as they served the table.
 
-    Every ticker of a company gets its company's answer. A row whose key already names that answer is left alone,
-    and a company the service has no answer for keeps what is stored, so a run before the service has read anything
-    changes nothing. The key carries the service's input hash, writer and filing; scoring, embeddings, themes and
-    Value Chain read the same two tables as before.
+    ``tickers`` None (or empty) is the whole board (``select_pilot``). Every ticker of a company gets its company's
+    answer; a company the service has no answer for is absent. The key carries the service's input hash, writer and
+    filing, and ``fetched_at`` is when the service asked, so the scoring gate sees a new answer the day it lands.
+    A failing read raises: an empty board must never be saved over the last good payload.
     """
     from revenuechaser.rcdata import read
     from . import store
-
-    ciks = _cik_for(tickers)
-    wanted = {c for c in ciks.values() if c}
-    answers = {str(r["cik"]).lstrip("0"): r for r in read.sec_reads(wanted, "company.profile")} if wanted else {}
-    meta = store.profile_meta(tickers)
-    # shortcut: a company the service leaves out (SIC 6770) or has no text for gets no ``shell`` / ``no_text`` row
-    # here and counts as pending; write those rows when the pending count on the board misleads.
+    tickers = [t.upper() for t in tickers] if tickers else select_pilot()
+    # The layer's company, never ``_cik_for``'s SEC ticker map: that one downloads, and a Refresh is zero-network.
+    got = {str(c["ticker"]).upper(): str(c.get("cik") or "") for c in read.fundamental_companies(tickers)}
+    ciks = {t: got.get(t, "") for t in tickers}
+    wanted = {read._cik(c) for c in ciks.values() if c}
+    answers = {read._cik(r["cik"]): r for r in read.sec_reads(wanted, "company.profile")} if wanted else {}
+    # A company the service found no text for is ``no_text`` on the board, counted apart, not pending (195 of the
+    # 199 "pending" on 25 Nov 2026 were these).
+    unread = wanted - set(answers)
+    no_text = ({read._cik(r["cik"]): r for r in read.sec_reads(unread, "company.profile", statuses=("no_text",))}
+               if unread else {})
+    # shortcut: a company the service leaves out (SIC 6770) gets no ``shell`` row here and counts as pending.
+    out = []
     for t in tickers:
-        r = answers.get(str(ciks.get(t) or "").lstrip("0"))
+        cik = read._cik(ciks.get(t)) if ciks.get(t) else ""
+        if cik in no_text:
+            r = no_text[cik]
+            out.append({"ticker": t, "cik": str(ciks.get(t)), "model": r.get("model"),
+                        "prompt_version": r.get("prompt_version"), "fetched_at": r.get("fetched_at"),
+                        "cache_key": "", "status": "no_text", "attempts": int(r.get("attempts") or 0),
+                        "provider": r.get("provider"), "profile_json": None, "label_source": None,
+                        "accession": r.get("accession") or None,
+                        "attributes": {f: [] for f in config.PROFILE_FIELDS}})
+            continue
+        r = answers.get(cik)
         v3 = (r or {}).get("answer")
-        if not v3:
+        if not v3 or not isinstance(v3, dict):
             continue
         partial = r["status"] == "partial"
         ck = store.cache_key(r["model"], False, "", r["prompt_version"], t,
                              r["input_hash"] + (PARTIAL if partial else ""), provider=r["provider"],
                              source={"cik": r["cik"], "accession": r["accession"], "form": r.get("form"),
                                      "filed": r.get("filing_date")})
-        if store._key_mode((meta.get(t) or {}).get("cache_key")) == json.loads(ck):
-            continue
         kind = str(r.get("input_kind") or "")
         labels = {"input": _SERVICE_INPUT.get(kind, "whole_document" if kind.startswith("whole") else kind),
                   "from": "sec/reads"}
         if r.get("missing_chunks"):
             labels["missing_chunks"] = [int(i) for i in str(r["missing_chunks"]).split(",") if i]
         shell = profile_v3.is_shell(v3)
-        store.save_profile(t, ciks.get(t), {f: [] for f in config.PROFILE_FIELDS} if shell
-                           else profile_v3.to_attributes(v3), ck, r["model"], prompt_version=r["prompt_version"],
-                           status="shell" if shell else "ok", attempts=int(r.get("attempts") or 0),
-                           provider=r["provider"], profile_json=v3, label_source=labels,
-                           accession=r.get("accession") or None)
-    return store.load_profiles(tickers)
+        out.append({"ticker": t, "cik": str(ciks.get(t) or ""), "model": r["model"],
+                    "prompt_version": r["prompt_version"], "fetched_at": r.get("fetched_at"), "cache_key": ck,
+                    "status": "shell" if shell else "ok", "attempts": int(r.get("attempts") or 0),
+                    "provider": r["provider"], "profile_json": v3, "label_source": labels,
+                    "accession": r.get("accession") or None,
+                    "attributes": ({f: [] for f in config.PROFILE_FIELDS} if shell
+                                   else profile_v3.to_attributes(v3))})
+    return out
 
 
 def _writer(provider: str) -> tuple[str, bool, str]:
@@ -516,8 +534,8 @@ def build_profiles(tickers: list[str], use_llm: bool = True,
     from . import store
 
     provider = provider or config.default_writer()
-    if use_llm and config.PROFILES_FROM == "service":
-        return mirror_service(tickers)
+    if config.PROFILES_FROM == "service":
+        return store.load_profiles(tickers)    # the service's answers, read where they are (#894 step 3b)
     profiles_mod.llm(provider)                 # an unknown writer fails here, before anything is written
     if use_llm:
         _spine_ready()                         # no spine, no names: stop before anything is written (#642 D3)
@@ -970,7 +988,8 @@ def _changed_since(as_of, profiles: dict[str, dict], stored: set[str]) -> tuple[
         cutoff = datetime.fromisoformat(str(as_of)).timestamp()
     except (TypeError, ValueError):
         return None
-    changed = {r["ticker"] for r in rawstore.get_all(sr.PROFILES)
+    from . import store
+    changed = {r["ticker"] for r in store.profile_rows(list(profiles))
                if r["ticker"] in profiles and float(r.get("fetched_at") or 0) > cutoff}
     return changed | (set(profiles) - stored), stored - set(profiles)
 
@@ -1216,36 +1235,31 @@ def run(no_fetch: bool = False, tickers: list[str] | None = None,
 
 
 def score(only_if_new: bool = True, provider: str = NO_WRITER, model: str | None = None) -> dict:
-    """Mirror the SEC service's new answers, rescore every pair, persist the scores and the payload. No call.
+    """Rescore every pair from the SEC service's answers, persist the scores and the payload. No call.
 
     The scoring step of #884, **daily and only when the SEC reading service answered something new** (avo, 20 Nov
     2026: "Sec raporunda degisiklik var ise yapilacak sekilde ayarla, gunluk olsun"; his 16 Nov weekly Sunday word
-    was what the cadence was before). It is the Fetch's second half plus the one free part of its first:
+    was what the cadence was before). It is the Fetch's second half:
 
-    * on the service path (``config.PROFILES_FROM == "service"``, the deployed setting) it first copies the
-      service's ``company.profile`` answers into the board's own tables (``mirror_service``) -- no model call and
-      no SEC request, and a company whose answer is already stored is left alone, so a day on which the service
-      read nothing changes nothing. Without this step the gate below would never see a new profile and the board
-      would stay on the payload of the last Fetch (#884);
-    * then it rescores from the stored profiles. What it does that a Refresh does not: it writes. The new company
-      vectors are cached (``relatedness_embeddings``) and the peers go to ``relatedness_scores``, so the next
-      render reads them instead of making them again.
+    * on the service path (``config.PROFILES_FROM == "service"``, the deployed setting) the profiles are the
+      service's ``company.profile`` answers, read where they are (``service_rows``, #894 step 3b; it copied them
+      into the board's own tables until then). Each carries the time the service asked, so the gate below sees a
+      new answer the day it lands, and a day on which the service read nothing changes nothing;
+    * then it rescores. What it does that a Refresh does not: it writes. The new company vectors are cached
+      (``relatedness_embeddings``) and the peers go to ``relatedness_scores``, so the next render reads them
+      instead of making them again.
 
-    It calls no writer and spends nothing either way: on the own-writer path (``own``) it rescores what is stored
-    and mirrors nothing.
+    It calls no writer and spends nothing either way: on the own-writer path (``own``) it rescores what is stored.
 
-    ``only_if_new`` skips the day whose profiles are all older than the saved payload, the mirror included (the
-    same comparison ``_reusable_payload`` makes); the answer then carries ``skipped`` and nothing is written.
-    ``--force`` rescores anyway. It holds the board's job lock, as a Fetch does, because it writes -- and it takes
-    the lock before the mirror, so a run beside a Fetch writes no profile either.
+    ``only_if_new`` skips the day whose profiles are all older than the saved payload (the comparison
+    ``_reusable_payload`` makes); the answer then carries ``skipped`` and nothing is written. ``--force`` rescores
+    anyway. It holds the board's job lock, as a Fetch does, because it writes.
     """
     from . import store
     provider = provider or config.default_writer()
     with job_lock.acquire("relatedness", wait=0) as got:
         if not got:
             raise AlreadyRunning("Another Relatedness run is already in progress.")
-        if config.PROFILES_FROM == "service":
-            mirror_service(select_pilot())
         if only_if_new:
             cached = _reusable_payload(provider, model)
             if cached is not None:
@@ -1324,7 +1338,7 @@ def _run(no_fetch: bool, tickers: list[str] | None, limit: int | None,
     payload["shell"] = len(shell)
     # Which companies' Item the writer located from the headings (avo, 8 Nov 2026: logged per company).
     payload["llm_located"] = sorted(
-        r["ticker"] for r in rawstore.get_all(sr.PROFILES)
+        r["ticker"] for r in store.profile_rows(tickers)
         if r["ticker"] in set(tickers) and isinstance(r.get("label_source"), dict)
         and r["label_source"].get("input") == "llm_locator")
     payload["pending"] = max(0, len(tickers) - len(profiles) - len(no_text) - len(short_text) - len(shell))
@@ -1359,7 +1373,10 @@ def _reusable_payload(provider: str, model: str | None) -> dict | None:
         cutoff = datetime.fromisoformat(str(as_of)).timestamp()
     except ValueError:
         return None
-    newest = max((float(r.get("fetched_at") or 0) for r in rawstore.get_all(sr.PROFILES)), default=None)
+    from . import store
+    # A ``no_text`` row is no profile: the service re-checking a company with no text is nothing to rescore.
+    newest = max((float(r.get("fetched_at") or 0) for r in store.profile_rows() if r.get("status") != "no_text"),
+                 default=None)
     if newest is None or newest > cutoff:
         return None
     return payload
