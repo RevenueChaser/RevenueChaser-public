@@ -174,7 +174,7 @@ def symbol_map(con: duckdb.DuckDBPyConnection, symbols_sql: str, notes: list[str
     held, starts = old_symbols(tickers)
     rows = []
     for s, name in named.items():
-        start = None  # MUTATION: no start, so a reused ticker is never cut at its holder's first day
+        start = starts[name[0]] - GRACE if name[0] in starts else None
         src = REUSED if s in starts else RENAMED
         days = by_date(name, start, [(p.valid_from, p.valid_to, (p.ticker, src)) for p in held.get(s, [])])
         rows += [{"symbol": s, "ticker": t, "ticker_source": ts, "valid_from": f, "valid_to": to}
