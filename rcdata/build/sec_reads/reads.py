@@ -302,6 +302,10 @@ class Reads:
     cadence = "daily"
     backfill_needs_from = False
     starts_by_hand = True
+    #: One fetch asks the model for up to ``asker.SLICE_S``, so it never fetches inside the builder lock: it
+    #: collects fetch-only (``--no-duckdb``) and a build pass writes the serving file (``base.long_read``, #1532,
+    #: the build-lock split, option A, avo 25 Nov 2026).
+    long_read = True
     due_from_ny = DUE_FROM_NY
     #: Shown beside the dataset on the Settings page and the Grafana board.
     limits = f"EVREN: no day cap · DeepSeek: {DAY_CAP} companies a day"
