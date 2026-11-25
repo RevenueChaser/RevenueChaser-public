@@ -1048,10 +1048,12 @@ def fetch_lock_name(dataset: str) -> str:
 def long_read(ds) -> bool:
     """Whether one fetch of ``ds`` is a long model read (``long_read = True``): minutes to hours of provider calls.
 
-    Such a fetch collects fetch-only (``--no-duckdb``), under its own ``rcdata_fetch_<dataset>`` lock, and the
-    serving file is written by a short locked build of its own; it never fetches inside the builder lock
+    The flag steers **the pass**, not a person (``due._pass_mode``, ``due.enqueue_due``): a pass queues such a
+    dataset fetch-only (``--no-duckdb``), under its own ``rcdata_fetch_<dataset>`` lock, and then queues the short
+    locked build of what that staged, so no queued turn holds the builder lock through a long read
     (avo, 25 Nov 2026, the build-lock split, option A; #1532). Without the split a ``sec/reads`` pass held
-    ``rcdata_build`` for as long as it asked, and every other build waited behind it.
+    ``rcdata_build`` for as long as it asked, and every other build waited behind it. A run a person asks for by
+    name, and a Fetch press, are not touched: theirs is one turn on purpose.
     """
     return bool(getattr(ds, "long_read", False))
 
@@ -1060,18 +1062,6 @@ def long_read_names() -> frozenset[str]:
     """The datasets whose fetch is a long model read."""
     from . import DATASETS
     return frozenset(name for name, ds in DATASETS.items() if long_read(ds))
-
-
-def long_read_problem(ds, skip_build: bool) -> str | None:
-    """Why this request must not run, or None: a long model read that would also build holds the builder lock for
-    its whole read (option A). It is refused rather than made fetch-only silently, so the run that staged the data
-    and the run that built it stay two rows a person can see."""
-    if skip_build or not long_read(ds):
-        return None
-    return (f"skipped: {ds.name} is a long model read: it collects fetch-only "
-            f"(--no-duckdb) under {fetch_lock_name(ds.name)}, and a build pass "
-            f"(run --build-only) writes the serving file; a run that fetches and builds in one turn would hold "
-            f"the builder lock for the whole read (#1532)")
 
 
 def heavy_fetch_problem() -> str | None:
@@ -1550,10 +1540,6 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
         raw_only_mode = params.get("no_parquet") is True
         skip_build = (raw_only_mode or params.get("no_duckdb") is True or params.get("no_build") is True
                       or FETCH_ONLY_PASS)
-        long_refused = long_read_problem(ds, skip_build)
-        if long_refused:
-            ctx.as_of = ds.default_as_of()
-            return _finish(ctx, req, {"result": "skipped", "note": long_refused}, "skipped", None), None
         measure.begin(ctx.run_id)
         with raw_only_run(raw_only_mode):
             if mode == "backfill":

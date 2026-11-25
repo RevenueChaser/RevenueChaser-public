@@ -368,10 +368,17 @@ def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
             # The gap ceiling (#1532): a stage this old is built whatever the source's automation says, because
             # under a partial mode nothing else ever would.
             return "full", None
+        if base.long_read(ds) and _staged(check):
+            return "full", None       # option A: the short build of what a long model read staged
         if mode != "full":
             return mode, f"automation {mode}: the build pass builds only full sources"
         if not (check and _stage_done(check, "parquet")):
             return mode, "no staged Parquet waiting for a build"
+        return mode, None
+    if base.long_read(ds) and mode == "full":
+        # Option A (#1532): a whole pass stages a long model read and never builds it in the same turn; the build
+        # of what it staged is the next turn's ``build_only`` request (``enqueue_due``).
+        return "parquet", None
     return mode, None
 
 
@@ -398,14 +405,19 @@ def enqueue_due(datasets: dict | None = None, stage: str | None = None,
                 out.append((name, f"not due (held: {ops.switch_words(*held)})", None, False))
                 continue
             mode = ops.dataset_mode(name, datasets[name].kind)   # #527: a source's own mode wins over its kind's
-            # The gap ceiling (#1532, avo 25 Nov 2026): data staged more than STAGE_GAP_MAX_H hours ago is built
-            # on this pass, whatever the cadence says, because a ``--no-duckdb`` run leaves the serving file as it
-            # was and only a build ends the gap. ``off`` is left alone: that switch is avo's word that this source
-            # is built by hand, and the file switch above holds the same way.
-            overdue = None if mode == "off" or stage == "fetch" else stage_overdue(ops.latest_check(name))
-            if overdue is not None:
+            # The two reasons a pass builds what is waiting instead of fetching (#1532, avo 25 Nov 2026): the gap
+            # ceiling (staged more than STAGE_GAP_MAX_H hours ago), and a long model read's own stage, which this
+            # pass staged rather than build in one turn. A ``--no-duckdb`` run leaves the serving file as it was,
+            # so only a build ends the gap. ``off`` is left alone: that switch is avo's word that this source is
+            # built by hand, and the file switch above holds the same way.
+            check = None if mode == "off" or stage == "fetch" else ops.latest_check(name)
+            overdue = stage_overdue(check) if check else None
+            long_waiting = check is not None and base.long_read(datasets[name]) and _staged(check)
+            if overdue is not None or long_waiting:
                 mode, not_now = "full", None
-                due, why = True, STAGE_OVERDUE_WHY.format(h=STAGE_GAP_MAX_H, age=overdue)
+                due = True
+                why = (STAGE_OVERDUE_WHY.format(h=STAGE_GAP_MAX_H, age=overdue) if overdue is not None
+                       else "a long model read's stage waits for its short build")
             else:
                 mode, not_now = _pass_mode(datasets[name], mode, stage)
                 due, why = (False, not_now) if not_now else is_due(datasets[name], mode)
@@ -417,7 +429,7 @@ def enqueue_due(datasets: dict | None = None, stage: str | None = None,
             out.append((name, f"not due ({why})", None, False))
             continue
         try:
-            params = ({"build_only": True} if stage == "build" or overdue is not None
+            params = ({"build_only": True} if stage == "build" or overdue is not None or long_waiting
                       else base.STAGE_PARAMS[mode] or None)
             rid = ops.enqueue_once(name, params, by=REQUESTED_BY)
         except ops.BUSY_ERRORS as e:

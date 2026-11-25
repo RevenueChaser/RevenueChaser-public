@@ -219,9 +219,10 @@ the data on one machine and building it on another.
 
 **The build-lock split (option A, avo 25 Nov 2026, #1532).** A dataset whose fetch is a long model read declares
 `long_read` (`sec/reads`, whose asker holds its slice for 15 minutes a run and whose `debt.note` reread goes the
-same way). Such a request is refused the locked build turn with a note naming its route: it collects fetch-only,
-under `rcdata_fetch_<dataset>` alone, and a build pass (`run --build-only`, or a `build_only` request) writes the
-serving file in seconds. Two rules keep the split honest:
+same way). The flag steers **the pass**, not a person: a pass queues such a dataset fetch-only, so it holds
+`rcdata_fetch_<dataset>` alone and no builder lock, and the next pass queues the short `build_only` turn that
+writes the serving file in seconds (`due._pass_mode`, `due.enqueue_due`). A run asked for by name and a Fetch
+press are untouched: theirs is one turn on purpose. Two rules keep the split honest:
 
 - **The gap ceiling is 24 hours** (`due.STAGE_GAP_MAX_H`). Data that has been staged for longer is built on the
   next pass whatever the source's automation mode says, with a `build_only` request and no provider call, and the
