@@ -452,11 +452,25 @@ def service_rows(tickers: list[str] | None = None) -> list[dict]:
     ciks = {t: got.get(t, "") for t in tickers}
     wanted = {read._cik(c) for c in ciks.values() if c}
     answers = {read._cik(r["cik"]): r for r in read.sec_reads(wanted, "company.profile")} if wanted else {}
-    # shortcut: a company the service leaves out (SIC 6770) or has no text for gets no ``shell`` / ``no_text`` row
-    # here and counts as pending; serve those rows when the pending count on the board misleads.
+    # A company the service found no text for is ``no_text`` on the board, counted apart, not pending (195 of the
+    # 199 "pending" on 25 Nov 2026 were these).
+    unread = wanted - set(answers)
+    no_text = ({read._cik(r["cik"]): r for r in read.sec_reads(unread, "company.profile", statuses=("no_text",))}
+               if unread else {})
+    # shortcut: a company the service leaves out (SIC 6770) gets no ``shell`` row here and counts as pending.
     out = []
     for t in tickers:
-        r = answers.get(read._cik(ciks.get(t))) if ciks.get(t) else None
+        cik = read._cik(ciks.get(t)) if ciks.get(t) else ""
+        if cik in no_text:
+            r = no_text[cik]
+            out.append({"ticker": t, "cik": str(ciks.get(t)), "model": r.get("model"),
+                        "prompt_version": r.get("prompt_version"), "fetched_at": r.get("fetched_at"),
+                        "cache_key": "", "status": "no_text", "attempts": int(r.get("attempts") or 0),
+                        "provider": r.get("provider"), "profile_json": None, "label_source": None,
+                        "accession": r.get("accession") or None,
+                        "attributes": {f: [] for f in config.PROFILE_FIELDS}})
+            continue
+        r = answers.get(cik)
         v3 = (r or {}).get("answer")
         if not v3 or not isinstance(v3, dict):
             continue
@@ -1360,7 +1374,9 @@ def _reusable_payload(provider: str, model: str | None) -> dict | None:
     except ValueError:
         return None
     from . import store
-    newest = max((float(r.get("fetched_at") or 0) for r in store.profile_rows()), default=None)
+    # A ``no_text`` row is no profile: the service re-checking a company with no text is nothing to rescore.
+    newest = max((float(r.get("fetched_at") or 0) for r in store.profile_rows() if r.get("status") != "no_text"),
+                 default=None)
     if newest is None or newest > cutoff:
         return None
     return payload

@@ -60,3 +60,16 @@ def test_a_row_only_in_the_old_table_is_not_read_and_no_model_is_asked(from_serv
     assert engine.build_profiles(["MSFT"], usd_cap=1.0) == {}
     assert store.profile_rows(["MSFT"]) == [] and store.load_profiles(["MSFT"]) == {}
     assert board == [] and mock.calls("/chat/completions") == []
+
+
+def test_a_company_the_service_found_no_text_for_is_no_text_not_pending(from_service):
+    """25 Nov 2026: 195 of the board's 199 "pending" were companies the service holds as ``no_text``. They are
+    counted apart, as the board's own ``no_text`` rows were, and they are not news for the scoring gate."""
+    from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import answer_row, serve_answers
+    serve_answers([answer_row(MSFT, None, status="no_text", attempts=0, fetched_at=9e9)], replace=True)
+    assert store.profile_meta(["MSFT"])["MSFT"]["status"] == "no_text"
+    assert not any(store.load_profiles(["MSFT"])["MSFT"].values())
+    assert store.load_profile_json(["MSFT"]) == {}
+
+    ask_the_service()                                       # a real answer later wins over the no_text row
+    assert store.profile_meta(["MSFT"])["MSFT"]["status"] == "ok"
