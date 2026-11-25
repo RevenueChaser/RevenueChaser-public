@@ -92,6 +92,9 @@ TOLERANCE = 1e-4
 # shortcut: the cent rounding is read from the sample's KO rows, Alpaca does not document it; measure it on the server
 # (count of rows left, and their sizes) and narrow or widen this once a full Tier A build runs.
 HALF_CENT = 0.005
+# The newest session of a **stock** bar: the ``index:SPX`` row is written a session ahead of the equity bars, so an
+# unfiltered ``max(session_date)`` reported the store one day fresher than it is (plan v2 step 1, #1413).
+NEWEST_STOCK_SQL = "SELECT max(session_date) FROM price_bar_daily WHERE security_id NOT LIKE 'index:%'"
 FLOAT_OVER = 1.05
 FLOAT_DISAGREE = 0.25
 # A cover count behind a market cap and Yahoo's sharesOutstanding further apart than this, on the newest session up to
@@ -1055,7 +1058,7 @@ class PricesServing:
         # session: applied now, it would turn today's bars into a basis that does not exist yet. What is wrong with
         # the action itself (no ratio, no amount) is named at once, so a malformed one gets the window's notice;
         # only what needs the close before the ex-date, and a kind the factors never apply, waits.
-        newest = "(SELECT max(session_date) FROM price_bar_daily WHERE security_id NOT LIKE 'index:%')"
+        newest = f"({NEWEST_STOCK_SQL})"
         # The row CRSP's real ex-date stands in for (above): it records the same split, so applying it too would
         # step the basis twice, and its own day is not the day the basis changed. It stays in the table, unapplied,
         # and ``action_not_applied`` names it with this reason (avo, 22 Nov 2026).
@@ -1240,8 +1243,7 @@ class PricesServing:
     def _issues(con: duckdb.DuckDBPyConnection, have: dict[str, int], live: bool = False,
                 alpaca: list | None = None) -> list[tuple[str, str, str]]:
         found: list[tuple[str, str, str]] = []
-        newest = con.execute("SELECT max(session_date) FROM price_bar_daily WHERE security_id NOT LIKE 'index:%'"
-                             ).fetchone()[0]
+        newest = con.execute(NEWEST_STOCK_SQL).fetchone()[0]
         if newest is not None:
             # The Tier A names the store keeps (review S1 of #382): an untyped or excluded Tier A name is left out of
             # the store on purpose, so its missing bar is no finding.
@@ -1367,7 +1369,7 @@ class PricesServing:
         # On the live copy only the rebuilt rows can differ from the live file's.
         added, removed = stage.compare_live(con, "price_bar_daily", cols,
                                             incremental.where("session_date") if incremental.active(ctx) else "")
-        newest = con.execute("SELECT max(session_date) FROM price_bar_daily").fetchone()[0]
+        newest = con.execute(NEWEST_STOCK_SQL).fetchone()[0]
         n_issues = len(ctx.pending.get(NAME, []))
         ctx.notes.append(f"{n_issues} build issues found")
         return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
@@ -1548,7 +1550,8 @@ def _report_parts() -> str:
                           f"WHERE source = '{wrds_history.COMPUSTAT}'"),
             "alpaca": "SELECT security_id, session_date, close FROM _alp"}
     pair = ("SELECT '{name}' AS comparison, count(DISTINCT x.security_id) AS securities, count(*) AS sessions, "
-            f"count(*) FILTER (WHERE abs(x.close - y.close) > {TOLERANCE} * y.close) AS close_differs, "
+            f"count(*) FILTER (WHERE abs(x.close - y.close) > greatest({TOLERANCE} * y.close, {HALF_CENT})) "
+            "AS close_differs, "
             "max(abs(x.close - y.close) / y.close) AS max_close_diff, CAST(NULL AS INTEGER) AS return_differs, "
             "CAST(NULL AS DOUBLE) AS max_return_diff, min(x.session_date) AS first_session, "
             "max(x.session_date) AS last_session "
