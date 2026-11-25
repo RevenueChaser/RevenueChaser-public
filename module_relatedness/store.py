@@ -136,11 +136,41 @@ def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
     rawstore.atomic(_write, db="relatedness")
 
 
+def profile_rows(tickers: list[str] | None = None) -> list[dict]:
+    """The profile rows (``relatedness_profiles``' columns, decoded) of ``tickers``, every row when None or empty.
+
+    On the service path (``config.PROFILES_FROM == "service"``, the deployed setting) they are the SEC reading
+    service's answers, read where they are, as Value Chain reads them (#894 step 3b; avo, 24 Nov 2026: "Relatedness
+    da Value chain gibi olsun, ek kopyalamaya gerek yok"); each also carries ``attributes``. On the own-writer path
+    they are the board's own table.
+    """
+    if config.PROFILES_FROM == "service":
+        from .engine import service_rows
+        return service_rows(tickers)
+    want = {t.upper() for t in tickers} if tickers else None
+    rows = []
+    for r in rawstore.get_all(sr.PROFILES):
+        if want is not None and r["ticker"] not in want:
+            continue
+        for col in JSON_COLUMNS:
+            if isinstance(r.get(col), str):
+                try:
+                    r[col] = json.loads(r[col])
+                except (json.JSONDecodeError, TypeError):
+                    r[col] = None
+        rows.append(r)
+    return rows
+
+
 def load_profiles(tickers: list[str] | None = None) -> dict[str, dict]:
-    """``{ticker: {field: [str, ...]}}`` from the durable tables: every stored profile when ``tickers`` is None, none
-    when it is empty (an empty list once read every profile, #642 PR 3)."""
+    """``{ticker: {field: [str, ...]}}``: every profile when ``tickers`` is None, none when it is empty (an empty
+    list once read every profile, #642 PR 3). From ``profile_rows``; the own-writer path reads the tag lists from
+    ``relatedness_attributes``."""
     if tickers is not None and not tickers:
         return {}
+    if config.PROFILES_FROM == "service":
+        return {r["ticker"]: {f: (r["attributes"].get(f) or []) for f in config.PROFILE_FIELDS}
+                for r in profile_rows(tickers)}
     want = {t.upper() for t in tickers} if tickers is not None else None
     attr: dict[str, dict] = {}
     for r in rawstore.get_all(sr.ATTRIBUTES):
@@ -168,19 +198,8 @@ def load_profiles(tickers: list[str] | None = None) -> dict[str, dict]:
 
 
 def load_profile_json(tickers: list[str] | None = None) -> dict[str, dict]:
-    """``{ticker: v3 profile}`` for the stored rows that carry one (#669; a v2 row has none)."""
-    want = {t.upper() for t in tickers} if tickers else None
-    out = {}
-    for r in rawstore.get_all(sr.PROFILES, ["ticker", "profile_json"]):
-        pj = r.get("profile_json")
-        if isinstance(pj, str):
-            try:
-                pj = json.loads(pj)
-            except (json.JSONDecodeError, TypeError):
-                pj = None
-        if isinstance(pj, dict) and (want is None or r["ticker"] in want):
-            out[r["ticker"]] = pj
-    return out
+    """``{ticker: v3 profile}`` for the rows that carry one (#669; a v2 row has none)."""
+    return {r["ticker"]: r["profile_json"] for r in profile_rows(tickers) if isinstance(r.get("profile_json"), dict)}
 
 
 def load_vectors(model: str, tickers: list[str]) -> dict[str, bytes]:
@@ -198,14 +217,12 @@ def save_vectors(model: str, blobs: dict[str, bytes], dim: int) -> None:
 
 
 def profile_meta(tickers: list[str] | None = None) -> dict[str, dict]:
-    """``{ticker: {status, attempts, cache_key, cik}}`` for stored profile rows."""
-    want = {t.upper() for t in tickers} if tickers else None
+    """``{ticker: {status, attempts, cache_key, cik}}`` for the profile rows (``profile_rows``)."""
     return {r["ticker"]: {"status": r.get("status") or "ok",
                           "attempts": int(r.get("attempts") or 0),
                           "cache_key": r.get("cache_key") or "",
                           "cik": r.get("cik") or ""}
-            for r in rawstore.get_all(sr.PROFILES)
-            if want is None or r["ticker"] in want}
+            for r in profile_rows(tickers)}
 
 
 def _key_mode(cache_key_value) -> dict | None:
