@@ -219,12 +219,12 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-Build-Market", label="Market build (twice a day)",
         args=("-m", "revenuechaser.rcdata.build", "run", "--once", "--build-only", "--kind", "market"),
-        time="08:25", unit_name=MARKET_BUILD_UNIT,
-        description="market.duckdb's own build (avo, 24 Nov 2026): at 08:25 and 23:25, forty minutes after the 07:45 "
-                    "and 22:45 storage fetches, the market sources those fetches staged as Parquet are built and "
+        time="09:25", unit_name=MARKET_BUILD_UNIT,
+        description="market.duckdb's own build (avo, 24 Nov 2026): at 09:25 and 00:25, an hour and forty minutes after "
+                    "the 07:45 and 22:45 storage fetches (so a failed fetch's retry at :45 lands first), the market sources those fetches staged as Parquet are built and "
                     "the file swapped in, then the market requests in the queue run; no other kind is touched. "
                     "About 2 minutes and 2.6 GB at its peak (measured 24 Nov 2026). The server's timer carries the "
-                    "second time (23:25). It does not start while a job lock is held or another builder runs "
+                    "second time (00:25). It does not start while a job lock is held or another builder runs "
                     "(exit 3). Writes market.duckdb and ops.sqlite, with its own job_runs2 row per run.",
         settings=TaskSettings(time_limit_minutes=30)),
     AutomationEntry(

@@ -163,7 +163,7 @@ def test_the_storage_build_runs_every_hour_at_05_and_the_storage_fetch_at_45():
     assert e.hourly and e.time == "00:05" and e.schedule == "hourly at :05 (local)"
     m = A.entry("RC-Build-Market")
     assert m.args[-3:] == ("--build-only", "--kind", "market") and m.unit_name == A.MARKET_BUILD_UNIT
-    assert m.time == "08:25" and not m.hourly
+    assert m.time == "09:25" and not m.hourly
     assert e.settings.time_limit_minutes == 120
     assert e.tables_written == (), "it writes the market store, never the old one: no job_runs row (job_runs2 instead)"
     assert e.after is None and not e.default_install
