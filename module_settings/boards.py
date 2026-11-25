@@ -311,9 +311,10 @@ BOARD_INPUTS: list[dict] = [
     _board("module_relatedness", "Relatedness",
            # The names come from the board's one reader (#217), so a rename is a change to one file. The record
            # left out the seven theme tables the board has always read — the run pointer, the themes at the three
-           # levels, their tags, their members and their ETF overlaps — and the attributes and embeddings the
-           # profile step reads back; the reader makes that checkable.
-           [_rel.PROFILES, _rel.ATTRIBUTES, _rel.EMBEDDINGS, _rel.SCORES, _rel.THEME_RUNS, _rel.THEMES,
+           # levels, their tags, their members and their ETF overlaps — and the embeddings the scoring step reads
+           # back; the reader makes that checkable. The board's own profile tables went with its writer (#1520):
+           # the profile is the SEC reading service's answer, read where it is.
+           [_rel.EMBEDDINGS, _rel.SCORES, _rel.THEME_RUNS, _rel.THEMES,
             _rel.THEME_TAGS, _rel.THEME_MEMBERS, _rel.THEME_ETFS, "chain_filings", _rel.TICKER_THEMES],
            # The writer pair is no longer a knob of this board: every LLM job's pair is on the
            # LLM writers card (#404, ``llm_writers_card``).

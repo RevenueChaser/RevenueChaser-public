@@ -79,12 +79,13 @@ PLANNED_READS: dict[str, tuple[str, ...]] = {
     # #490: ``engine.py`` reads the company records and the served filing texts.
     # #400 WP6: the B input adds the filing's XBRL major customers (``fundamentals.customers``).
     # ``identity.etf_holdings`` (#642 PR 2b): the theme-to-ETF ranks read the spine's holdings (D4, 9 Nov 2026).
-    # #841: the business text, the whole document and the two note blocks are the SEC form reader's (``sec.*``,
-    # ``read.form_business`` / ``form_whole`` / ``form_notes``), no longer ``fundamentals.filings``.
-    # ``sec.read`` (#894): a profile run mirrors the SEC reading service's ``company.profile`` answers.
-    "module_relatedness": ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
-                           "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole",
-                           "sec.note", "sec.read"),
+    # ``sec.read`` (#894 step 3b): the profiles are the SEC reading service's ``company.profile`` answers, read
+    # where they are. #1520 took the board's own writer, and with it every read that prepared its prompt: the
+    # business text, the whole document and the two note blocks (``sec.business`` / ``sec.whole`` / ``sec.note``,
+    # #841) and the filing's segment and customer blocks (``fundamentals.segments`` / ``customers``, #400 WP6).
+    # The service makes those reads itself now.
+    "module_relatedness": ("identity.universe", "identity.security", "identity.etf_holdings",
+                           "fundamentals.companies", "sec.read"),
 }
 
 

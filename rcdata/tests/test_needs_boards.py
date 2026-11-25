@@ -178,14 +178,15 @@ def test_comovement_declares_the_corporate_actions_its_bar_reads_join():
 
 
 def test_relatedness_plans_the_universe_and_the_fundamentals_needs_it_reads():
-    """#490: ``engine.py`` calls ``read.fundamental_companies`` and ``read.filing_texts``, so the board has a plan
-    entry now instead of none, and the control board draws its lines. #400: the v3 profile's segment note reads
-    ``read.segments`` too, the B input (WP6) ``read.customers``, and the prompt's name, sector and industry
-    ``read.identity`` (10 Nov 2026). #642: its run's ETF scan calls ``read.etf_holding_tickers``."""
-    # #841: the filing texts come from the SEC form reader (``read.form_business`` / ``form_whole`` / ``form_notes``).
+    """#490: ``engine.py`` calls ``read.fundamental_companies``, so the board has a plan entry instead of none,
+    and the control board draws its lines. The prompt's name, sector and industry came from ``read.identity``
+    (10 Nov 2026) and the themes still read it; #642: its run's ETF scan calls ``read.etf_holding_tickers``.
+
+    #1520: the reads that fed the board's **own** profile writer are gone with it -- the three SEC document reads
+    (#841) and the filing's segment and customer blocks (#400 WP6). The profile is the service's answer
+    (``sec.read``, #894 step 3b) and the service makes those reads itself."""
     want = ("identity.universe", "identity.security", "identity.etf_holdings", "fundamentals.companies",
-            "fundamentals.segments", "fundamentals.customers", "sec.business", "sec.whole", "sec.note",
-            "sec.read")                    # #894: a profile run mirrors the SEC reading service's answers
+            "sec.read")
     assert boards.PLANNED_READS["module_relatedness"] == want
     assert boards.reads_of("module_relatedness") == {"declared": False, "needs": want}
 
@@ -264,7 +265,7 @@ def test_a_needs_own_reader_is_covered_only_by_that_need_not_by_a_sibling_over_i
 def test_the_call_scan_sees_the_real_boards_reads_so_an_empty_scan_cannot_pass():
     """The review's 2: a scan that found nothing would make the board-wide test pass on every board."""
     assert {"changed_at", "bar_facts", "ticker_bars"} <= set(boards.read_calls("module_comovement"))
-    assert {"fundamental_companies", "form_business", "form_whole", "form_notes"} <= set(
+    assert {"fundamental_companies", "identity", "sec_reads", "etf_holding_tickers"} <= set(
         boards.read_calls("module_relatedness"))
 
 

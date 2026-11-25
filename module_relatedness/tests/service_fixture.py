@@ -98,6 +98,16 @@ def ask_the_service() -> dict:
     return fx.run(reads.NAME, reread=True)
 
 
+def attributes(**fields) -> dict:
+    """One profile's tag lists: the fields named, every other ``config.PROFILE_FIELDS`` field empty.
+
+    What ``test_pr_c_118._prof`` was before #1520, kept here because several files score with it.
+    """
+    out = {f: [] for f in config.PROFILE_FIELDS}
+    out.update(fields)
+    return out
+
+
 # ── the rows, answered at the board's reader ────────────────────────────────────────────────────────────────────
 def row(ticker: str, attributes: dict | None = None, *, cik: str = "", status: str = "ok",
         model: str = "a-model", provider: str = "evren", prompt_version: str | None = None,

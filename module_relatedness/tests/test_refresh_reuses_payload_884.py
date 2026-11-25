@@ -1,11 +1,16 @@
-"""#884 A: a Refresh of the whole board renders the saved payload when no profile is newer than it."""
+"""#884 A: a Refresh of the whole board renders the saved payload when no profile is newer than it.
+
+"A profile" is the SEC reading service's answer, read where it is (#894 step 3b): since #1520 the board has no
+table of its own, so these tests answer at the board's one reader (``service_fixture.seed``) instead of writing
+rows the gate would read back.
+"""
 import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from revenuechaser.core import rawstore
 from revenuechaser.module_relatedness import engine
+from revenuechaser.module_relatedness.tests import service_fixture as svc
 
 NOW = datetime(2026, 11, 15, 15, 5, 1, tzinfo=timezone.utc)
 
@@ -20,7 +25,7 @@ def _saved(tmp_path, monkeypatch, writer=("deepseek", "deepseek-flash")):
 
 
 def _profiles(monkeypatch, fetched_at):
-    monkeypatch.setattr(rawstore, "get_all", lambda table: [{"ticker": "AAPL", "fetched_at": fetched_at}])
+    svc.seed(monkeypatch, [svc.row("AAPL", fetched_at=fetched_at)])
 
 
 def _run_must_not_happen(monkeypatch):
