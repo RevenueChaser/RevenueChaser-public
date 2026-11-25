@@ -16,7 +16,7 @@ def test_a_fetch_pass_never_builds_whatever_the_request_asked(stager, monkeypatc
 
 
 def test_the_passes_pick_their_mode(stager, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(due, "FETCH_HOURS", {})             # the hours are their own test, below
+    # no ``kind_fetch_hours`` row for market: every hour, so no hour gate. The hours are their own test, below.
     assert due._pass_mode(stager, "full", "fetch") == ("parquet", None)
     assert due._pass_mode(stager, "raw", "fetch") == ("raw", None)
     assert due._pass_mode(stager, "full", None) == ("full", None)
@@ -53,16 +53,19 @@ def test_an_hourly_source_is_due_for_the_fetch_after_a_build(stager, monkeypatch
 
 
 def test_a_market_source_is_fetched_at_its_two_hours_and_retried_once(stager, monkeypatch):  # noqa: F811
-    """avo, 24 Nov 2026: market at 07:45 and 22:45 (before its 09:25 / 00:25 build), not hourly."""
+    """avo, 24 Nov 2026: market at 07:45 and 22:45 (before its 09:25 / 00:25 build), not hourly. Since 25 Nov 2026
+    those two hours are market's own ``kind_fetch_hours`` row, the one home for a kind's hours."""
     from datetime import datetime
     from revenuechaser.core import calendar
     from revenuechaser.rcdata import ops
+
+    ops.fetch_hours_set("market", "7,22")
 
     def at(hour):
         monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, hour, 45, tzinfo=due.AMS))
         return due._pass_mode(stager, "full", "fetch")[1]
     assert at(7) is None and at(22) is None
-    assert at(12) == "market is fetched at 07:45 and 22:45 (FETCH_HOURS)" and at(8) is not None
+    assert at(12) == "market is fetched at 07:45 and 22:45 (kind_fetch_hours)" and at(8) is not None
     ops.record_check(stager.name, "failed", note="fetch failed")
     assert at(8) is None and at(9) is not None                 # one retry, the hour after
     assert due._pass_mode(stager, "full", "build")[1] is not None   # the build pass is not held by the hours
@@ -92,9 +95,11 @@ def _at(monkeypatch, hour):
     monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, hour, 45, tzinfo=due.AMS))
 
 
-def test_a_kinds_own_fetch_hours_win_and_every_hour_falls_back_to_the_code(stager, monkeypatch):  # noqa: F811
-    """avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali"): a DuckDB's hours set from Grafana win over FETCH_HOURS;
-    dropping the row is the code's hours again, never every hour while the code names the kind."""
+def test_a_kinds_fetch_hours_are_its_row_and_no_row_is_every_hour(stager, monkeypatch):  # noqa: F811
+    """avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali"): a DuckDB's fetch hours are the row set from Grafana, and
+    that row is the only place they live. Dropping it is every hour, for market as for any other kind: the second,
+    code-side table (``FETCH_HOURS``, market 07/22) went once market's row was seeded live on 25 Nov 2026, so a kind's
+    hours can never be two different things at once."""
     from revenuechaser.rcdata import ops
     ops.fetch_hours_set("market", "9")
     _at(monkeypatch, 7)
@@ -102,8 +107,10 @@ def test_a_kinds_own_fetch_hours_win_and_every_hour_falls_back_to_the_code(stage
     _at(monkeypatch, 9)
     assert due._pass_mode(stager, "full", "fetch")[1] is None
     ops.fetch_hours_set("market", None)
-    assert due.fetch_hours("market") == ((7, 22), "FETCH_HOURS")
-    assert due._pass_mode(stager, "full", "fetch")[1] == "market is fetched at 07:45 and 22:45 (FETCH_HOURS)"
+    assert due.fetch_hours("market") == (None, "every hour")
+    assert due._pass_mode(stager, "full", "fetch")[1] is None       # 09:45 with no row: every hour takes it
+    _at(monkeypatch, 3)
+    assert due._pass_mode(stager, "full", "fetch")[1] is None       # and so does 03:45
     assert due.fetch_hours("spine") == (None, "every hour")
 
 
@@ -124,12 +131,13 @@ def test_unreadable_fetch_hours_fail_the_due_check_and_never_fetch_hourly(stager
 
 
 def test_the_due_line_names_what_let_a_kind_through_its_hour(stager, monkeypatch):  # noqa: F811
-    """The live check before FETCH_HOURS goes: a 07:45 tick says which list let market in."""
+    """A 07:45 tick says which hours let market in, so the live journal names the row the hours came from; with no
+    row there is no gate to name."""
     from revenuechaser.rcdata import ops
     monkeypatch.setattr(ops, "dataset_mode", lambda name, kind: "full")
     _at(monkeypatch, 7)
     ((_, why, rid, _),) = due.enqueue_due({stager.name: stager}, stage="fetch")
-    assert rid and "hour gate FETCH_HOURS 07,22" in why
+    assert rid and "hour gate" not in why
     ops.finish_request(rid, "failed", note="test")
     ops.fetch_hours_set("market", "7,22")
     ((_, why, _, _),) = due.enqueue_due({stager.name: stager}, stage="fetch")
@@ -138,6 +146,8 @@ def test_the_due_line_names_what_let_a_kind_through_its_hour(stager, monkeypatch
 
 def test_the_next_fetch_is_the_next_45_in_the_kinds_hours(monkeypatch):
     from datetime import datetime
+    from revenuechaser.rcdata import ops
+    ops.fetch_hours_set("market", "7,22")
     _at(monkeypatch, 8)
     assert due.next_fetch("market") == datetime(2026, 11, 24, 22, 45, tzinfo=due.AMS)
     assert due.next_fetch("spine", datetime(2026, 11, 24, 8, 50, tzinfo=due.AMS)) == \

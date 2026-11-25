@@ -172,7 +172,7 @@ _DDL = {
     "dataset_slot": """CREATE TABLE IF NOT EXISTS dataset_slot (
         dataset TEXT PRIMARY KEY, at TEXT NOT NULL, weekday INTEGER, set_at REAL NOT NULL)""",
     # avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali"): the Amsterdam hours the storage fetch takes one serving
-    # file's sources at, as "7,22"; no row is the code's own hours (``due.FETCH_HOURS``), else every hour. Fetch only:
+    # file's sources at, as "7,22"; no row is every hour, and this row is the only home of a kind's hours. Fetch only:
     # a build hour is not this table's. A new table, no upgrade step.
     "kind_fetch_hours": """CREATE TABLE IF NOT EXISTS kind_fetch_hours (
         kind TEXT PRIMARY KEY, hours TEXT NOT NULL, set_at REAL NOT NULL)""",
