@@ -1,9 +1,10 @@
 """#884 part 1: the scoring step — ``--score`` / ``engine.score``.
 
-The step is the Fetch's second half alone: the profiles are whatever the SEC reading service mirrored, so it
-calls no writer and downloads nothing, and unlike a Refresh it **writes** — the new company vectors and the peer
-scores. The cadence it runs on is daily since avo's word of 20 Nov 2026, and the mirror it does first is pinned by
-``test_daily_scoring_884.py``; these tests patch that step out and pin the scoring alone.
+The step is the Fetch's second half alone: the profiles are the SEC reading service's answers, so it calls no
+writer and downloads nothing, and unlike a Refresh it **writes** — the new company vectors and the peer scores.
+The cadence it runs on is daily since avo's word of 20 Nov 2026, and how it reads the service's answers is pinned by
+``test_scoring_cadence_884.py``; these tests run on the own-writer tables (the folder's ``conftest``) and pin the
+scoring alone.
 
 - it rescores from the stored profiles, persists them with ``store.save_scores`` and keeps the payload;
 - it asks ``_run`` for a writing run (``write=True``), so a vector embedded this week is cached for the next;
@@ -39,9 +40,7 @@ def saved_payload(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def no_mirror(monkeypatch):
-    """The service mirror is ``test_daily_scoring_884.py``'s subject; here it must write nothing."""
-    monkeypatch.setattr(engine, "mirror_service", lambda tickers: {})
+def no_board(monkeypatch):
     monkeypatch.setattr(engine, "select_pilot", lambda: [])
 
 

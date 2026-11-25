@@ -53,7 +53,7 @@ def test_an_hourly_source_is_due_for_the_fetch_after_a_build(stager, monkeypatch
 
 
 def test_a_market_source_is_fetched_at_its_two_hours_and_retried_once(stager, monkeypatch):  # noqa: F811
-    """avo, 24 Nov 2026: market at 07:45 and 22:45 (before its 08:25 / 23:25 build), not hourly."""
+    """avo, 24 Nov 2026: market at 07:45 and 22:45 (before its 09:25 / 00:25 build), not hourly."""
     from datetime import datetime
     from revenuechaser.core import calendar
     from revenuechaser.rcdata import ops

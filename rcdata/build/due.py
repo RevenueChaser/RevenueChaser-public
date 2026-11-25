@@ -242,9 +242,10 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
 
 
 #: The Amsterdam hours the storage fetch takes a kind's sources at, for a kind that is built on a timer of its own
-#: (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each just before its build at 08:25 and 23:25, not hourly). A
-#: fetch that failed tries once more the next hour. A kind's row in ``ops.kind_fetch_hours`` (set from Grafana, avo
-#: 24 Nov 2026: "fetch timer duckdb bazli olmali") wins over this table; a kind in neither is fetched every hour.
+#: (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each before its build at 09:25 and 00:25, not hourly). A
+#: fetch that failed tries once more the next hour, before that build. A kind's row in ``ops.kind_fetch_hours`` (set
+#: from Grafana, avo 24 Nov 2026: "fetch timer duckdb bazli olmali") wins over this table; a kind in neither is
+#: fetched every hour.
 FETCH_HOURS = {"market": (7, 22)}
 #: The minute of the storage fetch timer (home-server ``life-rc-store-fetch.timer``, ``*:45`` Europe/Amsterdam).
 FETCH_MINUTE = 45

@@ -1109,7 +1109,10 @@ none may empty or lose more than 1% of its rows unless the request says `"allow_
 rows reach, which the dataset declares itself (`feeds`, `base.shrink_scope`): never a table its rows never reach, and
 never another source dataset's own table. Until #326 the second half was inferred — every table of a dataset with no
 provider was relaxed for every dataset of the kind — so a run on one feeder could let a table its rows never reach
-shrink (#293). A dataset that declares no `feeds` relaxes its own tables only;
+shrink (#293). A request may instead name the tables it lets shrink, `"allow_shrink_tables": [...]` (the CLI's
+`--allow-shrink-table T`, repeatable): only those of that scope are relaxed, and every other guard of the kind stays on
+(24 Nov 2026: `prices`' `security_symbol` lost 186 bar-less placeholders of ETPs the spine moved to Tier B, 1.47 %, while
+the per-security bar check had to stay). A dataset that declares no `feeds` relaxes its own tables only;
 `rcdata/tests/test_shrink_scope.py` holds the declarations to their kind: every served table is owned or fed by at
 least one dataset, and no declaration names a table of another kind.
 A table that serves only its newest sessions (`option_eod`) names its first kept session in the

@@ -57,9 +57,11 @@ PROMPT_VERSION = "v3d"
 # Not the ``MAX_INPUT_CHARS`` v2 cut every text at (removed by v3, #400).
 MAX_BUSINESS_CHARS: int | None = None
 
-# Where a profile run gets its profiles (avo, 16 Nov 2026): ``service`` mirrors the SEC reading service's answers to
-# ``company.profile`` into ``relatedness_profiles`` and calls no model; ``own`` is the board's own writer, kept until
-# the clean-up for the tests of it and for the writer comparison.
+# Where the board gets its profiles (avo, 16 Nov 2026): ``service`` reads the SEC reading service's answers to
+# ``company.profile`` where they are, as Value Chain does, copies none and calls no model (#894 step 3b; avo, 24 Nov
+# 2026: "Relatedness da Value chain gibi olsun, ek kopyalamaya gerek yok"); ``own`` is the board's own writer and its
+# ``relatedness_profiles`` / ``relatedness_attributes``, kept until the clean-up for the tests of it and the writer
+# comparison.
 PROFILES_FROM = "service"
 
 # The rule version the business sections must be cut with before a profile run reads them (``_forms_ready``,
