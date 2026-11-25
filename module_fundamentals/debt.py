@@ -181,6 +181,6 @@ def note_debt(rec: dict | None, note: dict | None) -> float | None:
     if lines and total < max(lines) * 0.99 or assets is not None and total > assets:
         return None
     interest = max((v for f in INTEREST_FIELDS if (v := _float(rec.get(f))) is not None), default=None)
-    if interest is not None and interest >= total * NOTE_MAX_RATE:
+    if interest is not None and interest > total * NOTE_MAX_RATE:
         return None
     return total
