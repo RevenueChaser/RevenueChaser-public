@@ -14,6 +14,7 @@ from revenuechaser.core.providers import sec_edgar
 from revenuechaser.rcdata import ops
 from revenuechaser.rcdata.build import base
 from revenuechaser.rcdata.build.ownership import common, nport, sec
+from revenuechaser.rcdata.build.spine import ncen
 
 from . import ownership_fixture as ox
 
@@ -343,4 +344,80 @@ def test_a_spine_etf_ticker_change_rebuilds_with_no_parquet_change(two_quarters,
     assert not nport.DATASET.dirty(ctx).clean
     # a spine that cannot be read gives no ETFs; that must not read as every live ETF gone
     monkeypatch.setattr(nport, "_spine_etfs", lambda: [])
+    assert nport.DATASET.dirty(ctx).clean
+
+
+# ── #1507 follow-up: a reorganised ETF keeps its holdings until its new series reports (avo's option A) ─────────────
+
+def _ncen(*rows) -> None:
+    """``sec/ncen`` Parquet as the spine's N-CEN step types it: ``(ticker, series_id, filing_date, accession)``."""
+    folder = ncen.parquet_dir() / "quarter=2026q3"
+    folder.mkdir(parents=True, exist_ok=True)
+    con = duckdb.connect()
+    con.execute("CREATE TABLE t (ticker TEXT, series_id TEXT, is_etf BOOLEAN, filing_date DATE, accession TEXT)")
+    con.executemany("INSERT INTO t VALUES (?, ?, TRUE, ?, ?)", rows)
+    con.execute(f"COPY t TO '{folder / 'part-0.parquet'}' (FORMAT parquet)")
+    con.close()
+
+
+@pytest.fixture
+def reorganised(sets, monkeypatch):
+    """#1507 moved MAGA, YALL, EVNT and ARB to the SEC fund file's new series, which has filed no N-PORT yet; N-CEN
+    still lists the ticker under its old series, whose reports the quarters hold (here: VTI, S000009999 new)."""
+    sets.routes.insert(0, (FOLDER + NEW, _zip(TABLES, Q3), 200, {}))
+    sets.routes.insert(0, (FOLDER + OLD, _zip(TABLES, Q2), 200, {}))
+    _backfill(date(2026, 1, 1))
+    _ncen(("VTI", "S000002848", date(2026, 3, 1), "0000002-26-000001"))
+    monkeypatch.setattr(common, "spine_cusips", lambda: {"594918104": "MSFT"})
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000009999")])
+
+    def build(run_id="b4"):
+        con = duckdb.connect()
+        ctx = base.RunContext(run_id=run_id, dataset=nport.NAME)
+        nport.DATASET.build(ctx, con)
+        return ctx, con
+    return build
+
+
+def test_a_spine_etf_whose_new_series_has_not_reported_keeps_its_old_series_holdings(reorganised):
+    """220 live rows (MAGA 143, YALL 39, EVNT 21, ARB 17) would go on the next build, history with them."""
+    ctx, con = reorganised()
+    assert con.execute(f"SELECT etf_ticker, series_id, ticker FROM {nport.TABLE}").fetchall() == [
+        ("VTI", "S000002848", "MSFT")]
+    assert con.execute(f"SELECT DISTINCT etf_ticker, series_id, quarter FROM {nport.HISTORY} ORDER BY quarter"
+                       ).fetchall() == [("VTI", "S000002848", "2026q2"), ("VTI", "S000002848", "2026q3")]
+    assert any("VTI S000009999->S000002848" in n for n in ctx.notes)
+
+
+def test_the_old_series_is_taken_only_for_one_ticker_and_only_until_the_new_series_reports(reorganised, monkeypatch):
+    """The fallback's limits, each against the same N-CEN pair that is taken in the first step (so the steps are
+    about this change, not the base, which takes nothing)."""
+    assert reorganised()[1].execute(f"SELECT DISTINCT etf_ticker, series_id FROM {nport.TABLE}").fetchall() == [
+        ("VTI", "S000002848")]
+    # SPLG's N-CEN series is SPYM's: taking one another spine ETF carries would serve a fund under two tickers
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VOO", "S000002848"), ("VTI", "S000009999")])
+    _ctx, con = reorganised()
+    assert con.execute(f"SELECT DISTINCT etf_ticker FROM {nport.TABLE}").fetchall() == [("VOO",)]
+    assert con.execute(f"SELECT DISTINCT etf_ticker FROM {nport.HISTORY}").fetchall() == [("VOO",)]
+    # one old series two tickers ask for is taken by neither
+    _ncen(("VTI", "S000002848", date(2026, 3, 1), "0000002-26-000001"),
+          ("VTIX", "S000002848", date(2026, 3, 1), "0000002-26-000001"))
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000009999"), ("VTIX", "S000009998")])
+    assert reorganised()[1].execute(f"SELECT count(*) FROM {nport.TABLE}").fetchone() == (0,)
+    # once the spine's series reports it is read, whatever older series N-CEN still lists for the ticker
+    _ncen(("VTI", "S000001111", date(2026, 3, 1), "0000002-26-000001"))
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000002848")])
+    ctx, con = reorganised()
+    assert con.execute(f"SELECT DISTINCT series_id FROM {nport.TABLE}").fetchall() == [("S000002848",)]
+    assert not any("->" in n for n in ctx.notes)
+
+
+def test_the_old_series_fallback_does_not_rebuild_every_run(reorganised):
+    """#1516's rule (a live pair the spine does not hold rebuilds) reads the pairs the build used, so the served
+    old series is not stale on every run."""
+    ctx, con = reorganised()
+    assert con.execute(f"SELECT DISTINCT etf_ticker, series_id FROM {nport.TABLE}").fetchall() == [
+        ("VTI", "S000002848")]
+    _serve_live(con)
+    ctx.changed = []
     assert nport.DATASET.dirty(ctx).clean

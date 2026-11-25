@@ -30,7 +30,8 @@ Raw: ``raw/sec/nport/<zip>`` with a ``.meta.json`` sidecar. Parquet: ``parquet/s
 per builder process (#812). Starts by hand.
 
 Served (C2, avo 16 Nov 2026, Q11 of the 13F plan): ``etf_holdings_nport``, the holdings of the spine's ETFs only
-(``etf.series_id``, ETNs left out), from each series' newest report in the newest typed quarter (report date, then
+(``etf.series_id``, ETNs left out; a series with no report yet is read on the ticker's N-CEN series until it has one,
+``_with_old_series``), from each series' newest report in the newest typed quarter (report date, then
 filing date, then accession), and only the positions whose CUSIP is one spine ticker's current CUSIP
 (``common.spine_cusips``): bonds, derivatives, cash and unmapped lines stay in Parquet. Built whole, from one quarter,
 whenever this dataset's Parquet changed or the live tables serve an ETF ticker the spine no longer pairs with its
@@ -62,6 +63,9 @@ import httpx
 from ....core import calendar
 from ... import serving
 from .. import base, dirty
+from ..spine import ncen
+from ..spine.etf import nport_reports
+from ..spine.stage import partitions
 from . import KIND, common, sec, sec13f_sets
 
 NAME = "sec/nport"
@@ -190,13 +194,52 @@ def _spine_etfs() -> list[tuple[str, str]]:
         con.close()
 
 
+def _ncen_series() -> dict[str, str]:
+    """``{ticker: series_id}`` of each ETF ticker's newest N-CEN filing over the held ``sec/ncen`` quarters."""
+    files = [f for _, f in partitions(ncen.parquet_dir(), "quarter")]
+    if not files:
+        return {}
+    con = base.scratch_con()
+    try:
+        return dict(con.execute(f"""
+            SELECT ticker, series_id FROM read_parquet([{', '.join(base.sql_path(f) for f in files)}],
+                                                       union_by_name = true)
+            WHERE is_etf AND ticker IS NOT NULL AND series_id IS NOT NULL
+            QUALIFY row_number() OVER (PARTITION BY ticker
+                                       ORDER BY filing_date DESC NULLS LAST, accession DESC, series_id) = 1
+            """).fetchall())
+    finally:
+        con.close()
+
+
+def _with_old_series(etfs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """``etfs`` with each series that has no N-PORT report in a held quarter replaced by the ticker's N-CEN series
+    where that one has: #1507 moved MAGA, YALL, EVNT and ARB to the SEC fund file's new series, whose first N-PORT
+    is not due yet, and the spine reads their old series' reports for asset class the same way (avo's option A,
+    25 Nov 2026). The new series wins once it reports. The served spine names only the new series, so the old one
+    is read from N-CEN's Parquet, as the spine's own build reads it. Never taken: an old series another spine ETF
+    carries (SPLG's is SPYM's), or one that two tickers ask for, since one fund would be served twice.
+
+    shortcut: should N-CEN list the new series before its first N-PORT is out, the holdings go until it is."""
+    ncen_of = _ncen_series()
+    taken = {s for _, s in etfs}
+    want = {t: p for t, s in etfs if (p := ncen_of.get(t)) and p not in taken}
+    asked = list(want.values())
+    want = {t: p for t, p in want.items() if asked.count(p) == 1}
+    if not want:
+        return etfs
+    reports = nport_reports([s for t, s in etfs if t in want] + list(want.values()))
+    return [(t, want[t]) if t in want and s not in reports and want[t] in reports else (t, s) for t, s in etfs]
+
+
 def _stale_etfs() -> bool:
-    """True when the live tables serve an ``(etf_ticker, series_id)`` the spine no longer pairs (a renamed ETF, a
-    series moved to another ticker). An unreadable spine or live file is not stale.
+    """True when the live tables serve an ``(etf_ticker, series_id)`` the build would no longer pair (a renamed
+    ETF, a series moved to another ticker; the pairs as :func:`_with_old_series` reads them, so a fund held on its
+    old series is not stale every run). An unreadable spine or live file is not stale.
 
     Only this direction: most spine ETFs have no long equity of a spine CUSIP, so they are never served, and "the
     pairs differ" would rebuild on every run. shortcut: a newly added spine ETF waits for the next N-PORT quarter."""
-    etfs = set(_spine_etfs())
+    etfs = set(_with_old_series(_spine_etfs()))
     if not etfs:
         return False
     live = dirty._live_rows(KIND, f"SELECT DISTINCT etf_ticker, series_id FROM {TABLE} "
@@ -361,7 +404,8 @@ class Nport:
         con.execute(f"DROP TABLE IF EXISTS {HISTORY}")
         held = sorted(f for f in parquet_dir().glob("quarter=*") if (f / "fund.parquet").exists()
                       and (f / "holdings.parquet").exists()) if parquet_dir().exists() else []
-        etfs = _spine_etfs()
+        spine = _spine_etfs()
+        etfs = _with_old_series(spine)
         cusips = common.spine_cusips() or {}
         if not held or not etfs or not cusips:
             ctx.notes.append(f"{TABLE}: " + ("no typed N-PORT quarter" if not held else "no live spine ETFs or CUSIPs"))
@@ -387,6 +431,11 @@ class Nport:
             ORDER BY e.etf_ticker, h.currency_value DESC NULLS LAST, c.ticker""")
         funds = con.execute(f"SELECT count(DISTINCT etf_ticker) FROM {TABLE}").fetchone()[0]
         ctx.notes.append(f"{TABLE}: {n} holdings of {funds} spine ETFs, quarter {newest.name[8:]}")
+        old = dict(spine)
+        moved = [f"{t} {old[t]}->{s}" for t, s in etfs if old[t] != s]
+        if moved:
+            ctx.notes.append(f"{TABLE}: {len(moved)} read on their old series until the new one reports "
+                             f"({', '.join(moved)})")
         hist = self._history(con, held)
         con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip")
         quarters, mapped = con.execute(f"SELECT count(DISTINCT quarter), count(ticker) FROM {HISTORY}").fetchone()
