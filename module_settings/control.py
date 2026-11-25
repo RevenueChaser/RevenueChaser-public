@@ -607,14 +607,16 @@ def _pass_words(when: datetime, *, recurring: bool = False) -> str:
 
 def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, cadence: str | None, *,
                    attended: bool, starts_by_hand: bool, timer: dict | None, now: datetime,
-                   mode: str = "full", starts: time | None = None, slot: dict | None = None) -> str:
+                   mode: str = "full", starts: time | None = None, slot: dict | None = None,
+                   hours: tuple[int, ...] | None = None) -> str:
     """When the hourly pass first runs a dataset, by the rules of ``rcdata.build.due.is_due``.
 
     ``check`` is the newest check (``result``, ``checked_on``, ``next_check_due``), None when it never built; ``kind``
     the dataset's ``as_of_kind``; ``timer`` the hourly builder timer (``view["timer"]``); ``mode`` its serving kind's
     automation (``ops.KIND_MODES``); ``starts`` the New York time its day starts at when the dataset names one
     (``due_from_ny``: the SEC reads' night check); ``slot`` its start time (``ops.dataset_slot``), which a daily or
-    weekly dataset waits for (``due._slot_waits``)."""
+    weekly dataset waits for (``due._slot_waits``); ``hours`` the Amsterdam hours its file is fetched at
+    (``due.fetch_hours``, avo 24 Nov 2026: a fetch time per DuckDB), None for every hour."""
     from revenuechaser.core import calendar
     from revenuechaser.rcdata.build import due
     schedule = schedule or {}
@@ -631,6 +633,12 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
     if timer.get("state") not in ("on", "off") or minute is None:
         return "next pass not known"
     prefix = "timer off · " if timer.get("state") == "off" else ""
+
+    def first(at: datetime) -> datetime:          # the first pass at or after ``at`` that takes the file
+        p = _first_pass(at, minute)
+        while hours and p.astimezone(LOCAL).hour not in hours:
+            p += timedelta(hours=1)
+        return p
     now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
     settle = (datetime.combine(date(2000, 1, 1), calendar.SESSION_CLOSE) + calendar.COMPLETE_MARGIN).time()
     starts = starts or (settle if kind == "latest_complete_session" else time(0, 0))
@@ -643,8 +651,10 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
             day = _day(check.get("next_check_due"))
             if day is None and not timed:
                 at = datetime.combine(now.astimezone(NY).date(), starts, tzinfo=NY)
-                return prefix + _pass_words(_first_pass(at, minute), recurring=True)
+                return prefix + _pass_words(first(at), recurring=True)
         elif cadence == "hourly":                  # due.is_due: due again within the hour of its last run
+            if hours:
+                return prefix + "at " + " and ".join(f"{h:02d}:{int(minute):02d}" for h in hours)
             return f"{prefix}every hourly pass (:{int(minute):02d})"
         else:
             checked = _day(check.get("checked_on"))
@@ -658,8 +668,8 @@ def next_run_words(schedule: dict | None, check: dict | None, kind: str | None, 
         owed = due.first_slot(slot, cadence, datetime.fromtimestamp(since, timezone.utc) + timedelta(microseconds=1))
         at = owed if cadence == "weekly" or at is None else max(owed, due.first_slot(slot, cadence, at))
     if at is not None and at > now:
-        return prefix + _pass_words(_first_pass(at, minute))
-    return prefix + "due · " + _pass_words(_first_pass(now, minute))
+        return prefix + _pass_words(first(at))
+    return prefix + "due · " + _pass_words(first(now))
 
 
 def since_words(schedule: dict | None) -> str:

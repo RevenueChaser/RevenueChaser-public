@@ -142,6 +142,9 @@ class _Timer:
 
 
 TIMER = _Timer()
+#: The storage fetch timer (``RC-Store-Fetch``, ``*:45``): a dataset's next run is its, not the builder's (home-server
+#: #649: the Jobs column read the old builder's :05)
+FETCH_TIMER = _Timer(lambda: control.read_timer(entry=control.FETCH_ENTRY))
 
 
 class _SpineCount:
@@ -452,6 +455,16 @@ def exposition(now: datetime | None = None) -> str:
 DETAIL_RUNS = 14
 
 
+def _fetch_hours(ds) -> tuple[int, ...] | None:
+    """The Amsterdam hours the storage fetch takes ``ds``'s file at (``due.fetch_hours``); None for every hour, and for
+    a row that does not parse (the due check names that error itself)."""
+    from revenuechaser.rcdata.build import due
+    try:
+        return due.fetch_hours(ds.kind)[0]
+    except ValueError:
+        return None
+
+
 def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None, timer: dict | None = None,
                     span: tuple[float, float] | None = None, providers: list[dict] | None = None) -> list[dict]:
     """``GET /api/build/datasets?detail=1``: ``datasets_list``'s rows, each with its health and fetch settings, for the
@@ -478,7 +491,7 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
     from revenuechaser.rcdata import ops
     now = now or datetime.now(timezone.utc)
     datasets = datasets if datasets is not None else newdata._datasets()
-    timer = timer if timer is not None else (TIMER.get() or {})
+    timer = timer if timer is not None else (FETCH_TIMER.get() or {})
     spend = None
     if providers is None:
         try:
@@ -547,7 +560,7 @@ def datasets_detail(now: datetime | None = None, *, datasets: dict | None = None
                 "next": control.next_run_words(schedule, last, control.as_of_kind(ds), cadence,
                                                attended=row["attended"],
                                                starts_by_hand=bool(getattr(ds, "starts_by_hand", False)),
-                                               timer=timer, now=now, mode=mode,
+                                               timer=timer, now=now, mode=mode, hours=_fetch_hours(ds),
                                                starts=getattr(ds, "due_from_ny", None), slot=slot),
                 "limits": getattr(ds, "limits", None),
                 "last": ({k: last.get(k) for k in ("checked_on", "result", "rows", "added", "removed", "note")}

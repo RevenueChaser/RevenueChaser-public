@@ -136,3 +136,26 @@ def test_a_start_time_moves_the_next_run_to_its_first_pass_after_it():
     monday = {"at": "09:00", "weekday": 0, "set_at": thursday}
     assert words(ok(), cadence="weekly", slot=monday) == "Mon 2 Nov, 09:07 (03:07 New York)"
     assert words(ok(), cadence="monthly", slot=monday) == "Sat 28 Nov, 06:07 (00:07 New York)"   # no start: by days
+
+
+def test_a_files_fetch_hours_move_the_next_run_to_its_first_hour():
+    """avo, 24 Nov 2026 (a fetch time per DuckDB) and home-server #649: market at 07:45 and 22:45 Amsterdam."""
+    at45 = {**ON, "minute": 45}
+    plain = control.next_run_words(OPEN, ok(next_check_due="2026-11-13"), "today_ny", "daily", attended=False,
+                                   starts_by_hand=False, timer=at45, now=NOW)
+    assert plain == "Fri 13 Nov, 06:45 (00:45 New York)"
+    timed = control.next_run_words(OPEN, ok(next_check_due="2026-11-13"), "today_ny", "daily", attended=False,
+                                   starts_by_hand=False, timer=at45, now=NOW, hours=(7, 22))
+    assert timed == "Fri 13 Nov, 07:45 (01:45 New York)"
+    hourly = control.next_run_words(OPEN, ok(), "today_ny", "hourly", attended=False, starts_by_hand=False,
+                                    timer=at45, now=NOW, hours=(7, 22))
+    assert hourly == "at 07:45 and 22:45"
+
+
+def test_the_jobs_detail_reads_the_storage_fetch_timer_not_the_builder(monkeypatch):
+    """home-server #649: the Jobs column read the old builder's :05; a dataset's next run is the :45 fetch's."""
+    from revenuechaser.module_settings import metrics
+    asked = []
+    monkeypatch.setattr(control, "read_timer", lambda entry=control.BUILDER_ENTRY: asked.append(entry) or {})
+    metrics.FETCH_TIMER._reader()
+    assert asked == [control.FETCH_ENTRY] and metrics.FETCH_TIMER is not metrics.TIMER
