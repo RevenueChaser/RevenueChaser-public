@@ -55,6 +55,7 @@ def test_a_file_no_board_writes_says_so_and_a_reader_is_named():
     cards = control.board_file_cards()
     forecast = control_render._board_panel(next(c for c in cards if c["name"] == "forecast.duckdb"))
     assert "written by a job, not a board" in forecast
-    # Welcome's only quoted read of news.duckdb went with the old job_runs SQL (#860); Relatedness reads value_chain.
-    vc = control_render._board_panel(next(c for c in cards if c["name"] == "value_chain.duckdb"))
-    assert "Also read by:" in vc and "Relatedness" in vc
+    # Financials scores off Asymmetric Growth's own table. The example was Relatedness reading value_chain.duckdb
+    # until #1520 took the board's own profile writer out, and with it every quoted chain_* table name.
+    ag = control_render._board_panel(next(c for c in cards if c["name"] == "asymmetric_growth.duckdb"))
+    assert "Also read by:" in ag and "Financials" in ag
