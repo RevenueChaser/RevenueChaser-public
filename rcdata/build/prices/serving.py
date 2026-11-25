@@ -403,6 +403,19 @@ def _spine(con: duckdb.DuckDBPyConnection) -> int:
     return stage.count(con, "stg_spine")
 
 
+def _etf_own_start(con: duckdb.DuckDBPyConnection) -> None:
+    """``_etf_own_start``: the first session each ticker was ever seen trading by a source that keys by ticker --
+    Alpaca's bars and Yahoo's bars -- which is a fund's own listing window, whatever Compustat holds under that
+    ticker. ``universe.ETF_TIC_SERIES_SQL`` reads it: a Compustat series whose prices all stop before the fund began
+    trading is a reused ticker's earlier fund and may not be claimed by this one (review S1, #1510). A source this
+    build has no staging table for simply names no ticker, and the claim rule then behaves as it did."""
+    parts = [f"SELECT {universe.norm('ticker')} AS tic, session_date FROM {name}"
+             for name in ("stg_alpaca_bars", yahoo_bars.STAGING) if _has(con, name)]
+    body = " UNION ALL ".join(parts) or "SELECT NULL AS tic, CAST(NULL AS DATE) AS session_date WHERE false"
+    con.execute("CREATE OR REPLACE TEMP TABLE _etf_own_start AS SELECT tic, min(session_date) AS first_day "
+                f"FROM ({body}) WHERE tic IS NOT NULL AND session_date IS NOT NULL GROUP BY 1")
+
+
 def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
     """``_universe_ticker`` and ``_universe``: what this build stores (``prices.universe``, avo's rule of 4 Nov
     2026). Every stored source is filtered through ``_universe``, so a name outside today's universe -- a SPAC, a
@@ -416,7 +429,11 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
         con.execute("INSERT INTO _universe_ticker SELECT unnest(?) EXCEPT SELECT ticker FROM _universe_ticker",
                     [beside])
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe_etf AS {universe.UNIVERSE_ETF_SQL}")
+    _etf_own_start(con)
     con.execute(f"CREATE OR REPLACE TEMP TABLE _etf_tic_series AS {universe.ETF_TIC_SERIES_SQL}")
+    con.execute("CREATE OR REPLACE TEMP TABLE _yahoo_rekey AS "
+                + (yahoo_bars.RENAMED_SQL if _has(con, yahoo_bars.STAGING)
+                   else "SELECT NULL AS ticker, NULL AS security_id WHERE false"))
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe AS {universe.UNIVERSE_SQL}")
     # A fund only Yahoo prices (no spine row, no Alpaca bar, no Compustat series) is in the universe by its ticker,
     # never by its CIK: a CIK reaches an issuer's other classes (review of #1490, findings 3 and 4).
@@ -469,9 +486,11 @@ REKEYED_SQL = """
     GROUP BY 1 HAVING count(DISTINCT s.security_id) = 1"""
 
 
-# A live id the Yahoo fetch saw (``sym:T``, ``figi:X``) whose Yahoo rows this build serves under another id: Compustat
-# or the spine picked the name up (``yahoo_bars.ID``), Yahoo is not asked for it any more, and the old id would be
-# carried frozen beside the new one (review N2, avo's D1 of 24 Nov 2026 "Yeni id'ye taşı": moved as C3 moves).
+# A live id the Yahoo fetch saw (``sym:T``, ``figi:X``, ``cik:C:T``) whose Yahoo rows this build serves under another
+# id: Compustat or the spine picked the name up, or the name was renamed and its old ticker file now keys to the
+# spine's current id (``yahoo_bars.ID``, ``yahoo_bars.RENAMED_SQL``). Yahoo is not asked for the old name any more,
+# and the old id would be carried frozen beside the new one (review N2 and #1490 finding 8; avo's D1 of
+# 24 Nov 2026 "Yeni id'ye taşı": moved as C3 moves).
 YAHOO_REKEYED_SQL = f"""
     SELECT y.security_id AS old_id, any_value({yahoo_bars.ID}) AS new_id
     FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
@@ -495,7 +514,7 @@ def _move_rekeyed(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, live: di
     does it is a whole build with a backup."""
     old = sorted(sid for sid in live if sid.startswith("cik:"))
     pairs = dict(con.execute(REKEYED_SQL, [old]).fetchall()) if old else {}
-    if _has(con, yahoo_bars.STAGING, "_etf_tic_series", "stg_spine"):
+    if _has(con, yahoo_bars.STAGING, "_etf_tic_series", "_yahoo_rekey", "stg_spine"):
         pairs |= dict(con.execute(YAHOO_REKEYED_SQL, [sorted(set(live) - set(pairs))]).fetchall())
     if pairs:
         carried = stage.carry_live_as(con, pairs)
@@ -623,7 +642,8 @@ CREATE OR REPLACE TEMP TABLE _hist_all AS
 """
 # Yahoo's bars (``yfinance/bars``, avo 24 Nov 2026, F28): asked only for the names Compustat has not priced lately,
 # priority 3, so ``HIST_FIRST`` serves one only on a session no Compustat row of the security has. Keyed by
-# ``yahoo_bars.ID``: the Compustat series claiming a fund's ticker, else the spine's id, else the fetch's; a ``class:``
+# ``yahoo_bars.ID``: the Compustat series claiming a fund's ticker, else the spine's id, else the spine's id of a
+# renamed name's CIK (``_yahoo_rekey``), else the fetch's; a ``class:``
 # id never (review of #1490, findings 2 and 3).
 YAHOO_BARS = f"""
     SELECT {yahoo_bars.ID} AS security_id, y.session_date, y.ticker AS symbol, y.cik,
