@@ -59,10 +59,10 @@ def test_a_market_source_is_fetched_at_its_two_hours_and_retried_once(stager, mo
     from revenuechaser.rcdata import ops
 
     def at(hour):
-        monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, hour, 45).astimezone())
+        monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, hour, 45, tzinfo=due.AMS))
         return due._pass_mode(stager, "full", "fetch")[1]
     assert at(7) is None and at(22) is None
-    assert at(12) == "market is fetched at 07:45 and 22:45" and at(8) is not None
+    assert at(12) == "market is fetched at 07:45 and 22:45 (FETCH_HOURS)" and at(8) is not None
     ops.record_check(stager.name, "failed", note="fetch failed")
     assert at(8) is None and at(9) is not None                 # one retry, the hour after
     assert due._pass_mode(stager, "full", "build")[1] is not None   # the build pass is not held by the hours
@@ -84,3 +84,70 @@ def test_the_build_pass_queues_build_only_requests_the_fetch_never_takes(stager,
     ops.finish_request(req["id"], "failed", note="test")
     ops.enqueue(stager.name, {"build_only": True}, by=due.REQUESTED_BY)
     assert ops.next_request(fetch_only=True, or_by=due.REQUESTED_BY) is None
+
+
+def _at(monkeypatch, hour):
+    from datetime import datetime
+    from revenuechaser.core import calendar
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, hour, 45, tzinfo=due.AMS))
+
+
+def test_a_kinds_own_fetch_hours_win_and_every_hour_falls_back_to_the_code(stager, monkeypatch):  # noqa: F811
+    """avo, 24 Nov 2026 ("fetch timer duckdb bazli olmali"): a DuckDB's hours set from Grafana win over FETCH_HOURS;
+    dropping the row is the code's hours again, never every hour while the code names the kind."""
+    from revenuechaser.rcdata import ops
+    ops.fetch_hours_set("market", "9")
+    _at(monkeypatch, 7)
+    assert due._pass_mode(stager, "full", "fetch")[1] == "market is fetched at 09:45 (kind_fetch_hours)"
+    _at(monkeypatch, 9)
+    assert due._pass_mode(stager, "full", "fetch")[1] is None
+    ops.fetch_hours_set("market", None)
+    assert due.fetch_hours("market") == ((7, 22), "FETCH_HOURS")
+    assert due._pass_mode(stager, "full", "fetch")[1] == "market is fetched at 07:45 and 22:45 (FETCH_HOURS)"
+    assert due.fetch_hours("spine") == (None, "every hour")
+
+
+def test_the_hour_is_read_on_the_amsterdam_clock(stager, monkeypatch):  # noqa: F811
+    """06:45 UTC is 07:45 in Amsterdam in winter: market's hour, whatever zone the process runs in."""
+    from datetime import datetime, timezone
+    from revenuechaser.core import calendar
+    monkeypatch.setattr(calendar, "_now", lambda: datetime(2026, 11, 24, 6, 45, tzinfo=timezone.utc))
+    assert due._pass_mode(stager, "full", "fetch")[1] is None
+
+
+def test_unreadable_fetch_hours_fail_the_due_check_and_never_fetch_hourly(stager, monkeypatch):  # noqa: F811
+    from revenuechaser.rcdata import ops
+    ops.fetch_hours_set("market", "seven")
+    _at(monkeypatch, 12)
+    ((name, why, rid, error),) = due.enqueue_due({stager.name: stager}, stage="fetch")
+    assert rid is None and error and "ValueError" in why
+
+
+def test_the_due_line_names_what_let_a_kind_through_its_hour(stager, monkeypatch):  # noqa: F811
+    """The live check before FETCH_HOURS goes: a 07:45 tick says which list let market in."""
+    from revenuechaser.rcdata import ops
+    monkeypatch.setattr(ops, "dataset_mode", lambda name, kind: "full")
+    _at(monkeypatch, 7)
+    ((_, why, rid, _),) = due.enqueue_due({stager.name: stager}, stage="fetch")
+    assert rid and "hour gate FETCH_HOURS 07,22" in why
+    ops.finish_request(rid, "failed", note="test")
+    ops.fetch_hours_set("market", "7,22")
+    ((_, why, _, _),) = due.enqueue_due({stager.name: stager}, stage="fetch")
+    assert "hour gate kind_fetch_hours 07,22" in why
+
+
+def test_the_next_fetch_is_the_next_45_in_the_kinds_hours(monkeypatch):
+    from datetime import datetime
+    _at(monkeypatch, 8)
+    assert due.next_fetch("market") == datetime(2026, 11, 24, 22, 45, tzinfo=due.AMS)
+    assert due.next_fetch("spine", datetime(2026, 11, 24, 8, 50, tzinfo=due.AMS)) == \
+        datetime(2026, 11, 24, 9, 45, tzinfo=due.AMS)
+    assert due.next_fetch("spine", datetime(2026, 11, 24, 8, 45, tzinfo=due.AMS)).hour == 8
+
+
+def test_fetch_hours_parse_only_whole_hours_and_not_all_24():
+    import pytest
+    assert due.parse_hours("22,7") == (7, 22) and due.parse_hours([7, "22"]) == (7, 22)
+    for bad in ("", "24", "-1", "7.5", [True], [], list(range(24)), "seven"):
+        with pytest.raises(ValueError):
+            due.parse_hours(bad)

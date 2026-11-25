@@ -241,24 +241,74 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
     return False, f"{cadence}: last checked {age} days ago"
 
 
-#: The local hours (the machine's zone, Europe/Amsterdam on homesrv) the storage fetch takes a kind's sources at, for a
-#: kind that is built on a timer of its own (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each just before its
-#: build at 09:25 and 00:25, not hourly). A fetch that failed tries once more the next hour, before that build.
+#: The Amsterdam hours the storage fetch takes a kind's sources at, for a kind that is built on a timer of its own
+#: (avo, 24 Nov 2026: market fetched at 07:45 and 22:45, each before its build at 09:25 and 00:25, not hourly). A
+#: fetch that failed tries once more the next hour, before that build. A kind's row in ``ops.kind_fetch_hours`` (set
+#: from Grafana, avo 24 Nov 2026: "fetch timer duckdb bazli olmali") wins over this table; a kind in neither is
+#: fetched every hour.
 FETCH_HOURS = {"market": (7, 22)}
+#: The minute of the storage fetch timer (home-server ``life-rc-store-fetch.timer``, ``*:45`` Europe/Amsterdam).
+FETCH_MINUTE = 45
+
+
+def parse_hours(text) -> tuple[int, ...]:
+    """``"7,22"`` (or a list of ints) as sorted Amsterdam hours; ValueError for anything else, including no hour or
+    all 24 (that is "every hour", which is no row)."""
+    items = text.split(",") if isinstance(text, str) else list(text or ())
+    hours = []
+    for item in items:
+        if isinstance(item, bool) or not isinstance(item, (int, str)) or not str(item).strip().isdigit():
+            raise ValueError(f"hour {item!r} is not a whole number 0-23")
+        hours.append(int(str(item).strip()))
+    if not hours or any(h > 23 for h in hours) or len(set(hours)) == 24:
+        raise ValueError(f"hours {text!r}: one or more of 0-23, and not all 24 (every hour is no row)")
+    return tuple(sorted(set(hours)))
+
+
+def fetch_hours(kind: str) -> tuple[tuple[int, ...] | None, str]:
+    """``(hours, source)``: the kind's row, else ``FETCH_HOURS``, else ``(None, "every hour")``. A row that does not
+    parse raises: a fetch must never fall back to every hour because its hours were unreadable."""
+    row = ops.fetch_hours_get(kind)
+    if row is not None:
+        return parse_hours(row["hours"]), "kind_fetch_hours"
+    if kind in FETCH_HOURS:
+        return tuple(FETCH_HOURS[kind]), "FETCH_HOURS"
+    return None, "every hour"
+
+
+def next_fetch(kind: str, now: datetime | None = None) -> datetime:
+    """The next storage fetch (``*:45`` Amsterdam) at or after ``now`` that takes ``kind``, by ``fetch_hours``.
+    shortcut: the one retry the hour after a failed fetch is a dataset's, not shown here; add it if the board needs it."""
+    hours, _ = fetch_hours(kind)
+    at = (now or calendar._now()).astimezone(AMS)
+    p = at.replace(minute=FETCH_MINUTE, second=0, microsecond=0)
+    p = p if p >= at else p + timedelta(hours=1)
+    while hours is not None and p.hour not in hours:
+        p += timedelta(hours=1)
+    return p
 
 
 def _fetch_hour(ds) -> str | None:
     """Why the storage fetch leaves ``ds`` for a later hour, or None."""
-    hours = FETCH_HOURS.get(ds.kind)
-    if not hours:
+    hours, source = fetch_hours(ds.kind)
+    if hours is None:
         return None
-    hour = calendar._now().astimezone().hour
+    hour = calendar._now().astimezone(AMS).hour
     if hour in hours:
         return None
     check = ops.latest_check(ds.name)
     if (hour - 1) % 24 in hours and check is not None and check["result"] == "failed":
         return None                           # the one retry of a failed fetch
-    return f"{ds.kind} is fetched at " + " and ".join(f"{h:02d}:45" for h in hours)
+    return f"{ds.kind} is fetched at " + " and ".join(f"{h:02d}:{FETCH_MINUTE}" for h in hours) + f" ({source})"
+
+
+def _hour_gate_words(ds, stage: str | None) -> str:
+    """What let ``ds`` through the fetch's hour gate, for its due line ("" when no gate applies): the source is named, so
+    a live 07:45 tick shows whether the row or the code's table let market in (review of the per-DuckDB fetch plan)."""
+    if stage != "fetch":
+        return ""
+    hours, source = fetch_hours(ds.kind)
+    return "" if hours is None else f"; hour gate {source} " + ",".join(f"{h:02d}" for h in hours)
 
 
 def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
@@ -302,6 +352,7 @@ def enqueue_due(datasets: dict | None = None, stage: str | None = None,
             mode = ops.dataset_mode(name, datasets[name].kind)   # #527: a source's own mode wins over its kind's
             mode, not_now = _pass_mode(datasets[name], mode, stage)
             due, why = (False, not_now) if not_now else is_due(datasets[name], mode)
+            why += _hour_gate_words(datasets[name], stage) if due else ""
         except Exception as e:  # noqa: BLE001 - a calendar past its table for one dataset must not stop the rest
             out.append((name, f"due check failed: {type(e).__name__}: {e}"[:300], None, True))
             continue
