@@ -96,7 +96,9 @@ def test_a_job_lock_on_the_market_store_does_not_refuse_the_hourly_fetch(fakes, 
         code = _fetch_pass()
     assert code != 3, "a fetch that opens no serving file is not held off by the builder's own lock"
     assert "builder not started" not in capsys.readouterr().err
-    assert _status(rid) == "done" and "m/plain" in seen
+    # ``skipped``, not ``done``: a fetch pass stages and builds nothing (``base.FETCH_ONLY_PASS``), which is what
+    # the staged check row of ``test_build_lock_split_1532.py`` reads too. What matters here is that it ran at all.
+    assert _status(rid) == "skipped" and "m/plain" in seen
 
 
 def test_the_fetch_pass_does_not_hold_the_builder_lock_while_it_fetches(fakes):
@@ -107,18 +109,16 @@ def test_the_fetch_pass_does_not_hold_the_builder_lock_while_it_fetches(fakes):
         "holding it through a fetch is what kept every build waiting"
 
 
-def test_the_fetch_pass_holds_its_own_dataset_lock_while_it_fetches(fakes):
-    """The lock is not bookkeeping: ``heavy_fetch_problem`` and a second run of the same dataset read it."""
+def test_the_fetch_pass_holds_its_own_dataset_lock_while_it_fetches_and_gives_it_back(fakes):
+    """The lock is not bookkeeping: ``heavy_fetch_problem`` and a second run of the same dataset read it.
+
+    Held **and** given back in one test on purpose: "given back" alone passes on a base that never takes the lock,
+    so it would prove nothing (``red-on-base``, CLAUDE.md).
+    """
     reg, seen = fakes
     ops.enqueue("m/plain", None, by="schedule")
     assert _fetch_pass() == 0
     assert base.fetch_lock_name("m/plain") in seen["m/plain"]["locks"]
-
-
-def test_the_lock_is_given_back_when_the_pass_ends(fakes):
-    reg, seen = fakes
-    ops.enqueue("m/plain", None, by="schedule")
-    assert _fetch_pass() == 0
     assert base.fetch_lock_name("m/plain") not in {n for n, _ in job_lock.holders()}
 
 
