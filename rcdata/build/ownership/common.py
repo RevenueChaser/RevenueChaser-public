@@ -336,6 +336,38 @@ def spine_cusips() -> dict[str, str] | None:
         con.close()
 
 
+def spine_cusip_history() -> list[dict] | None:
+    """The spine's **dated** CUSIP periods as ``{cusip, ticker, valid_from, valid_to}``, for the periods a CUSIP is
+    held by one ticker alone; None with no spine file or no history table (an older build).
+
+    ``spine_cusips`` above carries no period, so a reader of a *historical* quarter names a holding after whoever
+    owns its CUSIP today (#1559: ``29476L107`` served as VMRK back to 2019q4, although Compustat gives it to another
+    security until 2026-08-17). A period whose CUSIP is claimed by another ticker -- or by a row with no ticker, which
+    is a security the spine cannot name -- is left out rather than guessed, as ``serve.py``'s review S1 guard does on
+    the 13F side.
+    """
+    try:
+        con = serving.open_read(SPINE)
+    except serving.ServingFileMissing:
+        return None
+    try:
+        rows = con.execute("""
+            WITH h AS (SELECT upper(trim(value)) AS cusip, ticker, valid_from,
+                              coalesce(valid_to, DATE '9999-12-31') AS valid_to
+                       FROM security_history
+                       WHERE field = 'cusip' AND value IS NOT NULL AND valid_from IS NOT NULL)
+            SELECT h.cusip, h.ticker, h.valid_from, h.valid_to FROM h
+            WHERE h.ticker IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM h o WHERE o.cusip = h.cusip
+                              AND o.ticker IS DISTINCT FROM h.ticker
+                              AND o.valid_from < h.valid_to AND h.valid_from < o.valid_to)""").fetchall()
+    except duckdb.Error:                                                       # no security_history: an old file
+        return None
+    finally:
+        con.close()
+    return [{"cusip": c, "ticker": t, "valid_from": f, "valid_to": to} for c, t, f, to in rows]
+
+
 def cusip_issuer_map(con: duckdb.DuckDBPyConnection, pairs_sql: str, notes: list[str], label: str) -> None:
     """``_cusip_issuer_map(issuer_cik, cusip, ticker, ticker_source)`` (TEMP): the ticker whose current CUSIP the
     filing names (it tells a company's share classes apart), else the issuer CIK's one ticker."""
