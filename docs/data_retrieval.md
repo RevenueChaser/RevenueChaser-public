@@ -263,7 +263,9 @@ keep working; a request's params accept `no_build` as well as `no_duckdb`.
 
 Both are a person's switch: the hourly pass queues no params, so
 the schedule can never leave a kind unbuilt. Both are fetch-only for the locks — one `rcdata_fetch_<dataset>`
-each, never the builder lock — so two datasets fetch side by side and beside a running builder.
+each, never the builder lock — so two datasets fetch side by side and beside a running builder. The hourly
+`--fetch-only` pass takes the same locks, one per dataset of each batch, and no builder lock (#1541); it does not
+know its datasets until its due step has run, so it takes them in the drain rather than at start.
 
 - **`POST /api/build/schedule/<dataset>/<pause|resume>`**: sets or clears `dataset_schedule.paused_at` /
   `paused_by`; 404 for another action.
