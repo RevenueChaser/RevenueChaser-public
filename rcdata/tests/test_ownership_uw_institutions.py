@@ -269,6 +269,10 @@ def test_the_quarterly_cycle_is_what_the_due_check_counts(http_mock, monkeypatch
     paged(http_mock, [[inst("1067983", "BERKSHIRE HATHAWAY INC")]])
     _run()
     checked = date.fromisoformat(str(ops.latest_check(uwi.NAME)["checked_on"])[:10])
+    # The cadence alone is what this test reads. A real 91st day falls past the source's end
+    # (due.SOURCE_ENDS, #1432), which stops the dataset for a different reason; that gate has its own
+    # test in test_uw_source_end_1432.py, so hold it off here.
+    monkeypatch.setitem(due.SOURCE_ENDS, uwi.DATASET.name, date(2099, 1, 1))
     monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=90))
     assert due.is_due(uwi.DATASET, "full")[0] is False
     monkeypatch.setattr(calendar, "today_ny", lambda: checked + timedelta(days=91))
