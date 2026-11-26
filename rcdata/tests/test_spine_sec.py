@@ -41,7 +41,7 @@ def test_one_get_with_the_contact_in_the_user_agent_and_a_typed_snapshot(env):
                                     "ORDER BY ticker").fetchall()
     assert ("HEI-A", "46619", "NYSE", LM) in rows and ("NOEX", "3000002", None, LM) in rows
     with serving.open_read("spine") as con:
-        assert con.execute("SELECT count(*) FROM security").fetchone() == (14,)
+        assert con.execute("SELECT count(*) FROM security").fetchone() == (15,)
 
 
 def test_the_next_fetch_asks_if_modified_since_and_a_304_writes_nothing(env):

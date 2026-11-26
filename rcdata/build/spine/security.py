@@ -3,7 +3,8 @@
 **Tables** (``spine.duckdb``; the serving schema version is ``serving.SERVING_SCHEMA_VERSION["spine"]``):
 
 - ``security``: one row per ticker of the newest SEC file: CIK, name, exchange, the tier (``tier.py``) and the type
-  it came from, the Compustat link (gvkey, iid, and how it was made), the CUSIP and the ISIN derived from it, the
+  it came from, the Compustat link (gvkey, iid, and how it was made), the CUSIP and the ISIN (Compustat's own
+  ``ISIN`` item of the period in force, else derived from the CUSIP -- #1561), the
   FIGI fields, the current GICS codes and the sector and industry the old tables carry (bridge names, below), each
   with its source, and the SEC file's provenance (``source_as_of``, ``fetched_at``, ``run_id``);
 - ``security_history``: one row per value and period: the SEC file's ``cik``, ``name`` and ``exchange`` per ticker
@@ -225,8 +226,10 @@ def _rows(con: duckdb.DuckDBPyConnection, sql: str) -> list[dict]:
     return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
+#: The ``effthru`` Compustat writes for a period that has not ended.
+OPEN_EFFTHRU = "2900-01-01"
 #: ``security_history.valid_to`` of a ``comp.sec_idhist`` row: the day after ``effthru``, NULL for an open period.
-_OPEN_END = "CASE WHEN h.effthru >= DATE '2900-01-01' THEN NULL ELSE h.effthru + 1 END"
+_OPEN_END = f"CASE WHEN h.effthru >= DATE '{OPEN_EFFTHRU}' THEN NULL ELSE h.effthru + 1 END"
 
 
 def _next_day(d: date | None) -> date | None:
@@ -254,6 +257,11 @@ SEC_SIC_SOURCE = "sec_sic"
 #: alpha-2 here), else the business address of the SEC submissions header.
 LOC_SOURCE = "loc"
 SEC_COUNTRY_SOURCE = "sec_business_country"
+#: Where a row's ``isin`` came from. Compustat's own ``ISIN`` item wins (``SEC_IDHIST.name``); the derivation is the
+#: fallback for a security it has no item for, and it is only ever right for a US one -- ``US`` + CUSIP + check
+#: digit is a *construction*, and for a Canadian issuer whose CUSIP body is numeric it produced an ISIN that is not
+#: that security's at all (#1561: 646 rows, measured 26 Nov 2026).
+ISIN_DERIVED = "derived from the CUSIP (ISO 6166)"
 SEC_FILINGS = "sec/filings"      # its ``cik=<cik>/header.parquet`` carries the SEC's SIC and business address
 # The SEC's code describes the ISSUER. For an exchange-traded note or a closed-end fund that is the bank or the
 # trust, not what the product holds (measured 18 Nov 2026: Deutsche Bank's gold notes DGP, DGZ and DZZ read "Banks").
@@ -648,6 +656,16 @@ class SpineSecurity:
                     t = compustat_ticker(s.get("tic"))
                     if g in co_cik and t and s.get("secstat") == "A" and s.get("exchg") in US_EXCHG:
                         by_tic[t].append((s, co_cik[g]))
+        # Compustat's ``ISIN`` item of the period in force, one value per security (#1561). Read in SQL and
+        # aggregated there, like ``cusip_owners`` below: ``stg_wrds_idhist`` holds millions of rows and must not
+        # pass through Python dicts (should-fix 5). A security with two open periods is left to the derivation
+        # rather than served an arbitrary one of them.
+        isin_now: dict[tuple[str, str], str] = {}
+        for gk, ii, val in con.execute(
+                "SELECT gvkey, iid, min(upper(itemvalue)) FROM stg_wrds_idhist WHERE upper(item) = 'ISIN' "
+                f"AND itemvalue IS NOT NULL AND (effthru IS NULL OR effthru >= DATE '{OPEN_EFFTHRU}') "
+                "GROUP BY gvkey, iid HAVING count(DISTINCT upper(itemvalue)) = 1").fetchall():
+            isin_now[(gk, ii)] = val
         manual = gics_manual()
         sec_sic = sec_sic_by_cik(con)
         sec_country = sec_country_by_cik(con)
@@ -687,7 +705,10 @@ class SpineSecurity:
             country, country_src = bridge_country(loc_of_gvkey.get((sec_row or {}).get("gvkey")),
                                                   sec_country.get(norm_cik(r["cik"])))
             from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
-            isin = isin_mod.from_cusip(cusip)
+            isin = isin_now.get(((sec_row or {}).get("gvkey"), (sec_row or {}).get("iid")))
+            isin_src = SEC_IDHIST.name if isin else None
+            if isin is None and (isin := isin_mod.from_cusip(cusip)):
+                isin_src = ISIN_DERIVED
             exchg = (sec_row or {}).get("exchg")
             gone = armed and compustat_inactive(sec_row, r["source_as_of"])
             the_tier = tier_rule.tier(r["exchange"], typ, exchg, compustat_inactive=gone)
@@ -701,7 +722,7 @@ class SpineSecurity:
                 "security_type": typ, "type_source": typ_src,
                 "gvkey": (sec_row or {}).get("gvkey"), "iid": (sec_row or {}).get("iid"), "link_source": how,
                 "cusip": cusip, "cusip_source": SEC_IDHIST.name if cusip else None,
-                "isin": isin, "isin_source": "derived from the CUSIP (ISO 6166)" if isin else None,
+                "isin": isin, "isin_source": isin_src if isin else None,
                 "figi": (f_ok or {}).get("figi"), "composite_figi": (f_ok or {}).get("composite_figi"),
                 "share_class_figi": (f_ok or {}).get("share_class_figi"), "exch_code": (f_ok or {}).get("exch_code"),
                 "figi_ticker": (f_ok or {}).get("ticker"),

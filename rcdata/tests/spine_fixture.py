@@ -11,7 +11,8 @@ The names and what each one tests:
 |---|---|
 | MSFT | the plain case: Nasdaq, linked by ticker, CUSIP, FIGI, GICS, in the S&P 500 and the Nasdaq-100 |
 | HEI, HEI-A | two share classes of one CIK and one gvkey, told apart by Compustat's ``tic`` (``HEI.A``) |
-| ETN | a CINS CUSIP (Ireland): no US ISIN is derived |
+| ETN | a CINS CUSIP (Ireland): no US ISIN is derived; Compustat's own ISIN item fills it |
+| AEM | a Canadian issuer: a numeric CUSIP whose real ISIN is ``CA...``, so no ``US`` ISIN may be derived |
 | TM | an ADR (OpenFIGI ``ADR``), NYSE |
 | CNA | a CIK with two Compustat companies: only the ticker match decides |
 | FDX | a fund file writes it with a CUSIP only (matched by CUSIP) |
@@ -45,6 +46,7 @@ SEC_FILE = {
         [72971, "WELLS FARGO & COMPANY/MN", "WFC", "NYSE"],
         [72971, "WELLS FARGO & COMPANY/MN", "WFC-PC", "NYSE"],
         [2000001, "VYLR HOLDINGS INC", "VYLR", "Nasdaq"],
+        [1114925, "AGNICO EAGLE MINES LTD", "AEM", "NYSE"],
         [884394, "SPDR S&P 500 ETF TRUST", "SPY", "NYSE"],
         [3000001, "SOME OTC CO", "OTCX", "OTC"],
         [3000002, "NO EXCHANGE CO", "NOEX", None],
@@ -117,6 +119,7 @@ COMPANY = [
     {"gvkey": "025648", "conm": "NVR INC", "cik": "0000906163"},
     {"gvkey": "008007", "conm": "WELLS FARGO & CO", "cik": "0000072971"},
     {"gvkey": "001000", "conm": "SPDR S&P 500 ETF TRUST", "cik": "0000884394"},
+    {"gvkey": "001186", "conm": "AGNICO EAGLE MINES LTD", "cik": "0001114925", "loc": "CAN"},
     # A company that left the S&P 500 in 2009 and was delisted, still carrying tic VYLR: today VYLR is another CIK.
     {"gvkey": "123456", "conm": "OLD VAYLOR CORP", "cik": "0000999999"},
 ]
@@ -146,6 +149,8 @@ SECURITY = [
      "secstat": "A", "tpci": "%", "dldtei": None},
     {"gvkey": "123456", "iid": "01", "tic": "VYLR", "cusip": "92921Q100", "exchg": 11, "excntry": "USA",
      "secstat": "I", "tpci": "0", "dldtei": "2009-07-15"},
+    {"gvkey": "001186", "iid": "01", "tic": "AEM", "cusip": "008474108", "exchg": 11, "excntry": "CAN",
+     "secstat": "A", "tpci": "0", "dldtei": None},
 ]
 NEW_SECURITY = [{"gvkey": "040001", "iid": "01", "tic": "VYLR", "cusip": "92921V109", "exchg": 14, "excntry": "USA",
                  "secstat": "A", "tpci": "0", "dldtei": None}]
@@ -159,6 +164,17 @@ IDHIST = [
      "effthru": None},
     {"gvkey": "002968", "iid": "01", "item": "EXCHG", "itemvalue": "11", "efffrom": "1970-01-01", "effthru": None},
     {"gvkey": "777777", "iid": "01", "item": "TIC", "itemvalue": "NOTOURS", "efffrom": "2000-01-01", "effthru": None},
+    # ``ISIN`` items, the same shape and dates as the ``CUSIP`` ones. MSFT's first one is the ISIN of its own
+    # earlier CUSIP (594918100 above) and ended with it: the period in force is the one the spine must serve. AEM is Canadian, so its real ISIN is a ``CA`` one that no ``US`` + CUSIP
+    # derivation can produce; ETN is a CINS, which the derivation refuses outright.
+    {"gvkey": "012141", "iid": "01", "item": "ISIN", "itemvalue": "US5949181003", "efffrom": "1986-03-13",
+     "effthru": "2001-12-31"},
+    {"gvkey": "012141", "iid": "01", "item": "ISIN", "itemvalue": "US5949181045", "efffrom": "2002-01-01",
+     "effthru": None},
+    {"gvkey": "001186", "iid": "01", "item": "ISIN", "itemvalue": "CA0084741085", "efffrom": "2013-01-01",
+     "effthru": None},
+    {"gvkey": "016478", "iid": "01", "item": "ISIN", "itemvalue": "IE00B8KQN827", "efffrom": "2012-11-30",
+     "effthru": None},
 ]
 NEW_IDHIST = [{"gvkey": "040001", "iid": "01", "item": "TIC", "itemvalue": "VYLR", "efffrom": "2026-10-01",
                "effthru": None}]
@@ -181,6 +197,8 @@ HGIC = [
      "gsubind": "25201030"},
     {"gvkey": "008007", "indfrom": "1999-01-01", "indthru": None, "gsector": "40", "ggroup": "4010", "gind": "401010",
      "gsubind": "40101010"},
+    {"gvkey": "001186", "indfrom": "1999-01-01", "indthru": None, "gsector": "15", "ggroup": "1510", "gind": "151040",
+     "gsubind": "15104030"},
 ]
 # Compustat Global: one Dutch company with an ISIN, and the names of its GICS codes.
 G_COMPANY = [{"gvkey": "001166", "conm": "ASM INTERNATIONAL NV", "loc": "NLD", "gsector": "45", "ggroup": "4530",
@@ -266,6 +284,7 @@ FIGI = {
     "949746101": {"figi": "BBG000BWQFY7", "ticker": "WFC", "securityType": "Common Stock", "exchCode": "US"},
     "78462F103": {"figi": "BBG000BDTBL9", "ticker": "SPY", "securityType": "ETP", "exchCode": "US"},
     "92921V109": {"figi": "BBG0VYLR0000", "ticker": "VYLR", "securityType": "Common Stock", "exchCode": "US"},
+    "008474108": {"figi": "BBG000BX3V12", "ticker": "AEM", "securityType": "Common Stock", "exchCode": "US"},
 }
 
 
