@@ -15,10 +15,12 @@ refuses to start, because two askers against EVREN's cap of 1 is the HTTP 429 se
 **The builder lock** (plan risk R1). A run asks for at most :data:`SLICE_S` seconds and leaves the rest stale for the
 next run, so a queued pass never holds the builder lock for hours. A long read runs fetch-only instead
 (``python -m revenuechaser.rcdata.build run --dataset sec/reads --no-duckdb``): that takes only its own
-``rcdata_fetch_sec_reads`` lock, and the build proper is then seconds long.
+``rcdata_fetch_sec_reads`` lock, and the build proper is then seconds long. Such a run reads its slice from
+:data:`SLICE_ENV` when it is set, because the reason for the 15-minute default is the lock it does not hold.
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -35,6 +37,11 @@ POOLS = {"evren": evren.MAX_WORKERS, "deepseek": 8}
 CLIENTS = {"evren": evren, "deepseek": deepseek}
 #: The longest a run asks before it stops and leaves the rest for the next run (R1).
 SLICE_S = 15 * 60.0
+#: A fetch-only run may ask for longer, in seconds, from the environment. R1 is about the builder lock, and a
+#: ``--no-duckdb`` pass never takes it, so there the 15-minute slice only makes a backlog take a hundred passes
+#: (debt.note, 25 Nov 2026: ~316 companies, 3-4 per pass). A run that builds ignores the variable, and so does a
+#: value that is not a positive number of seconds; either way the run's note says the slice stayed the default.
+SLICE_ENV = "RC_SEC_READS_SLICE_S"
 #: One worker reads its company's text at a time: the eight workers share one DuckDB instance and its read memory
 #: limit, and eight text reads at once ran out of 1 GiB and 3 GiB (rc-sec-read, 16-17 Nov 2026). A read takes well
 #: under a second; the model call it feeds takes tens of seconds, so the run is not slower.
@@ -99,6 +106,34 @@ def _why(e: BaseException) -> str:
     return f"{type(e).__name__}: {e}"[:300]
 
 
+def _note_once(ctx: base.RunContext, note: str) -> None:
+    """One question's note, written once per run: :func:`ask` is called per question (``reads._ask_all``)."""
+    if note not in ctx.notes:
+        ctx.notes.append(note)
+
+
+def slice_s(ctx: base.RunContext) -> float:
+    """This run's slice: :data:`SLICE_S`, or :data:`SLICE_ENV` when the run skips the build and the value is a
+    positive number of seconds. Every other case is :data:`SLICE_S` with a note saying why."""
+    raw = (os.environ.get(SLICE_ENV) or "").strip()
+    if not raw:
+        return SLICE_S
+    try:
+        want = float(raw)
+    except ValueError:
+        want = 0.0
+    if want <= 0:
+        _note_once(ctx, f"{SLICE_ENV}={raw!r} is not a positive number of seconds: "
+                        f"the slice stays {SLICE_S:.0f} s")
+        return SLICE_S
+    if not ctx.skip_build:
+        _note_once(ctx, f"{SLICE_ENV} is read by a fetch-only run only (--no-duckdb); this run builds, so the "
+                        f"slice stays {SLICE_S:.0f} s")
+        return SLICE_S
+    _note_once(ctx, f"the slice is {want:.0f} s from {SLICE_ENV} (fetch-only run: no builder lock is held)")
+    return want
+
+
 def _parse(q: Question, reply: str) -> dict | None:
     try:
         return q.parse(reply)
@@ -113,7 +148,7 @@ def _ask_one(ctx: base.RunContext, job: Job, started: float, lock: threading.Loc
     if q.fill is None:
         return _ask_filled(ctx, job, started, lock, run)
     with lock:
-        if run["halt"] or ctx.clock() - started > SLICE_S:
+        if run["halt"] or ctx.clock() - started > run["slice_s"]:
             return None
     kept = job.input
     with FILL_LOCK:
@@ -142,7 +177,7 @@ def _ask_filled(ctx: base.RunContext, job: Job, started: float, lock: threading.
     q = job.question
     n = len(q.messages(job.input))
     with lock:
-        if run["halt"] or ctx.clock() - started > SLICE_S:
+        if run["halt"] or ctx.clock() - started > run["slice_s"]:
             return None
         # Reserved before sending, so eight workers together never pass the cap.
         # shortcut: a company with more messages than max_calls is never asked, raise the cap when the note names it
@@ -264,7 +299,8 @@ def ask(ctx: base.RunContext, jobs: list[Job],
         by_provider.setdefault(j.question.provider, []).append(j)
     pools = {p: ThreadPoolExecutor(max_workers=POOLS[p]) for p in by_provider}
     try:
-        run = {"usable": 0, "unusable": 0, "halt": False, "transient": 0, "calls": {}, "capped": set()}
+        run = {"usable": 0, "unusable": 0, "halt": False, "transient": 0, "calls": {}, "capped": set(),
+               "slice_s": slice_s(ctx)}
         futs = [pools[p].submit(_ask_one, ctx, j, started, lock, run)
                 for p, js in by_provider.items() for j in js]
         for f in as_completed(futs):
