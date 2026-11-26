@@ -237,6 +237,61 @@ def _with_old_series(etfs: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return [(t, want[t]) if t in want and s not in reports and want[t] in reports else (t, s) for t, s in etfs]
 
 
+def _series_named(names: set[str]) -> dict[str, set[str]]:
+    """``{series_id: the names its reports carry}`` over every held N-PORT quarter, for the series whose reports
+    carry one of ``names``; empty with no name or no quarter. The spine links a series to a fund by that name
+    (``spine.etf.nport_reports`` reads the same column), so this finds the other series one fund has filed under."""
+    wanted = sorted({n for n in names if n})
+    files = [f for _, f in partitions(parquet_dir(), "quarter", "fund.parquet")]
+    if not wanted or not files:
+        return {}
+    con = base.scratch_con()
+    try:
+        rows = con.execute(f"""
+            SELECT series_id, list(DISTINCT series_name)
+            FROM read_parquet([{', '.join(base.sql_path(f) for f in files)}], union_by_name = true)
+            WHERE series_id IS NOT NULL AND series_name IN ({', '.join('?' * len(wanted))}) GROUP BY 1""",
+            wanted).fetchall()
+    finally:
+        con.close()
+    return {str(s): {n for n in got if n} for s, got in rows}
+
+
+def _history_series(etfs: list[tuple[str, str]]) -> list[tuple[str, str, int]]:
+    """``(etf_ticker, series_id, prefer)`` of every series the **history** reads: the pair the newest quarter is
+    served on (``prefer`` 0), plus the other series the same fund has filed its own N-PORT reports under
+    (``prefer`` 1), so a fund whose SEC series changed keeps the quarters it filed under the old one.
+
+    Why it is not the served pair alone: #1507 moved MAGA, ARB and EVNT to a new series, and once that series
+    reports, :func:`_with_old_series` rightly serves it -- but the history is keyed by ``series_id``, so the whole
+    rebuild of 26 Nov 2026 dropped their 85 earlier filings (6,556 rows, 2020q2 onward). avo's word of that day:
+    fix it before the swap, not after.
+
+    The other series is found two ways, and a candidate must pass both the sources' own guards: the ticker's newest
+    N-CEN series (what :func:`_with_old_series` compares, and what the spine's own build reads), and the series
+    whose N-PORT reports carry the served series' fund name (:func:`_series_named`), which still works once N-CEN
+    has caught up with the new series. Never taken: a series a spine ETF is served on (one fund would be read under
+    two tickers), one that two tickers ask for, or one with no N-PORT report at all.
+    """
+    chosen = [(t, s, 0) for t, s in etfs]
+    served = {s for _, s in etfs}
+    ncen_of = _ncen_series()
+    names = nport_reports(sorted(served))
+    want: dict[str, set[str]] = {}
+    for t, s in etfs:
+        if (p := ncen_of.get(t)) and p not in served:
+            want.setdefault(t, set()).add(p)
+        for other in _series_named(names.get(s, (None, set()))[1]):
+            if other not in served:
+                want.setdefault(t, set()).add(other)
+    asked = [p for ps in want.values() for p in ps]
+    extra = sorted((t, p) for t, ps in want.items() for p in ps if asked.count(p) == 1)
+    if not extra:
+        return chosen
+    reports = nport_reports(sorted({p for _, p in extra}))
+    return chosen + [(t, p, 1) for t, p in extra if p in reports]
+
+
 def _stale_etfs() -> bool:
     """True when the live tables serve an ``(etf_ticker, series_id)`` the build would no longer pair (a renamed
     ETF, a series moved to another ticker; the pairs as :func:`_with_old_series` reads them, so a fund held on its
@@ -244,7 +299,7 @@ def _stale_etfs() -> bool:
 
     Only this direction: most spine ETFs have no long equity of a spine CUSIP, so they are never served, and "the
     pairs differ" would rebuild on every run. shortcut: a newly added spine ETF waits for the next N-PORT quarter."""
-    etfs = set(_with_old_series(_spine_etfs()))
+    etfs = {(t, s) for t, s, _ in _history_series(_with_old_series(_spine_etfs()))}
     if not etfs:
         return False
     live = dirty._live_rows(KIND, f"SELECT DISTINCT etf_ticker, series_id FROM {TABLE} "
@@ -452,7 +507,8 @@ class Nport:
 
     def dirty(self, ctx: base.RunContext):
         """Clean when none of its Parquet changed since the live file was built and every ``(etf_ticker, series_id)``
-        the live tables serve is still a spine ETF's; else the tables are built whole (ticker plan PR 4: the spine
+        the live tables serve is one the build would read (:func:`_history_series`, so an older series the history
+        keeps is not stale on every run); else the tables are built whole (ticker plan PR 4: the spine
         renamed SPLG to SPYM and both stayed served)."""
         changed = getattr(ctx, "changed", None)
         root = parquet_dir().resolve()
@@ -483,6 +539,11 @@ class Nport:
         newest = max(held, key=lambda f: (sec13f_sets.window(f.name[8:] + SUFFIX + ".zip", SUFFIX) or (date.min,))[0])
         common.temp_rows(con, "_np_etf", [("etf_ticker", "TEXT"), ("series_id", "TEXT")],
                          [{"etf_ticker": t, "series_id": s} for t, s in etfs])
+        # The history also reads the series a fund filed its earlier reports under (#1566); the served table stays
+        # on the one pair, because it serves the newest quarter only.
+        hist_etfs = _history_series(etfs)
+        common.temp_rows(con, "_np_etf_hist", [("etf_ticker", "TEXT"), ("series_id", "TEXT"), ("prefer", "INTEGER")],
+                         [{"etf_ticker": t, "series_id": s, "prefer": p} for t, s, p in hist_etfs])
         common.temp_rows(con, "_np_cusip", [("cusip", "TEXT"), ("ticker", "TEXT")],
                          [{"cusip": c, "ticker": t} for c, t in cusips.items()])
         # The history is read quarter by quarter, so its names are dated (#1559); with no spine history (an older
@@ -524,8 +585,12 @@ class Nport:
         if moved:
             ctx.notes.append(f"{TABLE}: {len(moved)} read on their old series until the new one reports "
                              f"({', '.join(moved)})")
+        kept = [f"{t} {s}" for t, s, p in hist_etfs if p]
+        if kept:
+            ctx.notes.append(f"{HISTORY}: {len(kept)} older series read for their own quarters "
+                             f"({', '.join(kept)})")
         hist = self._history(con, held)
-        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip; DROP TABLE _np_cusip_at; "
+        con.execute("DROP TABLE _np_etf; DROP TABLE _np_etf_hist; DROP TABLE _np_cusip; DROP TABLE _np_cusip_at; "
                     "DROP TABLE _np_isin; DROP TABLE _np_isin_at")
         quarters, mapped = con.execute(f"SELECT count(DISTINCT quarter), count(ticker) FROM {HISTORY}").fetchone()
         ctx.notes.append(f"{HISTORY}: {hist} holdings over {quarters} quarters ({hist - mapped} without a spine ticker)")
@@ -535,8 +600,9 @@ class Nport:
 
     @staticmethod
     def _history(con: duckdb.DuckDBPyConnection, held: list[Path]) -> int:
-        """``etf_holdings_nport_history`` from every typed quarter: each spine ETF's newest report in each quarter
-        (``_np_etf``), its long equity summed per holding, and the spine ticker that held its identifier **at the
+        """``etf_holdings_nport_history`` from every typed quarter: each spine ETF's newest report in each quarter,
+        one per (quarter, ETF) over every series that ETF has filed under (``_np_etf_hist``, the served series first,
+        #1566), its long equity summed per holding, and the spine ticker that held its identifier **at the
         report date**: its CUSIP (``_np_cusip_at``), else -- when the fund reported no CUSIP, so the holding is keyed
         by its ISIN -- its ISIN (``_np_isin_at``, #1564), else none. A holding with no report date cannot be dated,
         so it gets no ticker.
@@ -556,15 +622,17 @@ class Nport:
     def _history_quarter(q: Path) -> str:
         funds, holds = base.sql_path(q / "fund.parquet"), base.sql_path(q / "holdings.parquet")
         return f"""
-            WITH f AS (SELECT * FROM read_parquet({funds}, union_by_name = true)
-                       QUALIFY row_number() OVER (PARTITION BY quarter, series_id
-                                                  ORDER BY report_date DESC NULLS LAST, filed DESC, accession DESC) = 1),
-                 r AS (SELECT e.etf_ticker, f.series_id, f.quarter, f.report_date, f.filed, f.accession,
+            WITH f AS (SELECT p.*, e.etf_ticker
+                       FROM read_parquet({funds}, union_by_name = true) p
+                       JOIN _np_etf_hist e ON e.series_id = p.series_id
+                       QUALIFY row_number() OVER (PARTITION BY p.quarter, e.etf_ticker
+                                                  ORDER BY e.prefer, p.report_date DESC NULLS LAST, p.filed DESC,
+                                                           p.accession DESC) = 1),
+                 r AS (SELECT f.etf_ticker, f.series_id, f.quarter, f.report_date, f.filed, f.accession,
                               coalesce(h.cusip, h.isin, upper(trim(h.issuer_name))) AS holding,
                               h.cusip, h.isin, h.issuer_name, h.country, h.balance, h.currency_value,
                               h.pct_of_net_assets
-                       FROM f JOIN _np_etf e ON e.series_id = f.series_id
-                       JOIN read_parquet({holds}, union_by_name = true) h
+                       FROM f JOIN read_parquet({holds}, union_by_name = true) h
                          ON h.accession = f.accession AND h.quarter = f.quarter
                        WHERE {LONG_EQUITY} AND coalesce(h.cusip, h.isin, h.issuer_name) IS NOT NULL)
             SELECT r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession,

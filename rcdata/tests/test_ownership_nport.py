@@ -483,3 +483,89 @@ def test_the_old_series_fallback_does_not_rebuild_every_run(reorganised):
     _serve_live(con)
     ctx.changed = []
     assert nport.DATASET.dirty(ctx).clean
+
+
+# ── #1566: the history keeps the quarters a fund filed under its earlier series ──────────────────────────────────
+
+NEW_SERIES, OLD_SERIES, FUND = "S000009999", "S000002848", "Vanguard Total Stock Market"
+Q3_NEW = {**ROWS,
+          "FUND_REPORTED_INFO": [("0000001-26-000001", FUND, NEW_SERIES, "1,000.5", "990")],
+          "FUND_REPORTED_HOLDING": [_holding("0000001-26-000001", "11", "Microsoft Corp", "594918104", "100",
+                                             "40000", "4.04")],
+          "IDENTIFIERS": [("11", "US5949181045", "MSFT")]}
+Q2_OLD = {**ROWS,
+          "SUBMISSION": [("0000001-26-000002", "28-MAY-2026", "NPORT-P", "31-DEC-2026", "31-MAR-2026")],
+          "FUND_REPORTED_INFO": [("0000001-26-000002", FUND, OLD_SERIES, "900", "890")],
+          "FUND_REPORTED_HOLDING": [_holding("0000001-26-000002", "31", "Microsoft Corp", "594918104", "90",
+                                             "35000", "3.9")],
+          "IDENTIFIERS": [("31", "US5949181045", "MSFT")]}
+
+
+@pytest.fixture
+def switched(sets, monkeypatch):
+    """The state #1507's funds reached: the new series now reports (2026q3 is filed under it), the earlier quarter
+    is filed under the old series, and the spine serves the new one. The rebuild of 26 Nov 2026 dropped 85 such
+    filings (6,556 rows) of MAGA, ARB and EVNT; avo's word that day was to fix it before the swap."""
+    monkeypatch.setattr(common, "spine_cusips", lambda: {"594918104": "MSFT"})
+
+    def build(q3=Q3_NEW, q2=Q2_OLD, ncen_rows=(("VTI", OLD_SERIES, date(2026, 3, 1), "0000002-26-000001"),),
+              spine=(("VTI", NEW_SERIES),), run_id="s1"):
+        sets.routes.insert(0, (FOLDER + NEW, _zip(TABLES, q3), 200, {}))
+        sets.routes.insert(0, (FOLDER + OLD, _zip(TABLES, q2), 200, {}))
+        _backfill(date(2026, 1, 1))
+        _ncen(*ncen_rows)
+        monkeypatch.setattr(nport, "_spine_etfs", lambda: list(spine))
+        con = duckdb.connect()
+        ctx = base.RunContext(run_id=run_id, dataset=nport.NAME)
+        nport.DATASET.build(ctx, con)
+        return ctx, con
+    return build
+
+
+def test_the_history_keeps_a_quarter_the_fund_filed_under_its_earlier_series(switched):
+    ctx, con = switched()
+    # served: the newest quarter on the series the spine serves, as before
+    assert con.execute(f"SELECT etf_ticker, series_id, quarter FROM {nport.TABLE}").fetchall() == [
+        ("VTI", NEW_SERIES, "2026q3")]
+    # history: both quarters, each under the ETF's own ticker and its own series of the day
+    assert con.execute(f"SELECT etf_ticker, series_id, quarter, ticker FROM {nport.HISTORY} ORDER BY quarter"
+                       ).fetchall() == [("VTI", OLD_SERIES, "2026q2", "MSFT"),
+                                        ("VTI", NEW_SERIES, "2026q3", "MSFT")]
+    assert any(f"VTI {OLD_SERIES}" in n and "older series" in n for n in ctx.notes)
+
+
+def test_the_older_series_is_still_found_once_n_cen_names_the_new_one(switched):
+    """N-CEN catches up with the new series, so the ticker's N-CEN pair says nothing about the old one. The fund
+    name its own N-PORT reports carry still does."""
+    _ctx, con = switched(ncen_rows=(("VTI", NEW_SERIES, date(2026, 9, 1), "0000002-26-000002"),))
+    assert con.execute(f"SELECT series_id, quarter FROM {nport.HISTORY} ORDER BY quarter").fetchall() == [
+        (OLD_SERIES, "2026q2"), (NEW_SERIES, "2026q3")]
+
+
+def test_a_transition_quarter_is_read_once_and_the_earlier_one_is_still_kept(switched):
+    """The fund filed 2026q3 under both ids. The earlier quarter is still kept (what the base drops), and the
+    transition quarter is read once, on the served series, so no holding is served twice."""
+    both = {**Q3_NEW,
+            "SUBMISSION": [*ROWS["SUBMISSION"], ("0000001-26-000003", "30-AUG-2026", "NPORT-P", "31-DEC-2026",
+                                                 "30-JUN-2026")],
+            "REGISTRANT": [*ROWS["REGISTRANT"], ("0000001-26-000003", "0000036405", "VANGUARD INDEX FUNDS")],
+            "FUND_REPORTED_INFO": [*Q3_NEW["FUND_REPORTED_INFO"],
+                                   ("0000001-26-000003", FUND, OLD_SERIES, "900", "890")],
+            "FUND_REPORTED_HOLDING": [*Q3_NEW["FUND_REPORTED_HOLDING"],
+                                      _holding("0000001-26-000003", "41", "Microsoft Corp", "594918104", "7",
+                                               "700", "0.1")],
+            "IDENTIFIERS": [*Q3_NEW["IDENTIFIERS"], ("41", "US5949181045", "MSFT")]}
+    _ctx, con = switched(q3=both)
+    assert con.execute(f"SELECT series_id, quarter, balance FROM {nport.HISTORY} ORDER BY quarter").fetchall() == [
+        (OLD_SERIES, "2026q2", 90.0), (NEW_SERIES, "2026q3", 100.0)]
+
+
+def test_an_older_series_is_taken_unless_a_spine_etf_is_served_on_it(switched):
+    """Taken when it is free -- the quarter the base drops -- and never when another spine ETF is served on it,
+    because then one fund would be read under two tickers (the guard ``_with_old_series`` already applies)."""
+    _ctx, con = switched()
+    assert con.execute(f"SELECT etf_ticker, series_id, quarter FROM {nport.HISTORY} ORDER BY quarter").fetchall() == [
+        ("VTI", OLD_SERIES, "2026q2"), ("VTI", NEW_SERIES, "2026q3")]
+    _ctx, con = switched(spine=(("VOO", OLD_SERIES), ("VTI", NEW_SERIES)), run_id="s2")
+    assert con.execute(f"SELECT etf_ticker, series_id, quarter FROM {nport.HISTORY} ORDER BY etf_ticker"
+                       ).fetchall() == [("VOO", OLD_SERIES, "2026q2"), ("VTI", NEW_SERIES, "2026q3")]
