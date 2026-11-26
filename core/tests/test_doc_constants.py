@@ -53,6 +53,16 @@ def test_data_architecture_names_how_long_a_runs_rows_are_kept():
     assert f"**{ops.RUN_ROWS_DAYS} days** (`ops.RUN_ROWS_DAYS`)" in text
 
 
+def test_both_docs_state_the_build_lock_splits_gap_ceiling():
+    """The 24 hours of ``due.STAGE_GAP_MAX_H`` is a value the code owns (#1532, avo 25 Nov 2026)."""
+    from revenuechaser.rcdata.build import due
+    hours = int(due.STAGE_GAP_MAX_H)
+    arch = (_REPO / "docs" / "data_architecture.md").read_text(encoding="utf-8")
+    retr = (_REPO / "docs" / "data_retrieval.md").read_text(encoding="utf-8")
+    assert f"`due.STAGE_GAP_MAX_H` hours ({hours})" in arch
+    assert f"**The gap ceiling is {hours} hours** (`due.STAGE_GAP_MAX_H`)" in retr
+
+
 def test_data_architecture_names_the_current_per_id_shrink_tolerance():
     """The prices swap guard's per-security tolerance is a value the code owns (#1096)."""
     from revenuechaser.rcdata.build.prices import serving as prices_serving
