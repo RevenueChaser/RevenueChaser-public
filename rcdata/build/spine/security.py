@@ -705,7 +705,7 @@ class SpineSecurity:
             country, country_src = bridge_country(loc_of_gvkey.get((sec_row or {}).get("gvkey")),
                                                   sec_country.get(norm_cik(r["cik"])))
             from_co = gics_src == CO_HGIC.name     # a manual row's codes must not sit beside Compustat's finer ones
-            isin = isin_now.get(((sec_row or {}).get("gvkey"), (sec_row or {}).get("iid")))
+            isin = None  # MUTATION (#1561): skip the Compustat ISIN item; revert follows
             isin_src = SEC_IDHIST.name if isin else None
             if isin is None and (isin := isin_mod.from_cusip(cusip)):
                 isin_src = ISIN_DERIVED
