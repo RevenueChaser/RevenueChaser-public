@@ -24,8 +24,9 @@ from revenuechaser.core import rawstore, universe
 from revenuechaser.module_relatedness import store_reads as sr
 
 REPO = Path(__file__).resolve().parents[2]
-#: The eleven tables of the board's file, as the names a stray ``SELECT`` would spell.
-TABLE_NAMES = (sr.PROFILES, sr.ATTRIBUTES, sr.EMBEDDINGS, sr.SCORES, sr.THEME_RUNS, sr.THEMES, sr.THEME_TAGS,
+#: The nine tables of the board's file, as the names a stray ``SELECT`` would spell. It was eleven until #1520
+#: retired ``relatedness_profiles`` and ``relatedness_attributes`` with the board's own profile writer.
+TABLE_NAMES = (sr.EMBEDDINGS, sr.SCORES, sr.THEME_RUNS, sr.THEMES, sr.THEME_TAGS,
                sr.THEME_MEMBERS, sr.THEME_ETFS, sr.TICKER_THEMES, sr.LLM_CACHE)
 NOW = 1_763_000_000.0
 RUN = "r1"

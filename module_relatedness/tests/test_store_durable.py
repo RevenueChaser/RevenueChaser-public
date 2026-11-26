@@ -1,35 +1,32 @@
-"""Durable Relatedness store — cache key, profile round-trip, scores."""
+"""Durable Relatedness store — the cache key, the profile read, the scores.
+
+The profile round trip went with the board's own writer (#1520): there is no table to write a profile to, so the
+read of a service answer is ``test_profiles_from_service.py``.
+"""
 from __future__ import annotations
 
 import pytest
 
 from revenuechaser.core import rawstore
 from revenuechaser.module_relatedness import store
+from revenuechaser.module_relatedness.tests import service_fixture
 
 
-def test_prompt_hash_and_cache_key_are_stable():
-    h1 = store.prompt_hash("sys", "user")
-    assert h1 == store.prompt_hash("sys", "user") and len(h1) == 64
-    k1 = store.cache_key("m", True, "high", "v1", "aapl", h1)
-    k2 = store.cache_key("m", True, "high", "v1", "AAPL", h1)
-    assert k1 == k2  # ticker normalised, keys sorted
+def test_the_cache_key_is_stable_and_normalises_the_ticker():
+    k1 = store.cache_key("m", True, "high", "v1", "aapl", "h")
+    k2 = store.cache_key("m", True, "high", "v1", "AAPL", "h")
+    assert k1 == k2 and store.input_hash(k1) == "h"      # ticker normalised, keys sorted
 
 
-def test_profile_round_trip(rawstore_tmp_db):
-    prof = {"products": ["gpu"], "end_markets": ["data center"],
-            "business_model": [], "customer_types": [], "value_chain_role": [],
-            "keywords": ["ai"]}
-    store.save_profile("NVDA", "1045810", prof, "ck", "deepseek-v4-flash")
+def test_a_service_answer_reads_as_a_profile(rawstore_tmp_db, monkeypatch):
+    """The board's one profile reader, over a row in the shape the service's answer gives it."""
+    prof = {"products": ["gpu"], "end_markets": ["data center"], "business_model": [],
+            "customer_types": [], "value_chain_role": [], "keywords": ["ai"]}
+    service_fixture.seed_profiles(monkeypatch, {"NVDA": prof}, cik="1045810")
     got = store.load_profiles(["NVDA"])
-    assert got["NVDA"]["products"] == ["gpu"]
-    assert got["NVDA"]["keywords"] == ["ai"]
-    assert rawstore.get("relatedness_profiles", "NVDA")["cik"] == "1045810"
-
-    # re-saving replaces attributes (no duplicate fields)
-    store.save_profile("NVDA", "1045810", {**prof, "products": ["cpu"]}, "ck2", "m")
-    assert store.load_profiles(["NVDA"])["NVDA"]["products"] == ["cpu"]
-
-
+    assert got["NVDA"]["products"] == ["gpu"] and got["NVDA"]["keywords"] == ["ai"]
+    assert store.profile_meta(["NVDA"])["NVDA"]["cik"] == "1045810"
+    assert store.load_profiles([]) == {} and set(store.load_profiles()) == {"NVDA"}
 
 
 def test_save_scores(rawstore_tmp_db):

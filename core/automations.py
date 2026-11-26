@@ -153,8 +153,10 @@ REGISTRY: tuple[AutomationEntry, ...] = (
     AutomationEntry(
         name="RC-Relatedness-OffPeak", label="Relatedness profiling (weekly, Sunday)",
         args=("-m", "revenuechaser.scripts.board_fetch", "relatedness"), time="22:15", days=("Sunday",),
-        description=("Relatedness profiling with the board's writer (Settings, #360: EVREN by default, no call cap), "
-                     "incremental (only changed filings), then every pair scored (~27 s CPU for 5,111 profiles, "
+        description=("Relatedness scoring: the profiles are the SEC reading service's company.profile answers, read "
+                     "where they are and copied nowhere (#894 step 3b, #1520; the board had its own writer and its "
+                     "own two profile tables until then, so this job asked a model and wrote them), then every "
+                     "pair scored (~27 s CPU for 5,111 profiles, "
                      "measured on the server 20 Nov 2026, #884) and the "
                      "board rendered. Weekly, Sunday 22:15 (avo 20 Nov 2026: \"Tamam haftalik\"; that is also what "
                      "the installed homesrv timer has had since 16 Nov, while these words still said every other "
@@ -164,7 +166,7 @@ REGISTRY: tuple[AutomationEntry, ...] = (
                      "waits. Until #1255 it opened the board file itself and a peer holding it ended the week's "
                      "run on StoreLockedError after ~29 s; now a busy store exits 3 and nothing is written, and "
                      "with the dashboard down it exits 1."),
-        tables_written=("relatedness_profiles", "relatedness_attributes", "relatedness_scores",
+        tables_written=("relatedness_scores", "relatedness_embeddings",
                         "llm_cache", "chain_filings", "chain_meta"),
         offpeak_gated=True),
     AutomationEntry(

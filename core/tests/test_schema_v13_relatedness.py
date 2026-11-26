@@ -1,9 +1,10 @@
-"""Schema 12 -> 13 (#401, Relatedness v2 Step 1): two nullable columns on ``relatedness_profiles`` and the
-``relatedness_embeddings`` table. Additive: nothing already stored is rewritten.
+"""Schema 12 -> 13 (#401, Relatedness v2 Step 1): the ``relatedness_embeddings`` table. Additive: nothing already
+stored is rewritten.
 
-The v12 store is built from a MANIFEST without the v13 columns and table and filled through ``write_rows``; then
-the real MANIFEST is restored and ``ensure_all_tables`` runs again, the way the dashboard's first store call does
-after the merge.
+v13's other half was two nullable columns on ``relatedness_profiles``; that table is retired (#1520), so what the
+migration still has to carry is the table. The v12 store is built from a MANIFEST without it and filled through
+``write_rows``; then the real MANIFEST is restored and ``ensure_all_tables`` runs again, the way the dashboard's
+first store call does after the merge.
 """
 from __future__ import annotations
 
@@ -12,10 +13,8 @@ import pytest
 
 from revenuechaser.core import rawstore
 
-V13_COLUMNS = {"relatedness_profiles": ("profile_json", "label_source")}
 V13_TABLE = "relatedness_embeddings"
-_PROFILE = {"ticker": "AAPL", "cik": "320193", "model": "m", "prompt_version": "v2", "fetched_at": 1.0,
-            "cache_key": "k", "status": "ok", "attempts": 0, "provider": "evren"}
+_SCORE = {"ticker": "AAPL", "peer": "MSFT", "score": 0.42}
 
 
 def _forget_reconciliation():
@@ -37,28 +36,19 @@ def _snapshot(path):
     return out
 
 
-def _columns(path, table):
-    return {c for c, _ in _snapshot(path).get(table, [])}
-
-
 @pytest.fixture
 def v12_store(isolate_rawstore):
-    """A v12 store with one profile row; yields that row as stored."""
+    """A v12 store with one scored pair; yields that row as stored."""
     mp = pytest.MonkeyPatch()
     try:
         mp.delitem(rawstore.MANIFEST, V13_TABLE)
-        for t, cols in V13_COLUMNS.items():
-            spec = rawstore.MANIFEST[t]
-            mp.setitem(rawstore.MANIFEST, t, {
-                **spec, "columns": [c for c in spec["columns"] if c.split()[0] not in cols]})
         _forget_reconciliation()
         rawstore.ensure_all_tables()
-        rawstore.write_rows("relatedness_profiles", [_PROFILE])
+        rawstore.write_rows("relatedness_scores", [_SCORE])
     finally:
         mp.undo()
     assert V13_TABLE not in _snapshot(rawstore.board_db_path("relatedness"))
-    assert not set(V13_COLUMNS["relatedness_profiles"]) & _columns(rawstore.board_db_path("relatedness"), "relatedness_profiles")
-    yield rawstore.get("relatedness_profiles", "AAPL")
+    yield rawstore.query("SELECT * FROM relatedness_scores", db="relatedness")[0]
 
 
 def _migrate():
@@ -72,12 +62,7 @@ def test_the_label_is_13():
 
 
 
-def test_the_new_columns_hold_json_and_the_vector_holds_bytes(rawstore_tmp_db):
-    profile = {"summary": "Makes phones.", "segments": [{"name": "iPhone", "share": 0.52, "source": "table"}]}
-    rawstore.write_rows("relatedness_profiles", [{**_PROFILE, "profile_json": profile,
-                                                  "label_source": {"segments": "table"}}])
-    row = rawstore.get("relatedness_profiles", "AAPL")
-    assert row["profile_json"] == profile and row["label_source"] == {"segments": "table"}
+def test_the_vector_holds_bytes(rawstore_tmp_db):
     vec = bytes(range(16))
     rawstore.write_rows(V13_TABLE, [{"ticker": "AAPL", "model": "bge-small-en-v1.5", "dim": 4, "vector": vec}])
     rawstore.write_rows(V13_TABLE, [{"ticker": "AAPL", "model": "bge-small-en-v1.5", "dim": 4, "vector": vec[::-1]}])
@@ -90,4 +75,4 @@ def test_a_second_ensure_changes_nothing(v12_store):
     before = _snapshot(rawstore.board_db_path("relatedness"))
     _migrate()
     assert _snapshot(rawstore.board_db_path("relatedness")) == before
-    assert rawstore.count("relatedness_profiles") == 1
+    assert rawstore.count("relatedness_scores") == 1

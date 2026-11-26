@@ -3,8 +3,8 @@
 The step is the Fetch's second half alone: the profiles are the SEC reading service's answers, so it calls no
 writer and downloads nothing, and unlike a Refresh it **writes** — the new company vectors and the peer scores.
 The cadence it runs on is daily since avo's word of 20 Nov 2026, and how it reads the service's answers is pinned by
-``test_scoring_cadence_884.py``; these tests run on the own-writer tables (the folder's ``conftest``) and pin the
-scoring alone.
+``test_scoring_cadence_884.py``; these tests seed the service through ``service_fixture`` (#1520 retired the
+board's own profile tables) and pin the scoring alone.
 
 - it rescores from the stored profiles, persists them with ``store.save_scores`` and keeps the payload;
 - it asks ``_run`` for a writing run (``write=True``), so a vector embedded this week is cached for the next;
@@ -20,9 +20,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from revenuechaser.core import job_lock, rawstore
+from revenuechaser.core import job_lock
 from revenuechaser.module_relatedness import __main__ as cli
 from revenuechaser.module_relatedness import engine
+from revenuechaser.module_relatedness.tests import service_fixture as svc
 
 NOW = datetime(2026, 11, 22, 21, 15, 3, tzinfo=timezone.utc)
 PEERS = {"AAA": [{"peer": "BBB", "score": 0.42}], "BBB": [{"peer": "AAA", "score": 0.42}]}
@@ -45,7 +46,9 @@ def no_board(monkeypatch):
 
 
 def _profiles(monkeypatch, fetched_at):
-    monkeypatch.setattr(rawstore, "get_all", lambda table, *a, **k: [{"ticker": "AAA", "fetched_at": fetched_at}])
+    """One service answer at ``fetched_at``. The staleness gate reads ``store.profile_rows`` -> the service, not a
+    board table, since #1520 retired the own-writer ones."""
+    svc.seed(monkeypatch, [svc.row("AAA", fetched_at=fetched_at)])
 
 
 def _fake_run(monkeypatch, calls: list):

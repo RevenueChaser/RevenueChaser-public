@@ -304,7 +304,7 @@ def _relatedness_run(monkeypatch) -> str | None:
             seen.append(out[0]["as_of"] if out else None)
         return out
 
-    monkeypatch.setattr(rel_engine.rawstore, "query", q)
+    monkeypatch.setattr(rawstore, "query", q)   # the one module both boards read (#1520 trimmed engine's import)
     assert rel_engine._cluster_levels()
     return seen[0]
 

@@ -1,17 +1,18 @@
 """Durable Relatedness store (``boards/relatedness.duckdb``) — Phase 6.
 
-Replaces the ``.cache/*.json`` profile files. A profile is a fixed schema of
-string lists; it is stored one row per field in ``relatedness_attributes``
-(``value`` = JSON list) plus a metadata row in ``relatedness_profiles``. The raw
-LLM response is kept in ``llm_cache`` under a structured cache key, and each
-profile carries its mode stamp.
+What the board keeps of its own: the company vectors (``relatedness_embeddings``), the peer scores
+(``relatedness_scores``), the theme tables and the shared ``llm_cache``.
+
+A **profile** is none of them any more. It is the SEC reading service's ``company.profile`` answer, read where it
+is (``engine.service_rows``, #894 step 3b; avo, 24 Nov 2026: "Relatedness da Value chain gibi olsun, ek
+kopyalamaya gerek yok"). The board had its own writer and its own ``relatedness_profiles`` /
+``relatedness_attributes`` until #1520 took both; this module's readers serve the service's rows in the shape
+those tables had, so every caller reads the same keys it always did. Nothing here writes a profile.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-import time
 
 from revenuechaser.core import rawstore
 
@@ -21,11 +22,6 @@ from . import store_reads as sr
 logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = config.PROMPT_VERSION
-
-
-def prompt_hash(system: str, user: str) -> str:
-    """SHA-256 over the exact prompt bytes (system + separator + user)."""
-    return hashlib.sha256((system + "\n\n" + user).encode("utf-8")).hexdigest()
 
 
 # The filing a profile was read from (build plan PR 20, G6): the company, the accession, the form and the day filed.
@@ -71,130 +67,24 @@ def mode_stamp(writer: tuple[str, str] | None = None) -> dict:
     return {"provider": provider, "model": model, "thinking": False, "effort": "", "prompt_version": PROMPT_VERSION}
 
 
-# ``save_profile``'s default for ``profile_json`` / ``label_source``: carry the stored value (#400).
-KEEP = object()
-JSON_COLUMNS = ("profile_json", "label_source")
-
-
-def _stored_json(tx, ticker: str) -> dict:
-    """The stored ``profile_json`` / ``label_source`` of ``ticker`` (decoded) and its ``accession``, read inside
-    ``tx``."""
-    cols = (*JSON_COLUMNS, "accession")
-    try:
-        row = tx.execute(f"SELECT {', '.join(cols)} FROM {sr.PROFILES} WHERE ticker = ?",
-                         [ticker]).fetchone()
-    except Exception:  # noqa: BLE001 - no table yet: nothing to carry
-        return {c: None for c in cols}
-    out = {}
-    for col, v in zip(cols, row or (None,) * len(cols)):
-        if col in JSON_COLUMNS and isinstance(v, str):
-            try:
-                v = json.loads(v)
-            except (json.JSONDecodeError, TypeError):
-                v = None
-        out[col] = v
-    return out
-
-
-def save_profile(ticker: str, cik, profile: dict, cache_key_value: str,
-                 model: str, prompt_version: str = PROMPT_VERSION,
-                 status: str = "ok", attempts: int = 0, provider: str = "",
-                 profile_json=KEEP, label_source=KEEP, accession=KEEP) -> None:
-    """Write one ticker's profile row and its attribute rows in one transaction.
-
-    ``provider`` is the writer the row names; left out, ``config.default_writer()`` (it named the paid DeepSeek
-    until 20 Nov 2026, so a caller that forgot it stamped a writer that had not been called).
-    ``profile_json`` / ``label_source`` (schema 13, #401) are the v3 structured profile and where each field came
-    from. Left out (``KEEP``), the stored values are carried: ``relatedness_profiles`` is an upsert that sets every
-    column from the row, so a re-save that named neither column used to set both to NULL (#400). Pass ``None`` to
-    clear them. ``accession`` (plan v31 step 1(d)) is the filing the profile was written from, carried the same way.
-    """
-    t = ticker.upper()
-    provider = provider or config.default_writer()
-    rows = [{"ticker": t, "field": f,
-             "value": json.dumps(profile.get(f) or [], ensure_ascii=False),
-             "value_num": None} for f in config.PROFILE_FIELDS]
-
-    # One transaction: a profile row is never visible without its attributes.
-    # relatedness_attributes is "replace" grouped by ticker, so the write
-    # clears the ticker's previous fields itself.
-    def _write(tx):
-        # A store that predates the ``accession`` column gains it first: otherwise ``_stored_json``'s SELECT fails,
-        # reads every kept column as None and the upsert wipes the stored JSON (#400 again).
-        tx.ensure_table(sr.PROFILES)
-        given = {"profile_json": profile_json, "label_source": label_source, "accession": accession}
-        if any(v is KEEP for v in given.values()):
-            kept = _stored_json(tx, t)
-            given = {c: (kept[c] if v is KEEP else v) for c, v in given.items()}
-        tx.write_rows(sr.PROFILES, [{
-            "ticker": t, "cik": str(cik or ""), "model": model,
-            "prompt_version": prompt_version, "fetched_at": time.time(),
-            "cache_key": cache_key_value, "status": status,
-            "attempts": attempts, "provider": provider, **given}])
-        tx.write_rows(sr.ATTRIBUTES, rows)
-
-    rawstore.atomic(_write, db="relatedness")
-
-
 def profile_rows(tickers: list[str] | None = None) -> list[dict]:
-    """The profile rows (``relatedness_profiles``' columns, decoded) of ``tickers``, every row when None or empty.
+    """The board's profile rows of ``tickers``, every row when None or empty.
 
-    On the service path (``config.PROFILES_FROM == "service"``, the deployed setting) they are the SEC reading
-    service's answers, read where they are, as Value Chain reads them (#894 step 3b; avo, 24 Nov 2026: "Relatedness
-    da Value chain gibi olsun, ek kopyalamaya gerek yok"); each also carries ``attributes``. On the own-writer path
-    they are the board's own table.
+    They are the SEC reading service's ``company.profile`` answers, read where they are, as Value Chain reads them
+    (``engine.service_rows``, #894 step 3b); each also carries ``attributes``, the tag lists. The row has the shape
+    the board's own ``relatedness_profiles`` had until #1520, so this module's readers did not change with it.
     """
-    if config.PROFILES_FROM == "service":
-        from .engine import service_rows
-        return service_rows(tickers)
-    want = {t.upper() for t in tickers} if tickers else None
-    rows = []
-    for r in rawstore.get_all(sr.PROFILES):
-        if want is not None and r["ticker"] not in want:
-            continue
-        for col in JSON_COLUMNS:
-            if isinstance(r.get(col), str):
-                try:
-                    r[col] = json.loads(r[col])
-                except (json.JSONDecodeError, TypeError):
-                    r[col] = None
-        rows.append(r)
-    return rows
+    from .engine import service_rows
+    return service_rows(tickers)
 
 
 def load_profiles(tickers: list[str] | None = None) -> dict[str, dict]:
     """``{ticker: {field: [str, ...]}}``: every profile when ``tickers`` is None, none when it is empty (an empty
-    list once read every profile, #642 PR 3). From ``profile_rows``; the own-writer path reads the tag lists from
-    ``relatedness_attributes``."""
+    list once read every profile, #642 PR 3). The tag lists come from :func:`profile_rows`' ``attributes``."""
     if tickers is not None and not tickers:
         return {}
-    if config.PROFILES_FROM == "service":
-        return {r["ticker"]: {f: (r["attributes"].get(f) or []) for f in config.PROFILE_FIELDS}
-                for r in profile_rows(tickers)}
-    want = {t.upper() for t in tickers} if tickers is not None else None
-    attr: dict[str, dict] = {}
-    for r in rawstore.get_all(sr.ATTRIBUTES):
-        t = r["ticker"]
-        if want is not None and t not in want:
-            continue
-        v = r["value"]
-        if isinstance(v, list):      # rawstore auto-decodes JSON strings on read
-            vals = v
-        elif isinstance(v, str) and v:
-            try:
-                vals = json.loads(v)
-            except (json.JSONDecodeError, TypeError):
-                vals = []
-        else:
-            vals = []
-        attr.setdefault(t, {})[r["field"]] = vals
-    out: dict[str, dict] = {}
-    for r in rawstore.get_all(sr.PROFILES):
-        t = r["ticker"]
-        if want is not None and t not in want:
-            continue
-        out[t] = {f: (attr.get(t, {}).get(f) or []) for f in config.PROFILE_FIELDS}
-    return out
+    return {r["ticker"]: {f: (r["attributes"].get(f) or []) for f in config.PROFILE_FIELDS}
+            for r in profile_rows(tickers)}
 
 
 def load_profile_json(tickers: list[str] | None = None) -> dict[str, dict]:
@@ -236,10 +126,10 @@ def _key_mode(cache_key_value) -> dict | None:
 
 
 def input_hash(cache_key_value) -> str | None:
-    """The ``input_hash`` a stored profile was made from (``prompt_hash`` of its exact prompt), or ``None``.
+    """The ``input_hash`` the service's answer was written from (the hash of its exact prompt), or ``None``.
 
-    ``build_profiles`` compares it with the hash of today's prompt: a new filing text or company name redoes the
-    profile (#388 D5).
+    The service compares it with the hash of today's prompt: a new filing text or company name redoes the answer
+    (#388 D5, now ``rcdata/build/sec_reads``). The board only reads it.
     """
     k = _key_mode(cache_key_value or "")
     return (k or {}).get("input_hash") or None

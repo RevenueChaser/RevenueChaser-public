@@ -689,6 +689,10 @@ RETIRED_TABLES: dict[str, str] = {
     "leaps_cache": "LEAPS: the board's own chain cache, old raw store; the scan is switched off (#730, #860)",
     "leaps_flow_prints": "LEAPS: option flow prints, old raw store; went with the scan (#730, #860)",
     "quote_snapshot": "prices: the intraday quote row of the old raw store; the serving bars replaced it (#860)",
+    "relatedness_attributes": "Relatedness: the tag rows of the board's own profile writer, of "
+                              "boards/relatedness.duckdb; the service's answer carries the tags (#894, #1520)",
+    "relatedness_profiles": "Relatedness: the profile rows of the board's own writer, of "
+                            "boards/relatedness.duckdb; the SEC reading service owns the profile (#894, #1520)",
     "sec13f_enrichment": "13F: the board's own enrichment table; the ownership build serves it (G9, #860)",
     "sec13f_ticker_names": "13F: UW names per ticker, old raw store; the ownership build serves them (G9, #860)",
     "sec_company_sic": "SEC: SIC per company, old raw store; the spine carries it (#860)",
@@ -978,34 +982,6 @@ MANIFEST: dict[str, dict] = {
         "write": "upsert",
         "sources": [],
     },
-    "relatedness_profiles": {
-        "db": "relatedness",
-        "history_mode": "latest_cache",
-        # One row per ticker; profile job grain is CIK (dual-class shares one
-        # item_text), so cache_key is keyed on cik+input_hash.
-        "key": ["ticker"],
-        "columns": [
-            "ticker TEXT PRIMARY KEY", "cik TEXT", "model TEXT",
-            "prompt_version TEXT", "fetched_at DOUBLE", "cache_key TEXT",
-            "status TEXT",
-            # LLM tries that ended in an empty profile (retried up to 3 runs).
-            "attempts INTEGER",
-            # The writer's provider beside its model (#360: evren / deepseek). Nullable, added by
-            # ``_reconcile_table`` (ALTER TABLE ADD COLUMN), no schema bump.
-            "provider TEXT",
-            # Relatedness v2 (#401, schema 13): the v3 structured profile (summary, segments, customers,
-            # suppliers, named_competitors, business_model, channel, geography, stage, keywords) and, per field,
-            # which chunk or table its value came from under the merge rule. Nullable: a v2 row reads NULL.
-            "profile_json JSON", "label_source JSON",
-            # Plan v31 step 1(d): the accession of the filing the profile was written from, so a profile edge
-            # can say which annual report it read (G-D). Nullable, added by ``_reconcile_table`` like ``provider``,
-            # no schema bump; NULL on a row written before it.
-            "accession TEXT",
-        ],
-        "kind": "tabular",
-        "write": "upsert",
-        "sources": [],
-    },
     "relatedness_embeddings": {
         "db": "relatedness",
         # Relatedness v2 Step 2 (#401, schema 13): one vector per ticker and embedding model (raw BLOB, not
@@ -1019,20 +995,6 @@ MANIFEST: dict[str, dict] = {
         ],
         "kind": "tabular",
         "write": "upsert",
-        "sources": [],
-    },
-    "relatedness_attributes": {
-        "db": "relatedness",
-        "history_mode": "latest_cache",
-        "key": ["ticker", "field"],
-        # A profile is written whole: "replace" clears the ticker's old fields.
-        "group_by": ["ticker"],
-        "columns": [
-            "ticker TEXT", "field TEXT", "value TEXT", "value_num DOUBLE",
-            "PRIMARY KEY (ticker, field)",
-        ],
-        "kind": "tabular",
-        "write": "replace",
         "sources": [],
     },
     "relatedness_scores": {

@@ -1,8 +1,9 @@
 """Relatedness board configuration (200-ticker spike).
 
-Business similarity from 10-K Item 1 / 20-F Item 4 text: LLM structured profile
-per company, then a local cosine over the profile attributes. See
-docs/plan_200ticker.md.
+Business similarity from 10-K Item 1 / 20-F Item 4 text: the SEC reading service's structured profile per company
+(``company.profile``), then a local cosine over the profile attributes. The board had its own writer and its own
+``relatedness_profiles`` / ``relatedness_attributes`` until #894 step 3b (#1520); it writes no profile and calls no
+model now. See docs/plan_200ticker.md.
 """
 from __future__ import annotations
 
@@ -10,18 +11,9 @@ import os
 
 from revenuechaser.core import llm_prices, llm_writers
 from revenuechaser.core.config import OUTPUT_DIR
-from revenuechaser.rcdata import sec_forms_label
-from revenuechaser.module_value_chain import config as vc_config
 
 RELATEDNESS_LATEST = OUTPUT_DIR / "relatedness_latest.html"
 RELATEDNESS_JSON = OUTPUT_DIR / "relatedness" / "relatedness_latest.json"
-
-# The floor under which a filing text is not sent to the writer at all (#313). Value Chain's own
-# MIN_ITEM_CHARS, so "this is a sliced Item 1, not a table-of-contents fragment" means the same thing on both
-# boards. A model asked from a one-line description does not refuse; it writes the profile from the company
-# name (measured on the live store 2026-10-30: 20 of 1,503 pilot names carry an empty Item 1 and 58 one under
-# this floor, AAP's being 1 character).
-MIN_INPUT_CHARS = vc_config.MIN_ITEM_CHARS
 
 
 def default_writer() -> str:
@@ -35,6 +27,9 @@ def default_writer() -> str:
     from revenuechaser.core import llm_writers
     return llm_writers.DEFAULT
 
+# The prompt version a stored answer is compared against (``store.is_stale``). The service writes it onto its own
+# answer (``rcdata/build/sec_reads/company_profile.py``), so the two say the same thing; the board no longer asks
+# for a profile itself (#1520).
 # v3 (#400, Relatedness v2 Step 1): one structured JSON profile from the whole Item 1 / Item 4 (no input cut), read
 # in chunks above 60k characters, JSON mode and no thinking (``profile_v3``). Every v2 profile reads stale and is
 # redone by the next run of the board's writer. v2 (#388 D5) named the company instead of the ticker.
@@ -48,26 +43,9 @@ def default_writer() -> str:
 # the input hash, so without a bump they would reach only freshly profiled companies.
 PROMPT_VERSION = "v3d"
 
-# The most of a business section a profile reads (#841), or None for no cap. ``ours-2`` stores the section uncut
-# (p99 264,822 characters, max 488,947 on the 5,131 stored annual reports, 13 Nov 2026) and a profile is one call
-# per 60,000 characters. The owner's decision, 13 Nov 2026 ("maliyet onemli degil"): no cap, so no company's
-# section is cut; a full round is 8,366 first-attempt calls against 8,128 under the 200,000 cap ``ours-1`` stored
-# with (240,000 would have been 8,139 calls and cut 72 companies). The value is inside the hashed text: setting
-# one later restales every company over it.
-# Not the ``MAX_INPUT_CHARS`` v2 cut every text at (removed by v3, #400).
-MAX_BUSINESS_CHARS: int | None = None
-
-# Where the board gets its profiles (avo, 16 Nov 2026): ``service`` reads the SEC reading service's answers to
-# ``company.profile`` where they are, as Value Chain does, copies none and calls no model (#894 step 3b; avo, 24 Nov
-# 2026: "Relatedness da Value chain gibi olsun, ek kopyalamaya gerek yok"); ``own`` is the board's own writer and its
-# ``relatedness_profiles`` / ``relatedness_attributes``, kept until the clean-up for the tests of it and the writer
-# comparison.
-PROFILES_FROM = "service"
-
-# The rule version the business sections must be cut with before a profile run reads them (``_forms_ready``,
-# #841). None turns the check off.
-FORMS_RULES_VERSION = sec_forms_label.forms_rows_version()
-
+# The board's own spend ceiling. Since #894 step 3b it caps nothing of this board's own -- it calls no writer
+# (#1520) -- and is kept because the day ledger reads the same per-call figure (``core.llm_prices``, #166), the day
+# cap's default is this ceiling (``core.llm_spend``) and the dashboard still takes a ``usd_cap`` for the Fetch.
 # $ hard-stop: cap the number of LLM calls per run (~1.5x the expected spend).
 # The cap's cost per call, measured on DeepSeek Flash: the 10 Nov 2026 pilot wrote 400 names in 668 calls for about
 # 1 USD. It replaces the 0.006 the cap carried before, which was "about 4x" of the v2 figure, guessed until the pilot
@@ -79,10 +57,6 @@ EST_USD_PER_CALL = llm_prices.measured_usd_per_call(llm_writers.get("deepseek").
 # A full round is every company with usable text: about 4,750 names at 1.67 calls each, so ~7,900 calls, ~14 USD
 # (#712). The cap sits above that so one run covers the round instead of stopping six times and looking finished.
 USD_CAP = float(os.getenv("RC_RELATEDNESS_USD_CAP", "25.0"))
-LLM_WORKERS = 8
-# A free writer's run (EVREN) whose first N replies hold no usable profile stops (``unusable``) before it counts an
-# attempt on any group; the endpoint or the model is then wrong, not the companies.
-UNUSABLE_STOP = 5
 
 # Fixed profile schema. Similarity is defined on these fields only.
 PROFILE_FIELDS = (

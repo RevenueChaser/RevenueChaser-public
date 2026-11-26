@@ -41,7 +41,9 @@ PROVIDER_FILES = {
     "module_fundamentals": {"pipeline.py"},
     "module_news": {"headlines.py", "tape.py"},
     "module_oipd": {"engine.py"},
-    "module_relatedness": {"__main__.py", "compare.py", "engine.py", "profiles.py", "store.py"},
+    # ``compare.py`` and ``profiles.py`` left it on 26 Nov 2026 (#1520): both files are gone with the board's
+    # own profile writer, so nothing of them imports ``core.providers`` any more.
+    "module_relatedness": {"__main__.py", "engine.py", "store.py"},
     "module_sector_rotation": {"__main__.py", "engine.py"},
     "module_spx_gamma": {"candles.py", "run.py"},
     # ``indicators.py`` left it on 21 Nov 2026 (#645): ``load_ticker_info`` was the board's last Yahoo read and

@@ -28,7 +28,7 @@ Single old→new map for the Classification data-model refactor
 | `run_registry` | runtime pins (profile mode, current theme run id, migration markers) |
 | `edgar_documents` (in `.store/edgar.duckdb`) | filing **metadata** (accession/form/dates); raw HTML is `edgar_docs/{cik}/{accession}.html.gz` |
 | `ticker_themes(ticker, theme_id, theme, level, theme_run_id)` | runtime theme SSoT |
-| `relatedness_profiles`, `relatedness_attributes`, `relatedness_scores` | Relatedness |
+| `relatedness_scores`, `relatedness_embeddings` | Relatedness (the profiles are the SEC reading service's `company.profile` answers; the board's own two tables are retired, #1520) |
 | `relatedness_themes`, `relatedness_theme_tags`, `relatedness_theme_members`, `theme_runs` | NMF themes |
 | `fundamentals_scores`, `swing_scores`, `fundamentals_gates`, `swing_gates` | per-ticker scores + gates |
 

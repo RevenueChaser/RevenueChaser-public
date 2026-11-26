@@ -19,12 +19,10 @@ off-peak).
   cache is the durable `llm_cache` table (no `.cache/llm_cache/*.json` files). Rows
   carry `cache_key`, `ticker`, `cik`, `model`, `thinking`, `effort`,
   `prompt_version`, `input_hash`, `response`, `fetched_at`, `status`.
-- `module_relatedness/store.py`: durable profiles (`relatedness_profiles` +
-  `relatedness_attributes`), structured `cache_key`, mode stamp in `run_registry`.
-  Absence of a profile row = **pending** (resume is automatic and cache-first).
-- `module_relatedness/engine.run`: catches `PeakHoursError` at the boundary, renders
-  from the durable profiles already written, and returns `pending` + `next_off_peak`;
-  records a `relatedness_run` marker in `run_registry`.
+- The Relatedness board no longer writes or asks for a profile (#894 step 3b, #1520): the SEC reading service
+  owns `company.profile` and the board reads its answers where they are, so nothing below about its own durable
+  profiles, its pending marker or its peak stop describes the board any more. The gate itself is unchanged and
+  the service is the caller it now guards.
 - **The day cap** (#166, 21 Nov 2026): a second, wider gate stands beside this one — what the paid writer spent
   over the whole New York day, against the box's USD day cap, recorded in `provider_spend_daily`. Order in
   `deepseek.complete` is now **cache → off-peak gate → money gate → HTTP**. See
@@ -105,8 +103,8 @@ Reference (informational; DST shifts these):
   `prompt_version`, `input_hash`, `response` (`{content, usage}`), `fetched_at`,
   `status`. Turns re-runs into 0-cost hits (and is the bigger saving than off-peak
   itself).
-- **Pending marker** — there is none to add: an item with no profile row in
-  `relatedness_profiles` is pending, so a stopped batch resumes by itself.
+- **Pending marker** — there is none to add: a question with no `ok` answer for a company is pending, so a
+  stopped batch resumes by itself (the service's own rows since #894; it was `relatedness_profiles` until #1520).
 - **Redo** — a stored profile is profiled again when it was made under another
   mode or from another input: the hash of today's prompt (filing text and the
   `equity_universe` company name) differs from the `input_hash` in its cache key

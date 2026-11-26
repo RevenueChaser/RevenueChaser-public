@@ -12,7 +12,7 @@ def test_the_schema_version_pin_is_explicit():
     """The label is pinned to a literal, so a bump is a deliberate act and not a side effect of a new table.
 
     12: the (accession, line_no) key on ``sec13f_holdings`` (#208). 13: ``relatedness_profiles.profile_json`` /
-    ``label_source`` and the ``relatedness_embeddings`` table (#401). Bump the pin, the doc and the checkpoint
+    ``label_source`` (that table is retired since #1520) and the ``relatedness_embeddings`` table (#401). Bump the pin, the doc and the checkpoint
     warning together.
     """
     assert rawstore.schema_version() == "13"

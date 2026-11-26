@@ -3,16 +3,13 @@
 Before this the board read ``relatedness_profiles.profile_json`` and its ``accession`` column, so a profile
 reached Value Chain only once the Relatedness board had imported it into its own table. The service owns every
 SEC model read (avo, 15 Nov 2026), so the board reads ``read.sec_reads(..., "company.profile")`` instead, keyed
-by the CIK its own corpus row states.
+by the CIK its own corpus row states. That table is retired since #1520 and there is no other path left.
 """
 from __future__ import annotations
 
-import json
-
 from revenuechaser.core import rawstore
 from revenuechaser.module_value_chain import engine
-from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import (PROFILE, _filing,
-                                                                                   _profile, serve_answers)
+from revenuechaser.module_value_chain.tests.test_value_chain_profile_edges_410 import _filing, _profile
 from revenuechaser.rcdata import read
 from revenuechaser.rcdata.tests.conftest import market_roots  # noqa: F401  (fixture)
 
@@ -25,20 +22,10 @@ def test_the_board_reads_the_service_with_no_relatedness_row_at_all(rawstore_tmp
     """The point of the step: the service's answer alone gives the profile edges."""
     _filing()
     _profile()
-    assert rawstore.get_all("relatedness_profiles") == []
     assert _apple(engine.build_edges()) == [("AMKR", "customer", "profile")]
-
-
-def test_a_relatedness_row_the_service_does_not_have_gives_no_profile_edge(rawstore_tmp_db,
-                                                                          market_roots):  # noqa: F811
-    """The old table is no longer a source: a row only there is not read."""
-    _filing()
-    rawstore.write_rows("relatedness_profiles", [{"ticker": "AMKR", "cik": "1", "model": "m",
-                                                  "prompt_version": "v3d", "fetched_at": 1.0, "cache_key": "k",
-                                                  "status": "ok", "profile_json": json.dumps(PROFILE),
-                                                  "accession": "acc-old"}])
-    serve_answers([], replace=True)
-    assert _apple(engine.build_edges()) == []
+    # The old table cannot even be written to since #1520: it is retired, so "a row only there" is no longer a
+    # state that exists, and the test that wrote one to prove it was not read went with it.
+    assert "relatedness_profiles" in rawstore.RETIRED_TABLES and "relatedness_profiles" not in rawstore.MANIFEST
 
 
 def test_the_answer_is_found_by_cik_and_not_by_ticker(rawstore_tmp_db, market_roots):  # noqa: F811
@@ -49,8 +36,7 @@ def test_the_answer_is_found_by_cik_and_not_by_ticker(rawstore_tmp_db, market_ro
 
 
 def test_a_partial_answer_is_a_profile(rawstore_tmp_db, market_roots):  # noqa: F811
-    """``relatedness_profiles`` holds a partial answer too (the Relatedness import writes one), so filtering it
-    here would lose edges the board serves today."""
+    """The service holds a partial answer too, so filtering it here would lose edges the board serves today."""
     _filing()
     _profile(status="partial", missing_chunks="1")
     assert _apple(engine.build_edges()) == [("AMKR", "customer", "profile")]

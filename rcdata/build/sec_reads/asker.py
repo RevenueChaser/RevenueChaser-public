@@ -47,7 +47,8 @@ SLICE_ENV = "RC_SEC_READS_SLICE_S"
 #: under a second; the model call it feeds takes tens of seconds, so the run is not slower.
 FILL_LOCK = threading.Lock()
 #: Companies whose reply was unusable, with no usable one yet in the run, before the run is called the endpoint's
-#: fault and stopped with none of them stored (the Relatedness rule, ``module_relatedness.config.UNUSABLE_STOP``).
+#: fault and stopped with none of them stored (the Relatedness board's own rule, taken over here with its
+#: writer in #1520).
 UNUSABLE_STOP = 5
 #: Companies a run gives up on for a transient error (a timeout, a 5xx, a 429 after its retries) before the run
 #: itself stops: one slow company must not end every hourly run at the same place (the board's own five,
