@@ -43,13 +43,11 @@ def _built_then_failed() -> None:
     ops.record_check(NAME, "failed", checked_on="2026-12-04")
 
 
-def test_a_failed_check_makes_it_due_again_while_the_plan_runs(clock):
+def test_the_gate_is_dated_not_permanent(clock):
+    """The same failed check: due again while the plan runs, never due once it has ended. One test, because a
+    test that only asserts the first half passes on the base and proves nothing about this change."""
     _built_then_failed()
     assert due.is_due(DATASETS[NAME]) == (True, "the last check failed")
-
-
-def test_past_the_plans_end_it_is_never_due_again(clock):
-    _built_then_failed()
     clock(AFTER_END)
     due_now, why = due.is_due(DATASETS[NAME])
     assert due_now is False
