@@ -15,7 +15,7 @@ relatedness peer sets can have a source. They read it (owner's decision E1 of #3
 | ARK, behind TickerInside (1) | ``ARKQ``, on a day TickerInside holds nothing for it | ARK's daily holdings CSV |
 
 **Why TickerInside and not Unusual Whales for those 28 (#1365, avo 22 Nov 2026).** Their issuers publish no keyless
-file this tree can read, and UW is leaving (#1283, the subscription ends 9 Dec 2026); D3 of #354 says holdings never
+file this tree can read, and UW is leaving (#1283, the subscription ends 6 Dec 2026); D3 of #354 says holdings never
 come from UW. TickerInside is keyless, free and CC BY 4.0, and measured on 22 Nov 2026 it covers **133 of the 133**
 ring-1 ETFs: 76 from the issuers' own daily files (iShares, SPDR, Global X) and the rest from each fund's **newest**
 N-PORT filing, which is ahead of the quarterly set we hold (its periods stop at 31 Jul 2026, while SMH's report for
@@ -89,7 +89,7 @@ read from the quarterly ``sec/nport`` Parquet, and the older quarters are downlo
 too (#354 C7). No ring-1 set is asked from UW at any ADV floor, so the 133 / 204 / 89 / 59 counts above select
 nothing and stay a measurement of what a narrow ring would have held. ``RC_ETF_HOLDINGS_SWEEP`` therefore stays
 off for good and is no longer waiting on a decision; removing the sweep's code belongs to the UW migration
-(#1283), since the subscription renews on 9 Dec 2026. The 28 funds UW served are read from **TickerInside**
+(#1283), since the subscription ends on 6 Dec 2026. The 28 funds UW served are read from **TickerInside**
 instead (#1365), and behind that a fund whose daily list is missing still falls back to its newest N-PORT report
 (``rcdata.read.etf_holdings`` -> ``etf_holdings_nport``, #354 C5), so the board is never left with nothing. The
 whole reading order is: the fund's own issuer file, then TickerInside's file for that fund (whose

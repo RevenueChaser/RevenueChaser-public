@@ -50,7 +50,7 @@ IV_NEED = "options.iv"
 # carry the short provider name, and the table holds UW's rows beside them.
 ROW_SOURCE = "ibkr"
 # Raised when the newest served IBKR day is further behind than that lag, or when there is none at all. After
-# Unusual Whales ends on 9 Dec 2026 this is the only implied-volatility source, so a silent stop costs the LEAPS,
+# Unusual Whales ends on 6 Dec 2026 this is the only implied-volatility source, so a silent stop costs the LEAPS,
 # SPX Gamma and Earnings Radar boards their IV.
 STALE_ISSUE = "iv_history_stale"
 

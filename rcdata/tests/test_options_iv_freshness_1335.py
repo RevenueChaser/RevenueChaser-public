@@ -3,7 +3,7 @@
 The append stopped on 13 Nov 2026, no call was made after the 16th, and the check was still green on the 21st
 with its served table five sessions behind. It counted **names with a year**, and every one of those names still
 had its (stale) year: coverage of names and freshness of days are two questions, and it answered only the first.
-After Unusual Whales ends on 9 Dec 2026 this is the only implied-volatility source."""
+After Unusual Whales ends on 6 Dec 2026 this is the only implied-volatility source."""
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
