@@ -277,6 +277,28 @@ def test_the_history_keeps_every_quarter_and_every_long_equity_holding_one_row_e
     assert any("4 holdings over 2 quarters (2 without a spine ticker)" in n for n in ctx.notes)
 
 
+def test_the_history_names_a_holding_after_the_cusips_owner_at_the_report_date(sets, monkeypatch):
+    """#1559: the history was named from an undated map, so a 2019q4 holding carried today's owner's ticker
+    (``29476L107`` was served as VMRK back to 2019q4). The owner at the report date names it instead."""
+    sets.routes.insert(0, (FOLDER + NEW, _zip(TABLES, Q3), 200, {}))
+    sets.routes.insert(0, (FOLDER + OLD, _zip(TABLES, Q2), 200, {}))
+    _backfill(date(2026, 1, 1))
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000002848")])
+    monkeypatch.setattr(common, "spine_cusips", lambda: {"594918104": "MSFT"})
+    monkeypatch.setattr(common, "spine_cusip_history", lambda: [
+        {"cusip": "594918104", "ticker": "OLDCO", "valid_from": date(2019, 1, 1), "valid_to": date(2026, 5, 1)},
+        {"cusip": "594918104", "ticker": "MSFT", "valid_from": date(2026, 5, 1), "valid_to": None}])
+    con = duckdb.connect()
+    ctx = base.RunContext(run_id="b4", dataset=nport.NAME)
+    nport.DATASET.build(ctx, con)
+    # Q2's report ends 31-Mar-2026, inside OLDCO's period; Q3's ends 30-Jun-2026, after the change.
+    assert con.execute(f"SELECT quarter, report_date, ticker FROM {nport.HISTORY} WHERE cusip = '594918104' "
+                       f"ORDER BY quarter").fetchall() == [("2026q2", date(2026, 3, 31), "OLDCO"),
+                                                           ("2026q3", date(2026, 6, 30), "MSFT")]
+    # the newest-quarter table is named from today's owner on purpose (it serves the newest quarter only)
+    assert con.execute(f"SELECT ticker FROM {nport.TABLE}").fetchall() == [("MSFT",)]
+
+
 def test_the_check_counts_a_change_in_the_history_too(two_quarters):
     """Grok xReview 22 Nov 2026: a live file whose served table matches but which has no history read as
     "unchanged", so a build that changes only the history was not seen."""

@@ -44,7 +44,8 @@ quarter, each spine ETF's newest report in that quarter and its long equity, **o
 security on several lines: VXUS lists Banco Santander twice in 2026q3, 212,710,002 and 4 shares), keyed by its CUSIP,
 else its ISIN, else its name. A holding no spine ticker holds is kept with ``ticker`` NULL (a foreign share by its
 ISIN and country: TSMC in VXUS, $26.5B; a private share by its name), so the board shows the fund's whole stock list.
-``ticker`` here is the spine's current CUSIP owner; ``rcdata.read.etf_holdings_history`` overlays the 13F CUSIP map
+``ticker`` here is the spine ticker that held the CUSIP at the report date (#1559: an undated map named a 2019q4
+holding after today's owner); ``rcdata.read.etf_holdings_history`` overlays the 13F CUSIP map
 of the report's quarter (``sec13f_cusip_map``, Compustat's dated history first), so N-PORT and 13F name a CUSIP alike.
 """
 from __future__ import annotations
@@ -480,6 +481,14 @@ class Nport:
                          [{"etf_ticker": t, "series_id": s} for t, s in etfs])
         common.temp_rows(con, "_np_cusip", [("cusip", "TEXT"), ("ticker", "TEXT")],
                          [{"cusip": c, "ticker": t} for c, t in cusips.items()])
+        # The history is read quarter by quarter, so its names are dated (#1559); with no spine history (an older
+        # file) today's map stands in with an open period, which is what the history was built on until now.
+        at = common.spine_cusip_history()
+        if at is None:
+            at = [{"cusip": c, "ticker": t, "valid_from": date(1900, 1, 1), "valid_to": None}
+                  for c, t in cusips.items()]
+        common.temp_rows(con, "_np_cusip_at", [("cusip", "TEXT"), ("ticker", "TEXT"), ("valid_from", "DATE"),
+                                               ("valid_to", "DATE")], at)
         fund, hold = (base.sql_path(newest / n) for n in ("fund.parquet", "holdings.parquet"))
         n = common.create_table(con, TABLE, SERVED, f"""
             WITH f AS (SELECT * FROM read_parquet({fund})
@@ -500,7 +509,7 @@ class Nport:
             ctx.notes.append(f"{TABLE}: {len(moved)} read on their old series until the new one reports "
                              f"({', '.join(moved)})")
         hist = self._history(con, held)
-        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip")
+        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip; DROP TABLE _np_cusip_at")
         quarters, mapped = con.execute(f"SELECT count(DISTINCT quarter), count(ticker) FROM {HISTORY}").fetchone()
         ctx.notes.append(f"{HISTORY}: {hist} holdings over {quarters} quarters ({hist - mapped} without a spine ticker)")
         counts = {TABLE: n, HISTORY: hist}
@@ -510,7 +519,8 @@ class Nport:
     @staticmethod
     def _history(con: duckdb.DuckDBPyConnection, held: list[Path]) -> int:
         """``etf_holdings_nport_history`` from every typed quarter: each spine ETF's newest report in each quarter
-        (``_np_etf``), its long equity summed per holding, the spine ticker of its CUSIP (``_np_cusip``) or none.
+        (``_np_etf``), its long equity summed per holding, and the spine ticker that held its CUSIP **at the report
+        date** (``_np_cusip_at``) or none. A holding with no report date cannot be dated, so it gets no ticker.
 
         One quarter at a time: the whole history in one query (13.1M rows, 28 quarters) peaked at 3.83 GB against the
         4 GB scope on homesrv (measured 22 Nov 2026, PR #1445); a quarter alone is about 600K rows."""
@@ -539,7 +549,8 @@ class Nport:
                    min(r.cusip) AS cusip, min(r.isin) AS isin, min(r.issuer_name) AS issuer_name,
                    min(r.country) AS country, sum(r.balance) AS balance, sum(r.currency_value) AS currency_value,
                    sum(r.pct_of_net_assets) AS pct_of_net_assets, CAST(count(*) AS INTEGER) AS lines
-            FROM r LEFT JOIN _np_cusip c ON c.cusip = r.cusip
+            FROM r LEFT JOIN _np_cusip_at c ON c.cusip = r.cusip AND c.valid_from <= r.report_date
+                 AND r.report_date < coalesce(c.valid_to, DATE '9999-12-31')
             GROUP BY r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession, r.holding, c.ticker
             ORDER BY r.etf_ticker, r.quarter, currency_value DESC NULLS LAST, issuer_name"""
 
