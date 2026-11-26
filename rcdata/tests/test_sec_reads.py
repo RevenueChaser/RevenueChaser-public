@@ -768,20 +768,15 @@ def test_a_no_text_row_carries_the_reason_the_question_named(http_mock):
         ("320193", "ok", None), ("789019", "ok", None), ("999", "no_text", "no debt note")]
 
 
-def test_a_question_that_names_no_reason_leaves_the_no_text_row_without_one(http_mock):
-    """The second return value is optional: a question whose ``inputs`` returns the mapping alone is asked exactly
-    as before and its ``no_text`` row carries no reason."""
-    http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
-    question()
-    run()
-    assert rows("SELECT cik, status, error FROM read_answer ORDER BY cik") == [
-        ("320193", "ok", None), ("789019", "ok", None), ("999", "no_text", None)]
-
 
 def test_a_stored_no_text_row_gains_the_reason_without_a_call(http_mock):
     """The backlog matters most: every company skipped before #1419 already has a ``no_text`` row, and a stored row
     stops a new one being written, so without this the reason would never appear for them. The row is written once
-    more with the reason and nothing is asked for it."""
+    more with the reason and nothing is asked for it.
+
+    The first run is also the guard on the old shape: a question whose ``inputs`` returns the mapping alone names
+    no reason and its row carries none. That half passes on the merge-base, which is the point of a guard, so it
+    is asserted here rather than as a test of its own that ``red-on-base`` would list as proving nothing."""
     http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
     question()
     run()
