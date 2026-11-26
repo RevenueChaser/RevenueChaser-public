@@ -321,9 +321,10 @@ def test_a_holding_reported_with_no_cusip_is_named_by_its_compustat_isin(sets, m
     con = _build_with_isins(sets, monkeypatch, [
         {"isin": "ES0113900J37", "ticker": "SAN", "valid_from": date(2019, 1, 1),
          "valid_to": date(9999, 12, 31)}], "b5")
-    # served table: the ISIN-only holding is kept and named, beside the CUSIP-named one
-    assert con.execute(f"SELECT ticker, cusip FROM {nport.TABLE} ORDER BY ticker").fetchall() == [
-        ("MSFT", "594918104"), ("SAN", None)]
+    # Served table: the ISIN-only holding is kept and named, beside the CUSIP-named one. One row per reported line,
+    # not per holding -- the fund lists Banco Santander twice (212,710,002 and 4 shares); only the history sums them.
+    assert con.execute(f"SELECT ticker, count(*), count(cusip) FROM {nport.TABLE} GROUP BY ticker "
+                       f"ORDER BY ticker").fetchall() == [("MSFT", 1, 1), ("SAN", 2, 0)]
     # history: the same holding, named in the quarter it is reported
     assert con.execute(f"SELECT ticker FROM {nport.HISTORY} WHERE isin = 'ES0113900J37'").fetchall() == [("SAN",)]
 
