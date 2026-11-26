@@ -139,6 +139,46 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+#: How many parts :func:`_table_fingerprints` falls back to when one pass does not fit the read connection's cap,
+#: in order. The checksum is a **sum** over rows, so hashing ``rowid % n = k`` for every ``k`` and adding the parts
+#: gives the identical number: the stored fingerprint's format and value do not change, nothing already stored has
+#: to be recomputed, and ``restore_live`` keeps comparing like with like. Measured on the 6.37 GB sec_forms
+#: candidate, 26 Nov 2026: all of one pass, 64 parts and 256 parts give the same count and the same checksum for
+#: every table, and ``filing_section`` -- whose rows hold business texts of 114,937 and 217,490 characters -- takes
+#: 28.23 s at a 1.32 GiB peak in 64 parts under a 1 GiB cap, where one pass under that cap raises
+#: ``OutOfMemoryException`` with **0 bytes spilled**: a string vector of a 217 kB row cannot spill.
+CHECKSUM_PARTS = (64, 256)
+
+
+def _table_checksum(conn, name: str) -> tuple[int, int]:
+    """``(row count, content checksum)`` of one table: one pass, and in parts if that does not fit the cap.
+
+    One pass first, because it is the cheaper read for the tables that fit (every table but one, on every kind).
+    ``OutOfMemoryException`` is the capped connection saying this table's rows do not fit, and it is raised rather
+    than spilled, so the answer is the same sum taken in parts. Any other ``duckdb.Error`` is a damaged file and
+    is left to the caller.
+    """
+    row = 'SELECT count(*), coalesce(sum(hash(t)::HUGEINT), 0) FROM "%s" t' % name
+    try:
+        cnt, chk = conn.execute(row).fetchone()
+        return int(cnt), int(chk)
+    except duckdb.OutOfMemoryException:
+        pass
+    for parts in CHECKSUM_PARTS:
+        try:
+            cnt = chk = 0
+            for k in range(parts):
+                c, h = conn.execute(f"{row} WHERE t.rowid % {parts} = {k}").fetchone()
+                cnt, chk = cnt + int(c), chk + int(h)
+            logger.info("fingerprint of %s read in %d parts: the whole table does not fit the read cap",
+                        name, parts)
+            return cnt, chk
+        except duckdb.OutOfMemoryException:
+            continue
+    raise BackupFailed(f"{name}: a row is too wide to hash even in {CHECKSUM_PARTS[-1]} parts under the read "
+                       f"memory cap (RC_DUCKDB_READ_MEMORY_LIMIT)")
+
+
 def _table_fingerprints(db_path: Path) -> dict[str, tuple[int, int]]:
     """``{table: (row count, content checksum)}`` of a DuckDB file, read-only.
 
@@ -155,12 +195,7 @@ def _table_fingerprints(db_path: Path) -> dict[str, tuple[int, int]]:
         names = [r[0] for r in conn.execute(
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_schema = 'main' AND table_type = 'BASE TABLE'").fetchall()]
-        out = {}
-        for n in names:
-            cnt, chk = conn.execute(
-                f'SELECT count(*), coalesce(sum(hash(t)::HUGEINT), 0) FROM "{n}" t').fetchone()
-            out[n] = (int(cnt), int(chk))
-        return out
+        return {n: _table_checksum(conn, n) for n in names}
     except duckdb.Error as exc:
         raise BackupFailed(f"could not read {db_path.name}: {exc}") from exc
     finally:
