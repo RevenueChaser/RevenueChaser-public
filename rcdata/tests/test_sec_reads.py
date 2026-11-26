@@ -763,7 +763,8 @@ def test_a_no_text_row_carries_the_reason_the_question_named(http_mock):
         {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), TEXT[c], "ours-2")
          for c in wanted if c in TEXT},
         {c: "no debt note" for c in wanted if c not in TEXT}))
-    run()
+    check = run()
+    assert check["result"] != "skipped", check["note"]    # a pass that wrote nothing says why, here
     assert rows("SELECT cik, status, error FROM read_answer ORDER BY cik") == [
         ("320193", "ok", None), ("789019", "ok", None), ("999", "no_text", "no debt note")]
 
@@ -788,7 +789,8 @@ def test_a_stored_no_text_row_gains_the_reason_without_a_call(http_mock):
         {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), TEXT[c], "ours-2")
          for c in wanted if c in TEXT},
         {c: "no debt note" for c in wanted if c not in TEXT}))
-    run()
+    check = run()
+    assert check["result"] != "skipped", check["note"]    # a pass that wrote nothing says why, here
     assert rows("SELECT cik, status, error FROM read_answer WHERE status = 'no_text'") == [
         ("999", "no_text", "no debt note")]
     assert len(http_mock.requests) == calls          # the stored answers are current; nothing was asked again
@@ -800,7 +802,8 @@ def test_a_stored_no_text_row_gains_the_reason_without_a_call(http_mock):
         {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), TEXT[c], "ours-2")
          for c in wanted if c in TEXT},
         {c: "note too long" for c in wanted if c not in TEXT}))
-    run()
+    check = run()
+    assert check["result"] != "skipped", check["note"]
     assert rows("SELECT cik, status, error FROM read_answer WHERE status = 'no_text'") == [
         ("999", "no_text", "note too long")]
     assert len(http_mock.requests) == calls          # still nothing asked for it

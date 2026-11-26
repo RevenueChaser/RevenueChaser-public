@@ -182,7 +182,15 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
             # first one. Only a row of this writer's own key is corrected; one written by another writer is left
             # alone rather than doubled. The row's ``fetched_at`` and ``run_id`` stay as filed, because the
             # observation has not changed, only the words for it.
-            old_row = have.get(_key(row))
+            # The stored row is found by question, prompt version, company and writer rather than by the whole
+            # key: a ``no_text`` row's ``accession``, ``document`` and ``input_hash`` are the empty string, and an
+            # exact eight-field match on those is the one place in this path that can silently skip the
+            # correction if a round trip ever gives one of them back as NULL. ``textless`` already asks at this
+            # granularity.
+            old_row = next((r for k, r in have.items()
+                            if k[0] == q.id and k[1] == q.prompt_version and k[2] == cik
+                            and r["status"] == asker.NO_TEXT and r.get("provider") == q.provider
+                            and r.get("model") == q.writer_model), None) or have.get(_key(row))
             why = whys.get(cik) or None
             if old_row is not None:
                 if why and old_row["status"] == asker.NO_TEXT and (old_row.get("error") or "") != why:
