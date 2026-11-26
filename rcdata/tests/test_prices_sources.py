@@ -385,12 +385,12 @@ def test_a_401_yahoo_only_logs_stops_the_run_and_an_empty_answer_is_an_error_row
     monkeypatch.setitem(sys.modules, "yfinance", fake)
     ctx = _ctx(floats.YAHOO)
     out = floats.YAHOO_FLOAT.to_parquet_all(ctx, floats.YAHOO_FLOAT.fetch(ctx, TUE))
-    assert fake.asked == ["AAPL", "BRK-B", "FLG"]                         # stopped at the 401: GAPX never asked
+    assert fake.asked == ["AAPL", "BRK-B", "FLG", "FLG", "FLG"]           # the ladder, then the stop: no GAPX
     rows = {r["ticker"]: r for p in out for r in stage.read_rows(p)}
     assert rows["AAPL"]["float_shares"] == 7.0 and rows["AAPL"]["error"] is None
     assert rows["BRK-B"]["float_shares"] is None and rows["BRK-B"]["error"] == floats.EMPTY_ANSWER
     assert "FLG" not in rows and any("yfinance stopped at FLG" in n and "401" in n for n in ctx.notes)
-    assert ctx.calls["yfinance"][:2] == [3, 2]                            # three asked, two failed
+    assert ctx.calls["yfinance"][:2] == [5, 4]                            # AAPL, BRK-B and FLG three times
 
 
 # ── TradingView float (#1473) ────────────────────────────────────────────────────────────────────────────────
