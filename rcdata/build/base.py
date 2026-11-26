@@ -178,10 +178,23 @@ def parquet_root() -> Path:
 # unless the file is there, so an unmounted disk is never written onto its mount point. Unset (tests, a laptop),
 # nothing is checked.
 RAW_MARKER_ENV = "RC_MARKET_RAW_MARKER"
+# The root itself (``core/config.py``). Unset, ``MARKET_RAW_DIR`` falls back to ``<repo>/.market_raw``, which is the
+# right default for an import, a read and the tests — but never for a fetch (#1557): a command run by hand on the
+# server sees none of the unit's environment, so the fetch wrote its raw file and its Parquet partition into the
+# live checkout, on the SSD, and still reported success. The marker above could not catch it, because it comes from
+# the same environment file: in the one case it was written for, it is switched off too. So the fetch gate asks for
+# the root to have been chosen, by this variable, before anything is downloaded.
+RAW_DIR_ENV = "RC_MARKET_RAW_DIR"
 
 
 def raw_disk_problem() -> str | None:
     """Why the raw disk is not the one the server meant, or None."""
+    if not (os.getenv(RAW_DIR_ENV) or "").strip():
+        return (f"{RAW_DIR_ENV} is not set, so the raw root would be the repository's own "
+                f"{config.MARKET_RAW_DIR}: a fetch must not write raw data inside the checkout (#1557). "
+                "On the server the unit reads the paths from /etc/life/rc-paths.env; a command run by hand sources "
+                f"it first. To fetch into the repository on purpose, set {RAW_DIR_ENV} to that path. "
+                "Nothing was fetched")
     name = (os.getenv(RAW_MARKER_ENV) or "").strip()
     if name and not (Path(config.MARKET_RAW_DIR) / name).is_file():
         return (f"the raw disk marker {name} is missing from {config.MARKET_RAW_DIR} (the raw disk is not mounted?); "
