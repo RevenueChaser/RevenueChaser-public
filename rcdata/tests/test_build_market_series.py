@@ -328,6 +328,23 @@ def test_with_a_raw_disk_marker_set_an_unmounted_disk_is_refused_before_the_fetc
     assert _run()["result"] == "changed"
 
 
+def test_the_repo_default_raw_root_is_refused_before_the_fetch(sources, monkeypatch, tmp_path):
+    """#1557: with ``RC_MARKET_RAW_DIR`` unset the root falls back to ``<repo>/.market_raw``, and a hand-run fetch
+    on the server wrote into the live checkout and still answered ``skipped``. The marker of #292 N-2 cannot catch
+    that, because it comes from the same environment file. So the fetch gate itself asks for a chosen root: nothing
+    is downloaded, and naming the repository path explicitly is still allowed."""
+    from revenuechaser.core import config
+    monkeypatch.delenv(base.RAW_DIR_ENV, raising=False)
+    monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "checkout" / ".market_raw")
+    row = _run()
+    assert row["result"] == "failed" and base.RAW_DIR_ENV in row["note"]
+    # Not "the folder does not exist": the run writes its own scratch beside the root. What must not exist is raw
+    # data in the repository, so the two roots a fetch writes to are what is checked.
+    assert sources.requests == [] and not base.raw_root().exists() and not base.parquet_root().exists()
+    monkeypatch.setenv(base.RAW_DIR_ENV, str(tmp_path / "checkout" / ".market_raw"))
+    assert _run()["result"] == "changed"
+
+
 def test_b2_a_build_refuses_a_missing_parquet_root(monkeypatch, tmp_path):
     from revenuechaser.core import config
     monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "nowhere")

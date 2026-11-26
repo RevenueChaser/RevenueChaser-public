@@ -88,7 +88,7 @@ Both roots are **relocatable by environment variable**, read once in
 | `RC_CACHE_DIR` | `OUTPUT_DIR` / `CACHE_ROOT` | `<repo>/.cache` |
 | `RC_EDGAR_DOCS_DIR` | `EDGAR_DOCS_DIR` (raw 10-K/20-F HTML tree) | `<repo>/edgar_docs` |
 | `RC_MARKET_DIR` | `MARKET_DIR`: rcdata's serving DuckDB files and `ops.sqlite` — what the boards read (see The market store) | `<repo>/.market` |
-| `RC_MARKET_RAW_DIR` | `MARKET_RAW_DIR`: the builder's raw downloads and Parquet, which are fetched again rather than backed up | `<repo>/.market_raw` |
+| `RC_MARKET_RAW_DIR` | `MARKET_RAW_DIR`: the builder's raw downloads and Parquet, which are fetched again rather than backed up. The default is for imports, reads and the tests: a **fetch** refuses while this variable is unset (#1557) | `<repo>/.market_raw` |
 
 They are read **at import**, and that is deliberate rather than incidental. Some
 twenty module-level constants derive from these roots — `app/runners.py`'s
@@ -1027,6 +1027,13 @@ renders at once with what is stored.
 | `RC_MARKET_DIR` | `MARKET_DIR` | The serving DuckDB files and `ops.sqlite` (the server's SSD); with `RC_REDIS_URL` set and no `RC_REDIS_NAMESPACE`, also the key of the Redis namespace the ops state lives in |
 | `RC_MARKET_RAW_DIR` | `MARKET_RAW_DIR` | `raw/<source>/<dataset>/...` and `parquet/<source>/<dataset>/<partition>/` (the HDD) |
 | `RC_MARKET_RAW_MARKER` | `rcdata.build.base.RAW_MARKER_ENV` | Optional: a file name under `RC_MARKET_RAW_DIR` that only the mounted HDD holds; when set, a run without that file refuses before its fetch (#292 N-2). Unset, nothing is checked |
+
+The same gate (`base.raw_disk_problem`, called once in `run_request` before the fetch) also refuses while
+`RC_MARKET_RAW_DIR` itself is unset. The marker alone could not: it is read from the same environment file as the
+root, so a command run by hand on the server — which sees neither — fell back to `<repo>/.market_raw`, wrote its
+raw file and its Parquet partition into the live checkout on the SSD, and still reported success (#1557, measured
+26 Nov 2026 on the final `uw/institutions` snapshot). The repo-local default stays the default for an import, a
+read and the tests; a fetch into it has to name the path.
 
 **Build memory.** The one read-write connection of a build (`serving.build`) is opened with DuckDB's `memory_limit`
 and `threads` from `RC_DUCKDB_THREADS` (default `3`); an empty or invalid value keeps the default. The memory limit
