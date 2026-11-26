@@ -2,10 +2,13 @@
 (``yfinance/float``, the check).
 
 **``yfinance/float``** asks Yahoo (the ``yfinance`` library, one ``Ticker.get_info`` per name) for every Tier A
-name a run, with no pause and no window of ours (avo 23 Nov 2026, #1473): the names never asked first (by ticker),
-then the longest ago, so a run cut short goes on where the last one stopped. A
-401 or a 429 (Yahoo's refusal, or its rate limit) stops the run's lookups at once, and what was read before it is
-kept: the next run goes on from there. ``yfinance`` (1.7.0, measured 28 Oct 2026) raises nothing for a refusal: it logs
+name a run, with no pause and no window of ours between two names (avo 23 Nov 2026, #1473): the names never asked
+first (by ticker), then the longest ago, so a run cut short goes on where the last one stopped. Yahoo publishes no
+rate limit, so a 401 or a 429 (its refusal) is the only pace there is: the same name is asked again after the
+keyless ladder's wait (``_lookup_waiting``, ``base.HTTP_ATTEMPTS``), and only a refusal that outlasts the ladder
+stops the run's lookups, naming in the run's note how many names it had asked. What was read is kept -- the
+partial batch too, whatever ends the run (a ``Paused`` from the fetch switch leaves through ``check_cap``) -- and
+the next run goes on from there. ``yfinance`` (1.7.0, measured 28 Oct 2026) raises nothing for a refusal: it logs
 the 401 or 429 on its ``yfinance`` logger and answers an empty info, so ``_lookup`` listens to that logger and raises
 the refusal it logged when the answer is empty; an empty answer with no refusal logged is that name's error row
 (``EMPTY_ANSWER``). Raw: ``raw/yfinance/float/<as_of>/batch-<n>.json.gz``, ``BATCH`` names a file;
@@ -80,6 +83,31 @@ def _lookup(ticker: str) -> dict:
     if refused and all(v is None for v in out.values()):
         raise YahooRefused(refused[-1][:300])
     return out
+
+
+def _refused(text: str) -> bool:
+    """Whether a failed lookup's text is Yahoo refusing rather than one name's own error."""
+    return bool(STOP.search(text)) or "YFRateLimitError" in text
+
+
+def _lookup_waiting(ctx: base.RunContext, ticker: str) -> dict:
+    """:func:`_lookup`, asking the same name again after the keyless ladder's wait while Yahoo refuses
+    (``base.HTTP_ATTEMPTS``, ``base.HTTP_BACKOFF_S``: no pace of our own invented here).
+
+    Yahoo publishes no rate limit, so its refusal is the only pace there is, and a transient one must not end the
+    day's run (avo, 26 Nov 2026: "gercek rate limit ne ise onu uygula"). The waits happen **only** after a refusal:
+    between two ordinary names there is still no pause of ours (avo, 23 Nov 2026, #1473).
+    """
+    for attempt in range(1, base.HTTP_ATTEMPTS + 1):
+        ctx.count("yfinance", calls=1)
+        try:
+            return _lookup(ticker)
+        except Exception as e:  # noqa: BLE001 - the caller decides what one name's failure means
+            if attempt == base.HTTP_ATTEMPTS or not _refused(f"{type(e).__name__}: {e}"):
+                raise
+            ctx.count("yfinance", failures=1, http_429=1)
+            ctx.sleep(base.HTTP_BACKOFF_S * 2 ** (attempt - 1))
+    raise AssertionError("unreachable: the last attempt either returns or raises")
 
 
 def _num(value) -> float | None:
@@ -165,27 +193,34 @@ class YahooFloat:
                     "as_of": as_of.isoformat(), "rows": batch, "fetched_at": calendar._now().timestamp(),
                     "run_id": ctx.run_id}))
                 seq, batch = seq + 1, {}
-        for n in todo:
-            ctx.check_cap("yfinance")
-            ctx.count("yfinance", calls=1)
-            entry = {"cik": n.get("cik"), "security_id": n["security_id"]}
-            try:
-                entry.update(_lookup(n["ticker"]))
-                if all(entry.get(k) is None for k in FIELDS):
+        asked_names = 0
+        try:
+            for n in todo:
+                ctx.check_cap("yfinance")
+                entry = {"cik": n.get("cik"), "security_id": n["security_id"]}
+                try:
+                    entry.update(_lookup_waiting(ctx, n["ticker"]))
+                    if all(entry.get(k) is None for k in FIELDS):
+                        ctx.count("yfinance", failures=1)
+                        entry["error"] = EMPTY_ANSWER
+                except Exception as e:  # noqa: BLE001 - one name's failure is that name's row, a refusal stops the run
+                    text = f"{type(e).__name__}: {e}"
+                    if _refused(text):
+                        ctx.count("yfinance", failures=1, http_429=int("429" in text or "rate" in text.lower()))
+                        ctx.notes.append(f"yfinance stopped at {n['ticker']} after {asked_names} names asked "
+                                         f"this run: {text[:120]}")
+                        break
                     ctx.count("yfinance", failures=1)
-                    entry["error"] = EMPTY_ANSWER
-            except Exception as e:  # noqa: BLE001 - one name's failure is that name's row, a refusal stops the run
-                text = f"{type(e).__name__}: {e}"
-                if STOP.search(text) or type(e).__name__ == "YFRateLimitError":
-                    ctx.count("yfinance", failures=1, http_429=int("429" in text or "rate" in text.lower()))
-                    ctx.notes.append(f"yfinance stopped at {n['ticker']}: {text[:120]}")
-                    break
-                ctx.count("yfinance", failures=1)
-                entry["error"] = text[:200]
-            batch[n["ticker"]] = entry
-            if len(batch) >= BATCH:
-                flush()
-        flush()
+                    entry["error"] = text[:200]
+                batch[n["ticker"]] = entry
+                asked_names += 1
+                if len(batch) >= BATCH:
+                    flush()
+        finally:
+            # ``check_cap`` leaves through ``Paused`` (the fetch switch, a paused schedule) before the loop ends, and
+            # the names asked since the last batch file went with it: a day then read as a round quota of whole
+            # batches, which is what sent us looking for a Yahoo limit that is not published (avo, 26 Nov 2026).
+            flush()
         return out
 
     def backfill(self, ctx: base.RunContext, start, end: date) -> None:

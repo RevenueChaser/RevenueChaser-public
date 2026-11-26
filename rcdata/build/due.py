@@ -96,6 +96,13 @@ BY_HAND_WHY = "starts by hand: not due until a first run from the CLI or a Fetch
 #: The stage notes a partial run leaves (``base.skip_note``), by the modes whose run they complete: a raw + Parquet
 #: run also completes a raw-only mode, a raw-only run does not complete a raw + Parquet one.
 STAGE_DONE = {"raw": (base.NO_PARQUET_NOTE, base.NO_DUCKDB_NOTE), "parquet": (base.NO_DUCKDB_NOTE,)}
+#: The longest a dataset's data stays collected but not built (avo, 25 Nov 2026, the build-lock split, option A,
+#: Q1: "24 saat"). Past it ``stage_overdue`` holds, and the pass queues the build of what was staged whatever the
+#: source's automation mode says -- without the ceiling a source under ``raw`` or ``parquet`` automation staged
+#: every hour and was never built at all, because its own stage note counted as the mode's finished run (#1532).
+STAGE_GAP_MAX_H = 24.0
+#: The note of a build the ceiling asked for.
+STAGE_OVERDUE_WHY = "staged more than {h:.0f} h ago ({age:.0f} h): the gap ceiling asks for its build"
 
 
 def last_slot(slot: dict | None, cadence: str, now: datetime) -> datetime | None:
@@ -145,6 +152,35 @@ def _slot_waits(ds, check: dict, cadence: str) -> tuple[bool, str] | None:
 
 def _stage_done(check: dict, mode: str) -> bool:
     return check["result"] == "skipped" and str(check.get("note") or "").startswith(STAGE_DONE.get(mode, ()))
+
+
+def _staged(check: dict | None) -> bool:
+    """Whether ``check`` is a stage of any kind: a skip whose note is one of the two "do not build" switches'."""
+    return bool(check) and check.get("result") == "skipped" and str(check.get("note") or "").startswith(
+        (base.NO_PARQUET_NOTE, base.NO_DUCKDB_NOTE))
+
+
+def stage_age_h(check: dict) -> float:
+    """How many hours ago the run behind ``check`` started. A check whose run row is gone is aged by its own New
+    York day, which can only make it look older, never younger, so the ceiling never fires early."""
+    started = ops.run_started_at(check["run_id"]) if check.get("run_id") else None
+    if started is not None:
+        return max(0.0, (calendar._now().timestamp() - float(started)) / 3600.0)
+    day = date.fromisoformat(str(check["checked_on"])[:10])
+    return max(0.0, (calendar.today_ny() - day).days * 24.0)
+
+
+def stage_overdue(check: dict | None) -> float | None:
+    """The age in hours of a stage that has waited longer than :data:`STAGE_GAP_MAX_H` for its build, else None.
+
+    This is the one place the gap ceiling is decided (#1532). A ``--no-duckdb`` run leaves the data in Parquet and
+    the serving file as it was; the build that follows is seconds long and needs no provider call, so an old stage
+    is always built rather than fetched again.
+    """
+    if not _staged(check):
+        return None
+    age = stage_age_h(check)
+    return age if age >= STAGE_GAP_MAX_H else None
 
 
 def _day_raw_held(ds) -> bool:
@@ -312,15 +348,34 @@ def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
     """``(mode, why not)`` for the split passes (avo, 24 Nov 2026: a storage fetch timer always on, a storage build
     timer he switches). ``fetch``: a ``full`` source is queued as ``parquet``, so the pass never builds DuckDB.
     ``build``: only a ``full`` source whose newest check is a Parquet stage is queued, and as ``full``: the build of
-    what the fetch timer staged, at no provider call (the raw file is the resume marker)."""
+    what the fetch timer staged, at no provider call (the raw file is the resume marker).
+
+    The gap ceiling (#1532) reaches both: the build pass takes an overdue stage whatever the mode says, and the
+    fetch pass leaves it alone instead of staging over it -- a fresh stage every hour would keep the newest check
+    young for ever and the ceiling would never fire.
+    """
     if stage == "fetch":
+        overdue = stage_overdue(ops.latest_check(ds.name))
+        if overdue is not None:
+            return mode, STAGE_OVERDUE_WHY.format(h=STAGE_GAP_MAX_H, age=overdue) + ": not staged over"
         return ("parquet" if mode == "full" else mode), _fetch_hour(ds)
     if stage == "build":
+        check = ops.latest_check(ds.name)
+        if stage_overdue(check) is not None:
+            # The gap ceiling (#1532): a stage this old is built whatever the source's automation says, because
+            # under a partial mode nothing else ever would.
+            return "full", None
+        if base.long_read(ds) and _staged(check):
+            return "full", None       # option A: the short build of what a long model read staged
         if mode != "full":
             return mode, f"automation {mode}: the build pass builds only full sources"
-        check = ops.latest_check(ds.name)
         if not (check and _stage_done(check, "parquet")):
             return mode, "no staged Parquet waiting for a build"
+        return mode, None
+    if base.long_read(ds) and mode == "full":
+        # Option A (#1532): a whole pass stages a long model read and never builds it in the same turn; the build
+        # of what it staged is the next turn's ``build_only`` request (``enqueue_due``).
+        return "parquet", None
     return mode, None
 
 
@@ -347,9 +402,23 @@ def enqueue_due(datasets: dict | None = None, stage: str | None = None,
                 out.append((name, f"not due (held: {ops.switch_words(*held)})", None, False))
                 continue
             mode = ops.dataset_mode(name, datasets[name].kind)   # #527: a source's own mode wins over its kind's
-            mode, not_now = _pass_mode(datasets[name], mode, stage)
-            due, why = (False, not_now) if not_now else is_due(datasets[name], mode)
-            why += _hour_gate_words(datasets[name], stage) if due else ""
+            # The two reasons a pass builds what is waiting instead of fetching (#1532, avo 25 Nov 2026): the gap
+            # ceiling (staged more than STAGE_GAP_MAX_H hours ago), and a long model read's own stage, which this
+            # pass staged rather than build in one turn. A ``--no-duckdb`` run leaves the serving file as it was,
+            # so only a build ends the gap. ``off`` is left alone: that switch is avo's word that this source is
+            # built by hand, and the file switch above holds the same way.
+            check = None if mode == "off" or stage == "fetch" else ops.latest_check(name)
+            overdue = stage_overdue(check) if check else None
+            long_waiting = check is not None and base.long_read(datasets[name]) and _staged(check)
+            if overdue is not None or long_waiting:
+                mode, not_now = "full", None
+                due = True
+                why = (STAGE_OVERDUE_WHY.format(h=STAGE_GAP_MAX_H, age=overdue) if overdue is not None
+                       else "a long model read's stage waits for its short build")
+            else:
+                mode, not_now = _pass_mode(datasets[name], mode, stage)
+                due, why = (False, not_now) if not_now else is_due(datasets[name], mode)
+                why += _hour_gate_words(datasets[name], stage) if due else ""
         except Exception as e:  # noqa: BLE001 - a calendar past its table for one dataset must not stop the rest
             out.append((name, f"due check failed: {type(e).__name__}: {e}"[:300], None, True))
             continue
@@ -357,7 +426,8 @@ def enqueue_due(datasets: dict | None = None, stage: str | None = None,
             out.append((name, f"not due ({why})", None, False))
             continue
         try:
-            params = {"build_only": True} if stage == "build" else base.STAGE_PARAMS[mode] or None
+            params = ({"build_only": True} if stage == "build" or overdue is not None or long_waiting
+                      else base.STAGE_PARAMS[mode] or None)
             rid = ops.enqueue_once(name, params, by=REQUESTED_BY)
         except ops.BUSY_ERRORS as e:
             # ops.sqlite held past busy_timeout, or Redis not answering (as in _run_queue): this dataset waits for

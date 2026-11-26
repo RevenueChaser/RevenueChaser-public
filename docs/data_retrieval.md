@@ -217,6 +217,23 @@ provider call — the raw file it staged is the resume marker. It is for staging
 builder lock through a build each time (the fetch campaign of a kind that has never been built), or for preparing
 the data on one machine and building it on another.
 
+**The build-lock split (option A, avo 25 Nov 2026, #1532).** A dataset whose fetch is a long model read declares
+`long_read` (`sec/reads`, whose asker holds its slice for 15 minutes a run and whose `debt.note` reread goes the
+same way). The flag steers **the pass**, not a person: a pass queues such a dataset fetch-only, so it holds
+`rcdata_fetch_<dataset>` alone and no builder lock, and the next pass queues the short `build_only` turn that
+writes the serving file in seconds (`due._pass_mode`, `due.enqueue_due`). A run asked for by name and a Fetch
+press are untouched: theirs is one turn on purpose. Two rules keep the split honest:
+
+- **The gap ceiling is 24 hours** (`due.STAGE_GAP_MAX_H`). Data that has been staged for longer is built on the
+  next pass whatever the source's automation mode says, with a `build_only` request and no provider call, and the
+  fetch pass stops staging over it in the meantime. Without the ceiling a source under `raw` or `parquet`
+  automation staged every hour and was never built, because its own stage note counted as that mode's finished
+  run. An `off` source is left alone: that switch is avo's word that it is built by hand.
+- **No build beside a heavy fetch.** The build turn waits while a live `rcdata_fetch_<dataset>` lock belongs to a
+  `heavy` dataset (`base.heavy_fetch_problem`), because a heavy run reached 6.4-6.8 GB resident on homesrv's
+  15.4 GB and a build beside it is the global OOM kill of #812 again. A light fetch is not held off, which is what
+  makes the split worth having.
+
 `--no-parquet` is the raw-only mode (#498): the fetch writes what it always writes into the raw store — the
 provider's answers and the raw markers beside them (`.none` and `.absent.json` for an answer that was refused,
 `start.json` for a walk's first day) — and no Parquet partition and no serving file. The note reads

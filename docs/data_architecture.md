@@ -2475,11 +2475,16 @@ question its own call cap (avo, 19 Nov 2026: `debt.note` moved off the paid writ
 calls go through LiteLLM by unit setting (the clients' base URL from the environment), not by code. The asker
 refuses to start while the Relatedness board's model job holds its `relatedness` lock (one model job at a time),
 and stops a run after 15 minutes of asking, leaving the rest stale for the next run, so a queued pass never holds
-the builder lock for hours; a long read runs fetch-only (`--no-duckdb`) under its own lock instead. A fetch-only
-run reads its slice from `RC_SEC_READS_SLICE_S` (seconds) when it is set, because the 15-minute default exists for
-the builder lock it does not hold: at 15 minutes and EVREN's one request at a time, a 316-company backlog takes
-about a hundred passes (`debt.note`, 25 Nov 2026). A run that builds ignores the variable, and so does a value
-that is not a positive number of seconds; the run's note says that it kept the default and why.
+the builder lock for hours; a long read runs fetch-only (`--no-duckdb`) under its own lock instead. Since the
+build-lock split (option A, avo 25 Nov 2026, #1532) that route is the pass's own: the dataset declares
+`long_read`, so a pass stages it fetch-only and queues the short `build_only` turn on its next round instead of
+fetching and building in one. The data it stages is built within `due.STAGE_GAP_MAX_H` hours (24), and a build
+does not start while a `heavy` dataset is being fetched beside it (`base.heavy_fetch_problem`, the condition avo
+set when he accepted the memory risk of two processes). A fetch-only run reads its slice from
+`RC_SEC_READS_SLICE_S` (seconds) when it is set, because the 15-minute default exists for the builder lock it
+does not hold: at 15 minutes and EVREN's one request at a time, a 316-company backlog takes about a hundred
+passes (`debt.note`, 25 Nov 2026). A run that builds ignores the variable, and so does a value that is not a
+positive number of seconds; the run's note says that it kept the default and why.
 
 **Served table.** `read_answer` — one row per (question, prompt version, company, filing, document, input hash,
 provider, model): `filing_date`, `status` (`ok`, `partial`, `empty`, `no_text`), `attempts`, `answer` (the parsed
