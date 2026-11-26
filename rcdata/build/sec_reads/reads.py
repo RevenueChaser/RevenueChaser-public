@@ -180,21 +180,17 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
             # once more with it, at no call: otherwise every company skipped before this change would keep an
             # empty reason until its prompt version moved, and a company whose reason changed would keep the
             # first one. Only a row of this writer's own key is corrected; one written by another writer is left
-            # alone rather than doubled. The row's ``fetched_at`` and ``run_id`` stay as filed, because the
-            # observation has not changed, only the words for it.
-            # The stored row is found by question, prompt version, company and writer rather than by the whole
-            # key: a ``no_text`` row's ``accession``, ``document`` and ``input_hash`` are the empty string, and an
-            # exact eight-field match on those is the one place in this path that can silently skip the
-            # correction if a round trip ever gives one of them back as NULL. ``textless`` already asks at this
-            # granularity.
-            old_row = next((r for k, r in have.items()
-                            if k[0] == q.id and k[1] == q.prompt_version and k[2] == cik
-                            and r["status"] == asker.NO_TEXT and r.get("provider") == q.provider
-                            and r.get("model") == q.writer_model), None) or have.get(_key(row))
+            # alone rather than doubled. The correction carries **this run's** ``fetched_at`` and ``run_id``:
+            # ``base.upsert_partition`` merges by key and the newest ``fetched_at`` wins, so a rewrite that kept
+            # the stored one would tie with it and the winner would be whichever row ``row_number()`` happened to
+            # put first -- the correction landed on one CI run and not the next. ``fetched_at`` is the merge's
+            # ordering key, not only a timestamp.
+            old_row = have.get(_key(row))
             why = whys.get(cik) or None
             if old_row is not None:
                 if why and old_row["status"] == asker.NO_TEXT and (old_row.get("error") or "") != why:
-                    no_text.append({**old_row, "error": why})
+                    no_text.append({**old_row, "error": why, "fetched_at": time.time(),
+                                    "run_id": ctx.run_id})
             elif (q.id, q.prompt_version, cik) not in textless:
                 no_text.append({**row, "status": asker.NO_TEXT, "attempts": 0, "fetched_at": time.time(),
                                 "run_id": ctx.run_id, "error": why})
