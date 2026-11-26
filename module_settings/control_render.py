@@ -732,7 +732,10 @@ def _build_row(b: dict) -> str:
     if files is None:
         parquet = '<span class="dim">no manifest yet</span>'
     else:
-        seen = "—" if changed is None else f"{control.count(changed)} changed"
+        # ``changed`` is only taken when a caller asks for the Parquet walk, which no page render does (#1535): a
+        # cold walk of one folder per CIK measured 127 s. Unknown is said, never drawn as a zero.
+        seen = ('<span class="dim">not checked</span>' if changed is None
+                else f"{control.count(changed)} changed")
         parquet = f'{control.count(files)} files · {seen}'
     if b.get("audited_at") is None:
         audit = '<span class="dim">no round yet</span>'
@@ -759,6 +762,9 @@ def _builds(view: dict) -> str:
     Every number is read from the files themselves on each render (``newdata._build_of``), so there is no second
     copy of it to keep in step. A file built before #446 landed carries none of those tables and reads as a whole
     build with no manifest.
+
+    What has changed in Parquet since is **not** read here: it would mean walking the Parquet tree (127 s cold for
+    ``sec_forms``), so the column says "not checked" rather than a number this render did not take.
     """
     rows = view.get("builds") or []
     if not rows:
@@ -774,8 +780,10 @@ def _builds(view: dict) -> str:
             '<div class="scroll"><table class="stk"><thead><tr><th>File</th><th>Mode</th><th>Last build</th>'
             '<th>Parquet</th><th>Last audit round</th><th>Keys owed</th></tr></thead>'
             f'<tbody>{"".join(_build_row(b) for b in rows)}</tbody></table></div>'
-            '<p class="hint">&ldquo;Changed&rdquo; is the Parquet files that differ from the manifest right now, '
-            'which is what the next build acts on. A key the audit found a difference for is handed to its dataset '
+            '<p class="hint">&ldquo;Changed&rdquo; would be the Parquet files that differ from the manifest right '
+            'now, which is what the next build acts on; it says &ldquo;not checked&rdquo; here because counting it '
+            'means walking the kind&rsquo;s Parquet folders, which costs minutes on a cold cache and is not worth '
+            'a page render (#1535). A key the audit found a difference for is handed to its dataset '
             'and rebuilt on the next build; it never refuses the file. Each difference is also a build issue on '
             'the Logs board.</p></details>')
 

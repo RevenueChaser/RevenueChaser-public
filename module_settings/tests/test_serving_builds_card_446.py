@@ -33,10 +33,12 @@ def _built(kind: str = "market", mode: str | None = None) -> None:
             con.close()
 
 
-def _read(kind: str = "market") -> dict:
+def _read(kind: str = "market", *, scan_parquet: bool = False) -> dict:
+    """The card's build row. ``scan_parquet`` is the Parquet comparison, which the card itself no longer asks for
+    (#1535: a cold walk of one folder per CIK measured 127 s inside the request)."""
     with serving.open_read(kind) as con:
         names = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables()").fetchall()}
-        return newdata._build_of(kind, con, names)
+        return newdata._build_of(kind, con, names, scan_parquet=scan_parquet)
 
 
 def _write(kind: str, sql: list[tuple[str, tuple]]) -> None:
@@ -54,6 +56,7 @@ def test_a_file_from_before_446_reads_as_a_whole_build_with_no_manifest():
     _built()
     got = _read()
     assert got["files"] is None and got["changed"] is None, "no manifest is not an empty manifest"
+    assert got["changed_status"] == newdata.UNKNOWN
     assert got["audited_at"] is None and got["owed"] is None
     assert got["built_at"] is not None, "the swap stamps every file, old or new"
 
@@ -81,10 +84,12 @@ def test_the_mode_is_the_base_the_build_really_got():
 
 
 def test_the_parquet_count_is_the_manifest_and_what_differs_from_the_tree_right_now():
-    """The card's own comparison is ``dirty.changes``': a file whose size or mtime differs, a new one, a gone one.
+    """The comparison is ``dirty.changes``': a file whose size or mtime differs, a new one, a gone one.
 
-    The files go in a real ``market`` source's folder (``fred/series``), because the card asks that kind's own
-    datasets where their Parquet is, exactly as a build does."""
+    The files go in a real ``market`` source's folder (``fred/series``), because the comparison asks that kind's
+    own datasets where their Parquet is, exactly as a build does. Only a caller that asks for the walk gets this;
+    the card does not (#1535).
+    """
     folder = base.parquet_root() / fred.SOURCE / fred.DATASET_DIR / "year=2026"
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "part-0.parquet").write_bytes(b"one")
@@ -97,16 +102,22 @@ def test_the_parquet_count_is_the_manifest_and_what_differs_from_the_tree_right_
         dirty.write_manifest(con, dirty.Plan(None, {}, held, {}, ()))
     finally:
         con.close()
-    got = _read()
+    got = _read(scan_parquet=True)
     assert got["files"] == 2 and got["changed"] == 0, "nothing has moved since the manifest was written"
+    assert got["changed_status"] == newdata.CHECKED, "a number that was taken says so"
 
     (folder / "part-1.parquet").write_bytes(b"restated, and longer")
     (folder / "part-2.parquet").write_bytes(b"new")
-    got = _read()
+    got = _read(scan_parquet=True)
     assert got["files"] == 2 and got["changed"] == 2, "one restated and one new; the untouched one is not changed"
 
     (folder / "part-0.parquet").unlink()
-    assert _read()["changed"] == 3, "a gone file is changed too"
+    assert _read(scan_parquet=True)["changed"] == 3, "a gone file is changed too"
+
+    # The card's own read takes none of it: the manifest is in the file, the comparison is a walk of the tree.
+    unasked = _read()
+    assert unasked["files"] == 2 and unasked["changed"] is None
+    assert unasked["changed_status"] == newdata.UNKNOWN, "not zero, which would read as 'nothing changed'"
 
 
 def test_the_last_audit_round_is_counted_and_an_older_round_is_not_mixed_into_it():

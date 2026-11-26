@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -493,10 +494,17 @@ SAMPLE_NOTES: dict[str, tuple[str, ...]] = {
                         "check that found a difference.",),
 }
 _SAMPLE_CACHE: dict[str, tuple[str, dict | None]] = {}
+#: One lock per cache key, so a second caller that arrives during a miss waits for the first one's answer instead
+#: of computing its own (#1535: a second call to the served card started while the first was still running and paid
+#: 80.5 s of its own). The locks live in a dict guarded by ``_MISS_GUARD``; a key's lock is dropped with it.
+_MISS_LOCKS: dict[str, threading.Lock] = {}
+_MISS_GUARD = threading.Lock()
 
 
 def clear_sample_cache() -> None:
     _SAMPLE_CACHE.clear()
+    with _MISS_GUARD:
+        _MISS_LOCKS.clear()
 
 
 def _sample_hour(now: datetime) -> str:
@@ -528,8 +536,17 @@ def _cached_sample(table: str, now: datetime, read, kind: str | None = None):
     hit = _SAMPLE_CACHE.get(table)
     if hit is not None and hit[0] == key:
         return hit[1]
-    value = read(table)
-    _SAMPLE_CACHE[table] = (key, value)
+    with _MISS_GUARD:
+        lock = _MISS_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        # Read again under the lock: the caller that held it may have filled the cache while this one waited.
+        hit = _SAMPLE_CACHE.get(table)
+        if hit is not None and hit[0] == key:
+            return hit[1]
+        value = read(table)
+        _SAMPLE_CACHE[table] = (key, value)
+    with _MISS_GUARD:
+        _MISS_LOCKS.pop(key, None)
     return value
 
 
@@ -684,20 +701,32 @@ def _columns(con, table: str) -> set[str]:
         return set()
 
 
-def _build_of(kind: str, con, names: set[str]) -> dict:
+def _build_of(kind: str, con, names: set[str], *, scan_parquet: bool = False) -> dict:
     """How ``kind``'s live file was last built, for the Serving builds card (#446 step 8).
 
-    Every number is already carried inside the file by the steps before this one, so this is four queries on the
-    connection the caller already holds and opens nothing of its own: ``serving_schema_version`` says which base
-    the build got (#446 step 1), ``build_manifest`` is the Parquet tree it was built from (step 2), and
+    Every number is read from the file the caller already holds: ``serving_schema_version`` says which base the
+    build got (#446 step 1), ``build_manifest`` is the Parquet tree it was built from (step 2), and
     ``build_audit`` / ``build_audit_dirty`` are the audit's rounds and the keys it still owes (step 5).
 
-    A file that carries none of them is a file built before #446 landed: it reads as a whole build with no
+    ``changed`` -- how many Parquet files now differ from that manifest -- is **not** one of them, and is computed
+    only when ``scan_parquet`` is asked for. It is a fact about the tree on disk, not about this file, and reading
+    it means walking the kind's Parquet folders: ``dirty.scan`` globs every ``*.parquet`` and stats each one twice,
+    which measured **127.07 s cold** for ``sec_forms`` (one folder per CIK) and 55.12 s for ``ownership``, against
+    0.73 s and 1.45 s warm -- a cold directory traversal inside the request that was the whole of #1535 and #1549,
+    while every table's own ``count(*)`` is a millisecond. The old docstring here called this "four queries on the
+    connection the caller already holds", which was true of DuckDB and false of the process.
+
+    So a caller that does not ask gets ``changed = None`` with ``changed_status = "unknown"``. Unknown, not zero:
+    a build-time or background number would read 0 the moment a build ends, and 0 is exactly the value that hides
+    a stale correction from whoever is deciding a swap (Grok xReview round 2, 26 Nov 2026). A gate that reads this
+    field treats unknown as a failure, never as "nothing changed".
+
+    A file that carries none of those tables is a file built before #446 landed: it reads as a whole build with no
     manifest, never as an error.
     """
     from revenuechaser.rcdata.build import audit, base, dirty
     out: dict = {"kind": kind, "mode": None, "built_at": None, "files": None, "changed": None,
-                 "audited_at": None, "audited": None, "differs": None, "owed": None}
+                 "changed_status": UNKNOWN, "audited_at": None, "audited": None, "differs": None, "owed": None}
     if serving.VERSION_TABLE in names:
         # A file older than #446 step 1 has a version table without ``build_mode``, and so does every test fixture
         # that writes the table by hand. The card asks the file which columns it has rather than assuming: a build
@@ -714,15 +743,17 @@ def _build_of(kind: str, con, names: set[str]) -> dict:
         held = {str(p): (int(size), float(mtime)) for p, size, mtime in
                 con.execute(f"SELECT path, size, mtime FROM {dirty.MANIFEST_TABLE}").fetchall()}
         out["files"] = len(held)
-        try:
-            # The same comparison ``dirty.changes`` makes, against the manifest just read rather than through a
-            # second open of the live file: a file whose size or mtime differs, a new one and a gone one.
-            now_tree = dirty.scan(base.kind_datasets(kind))
-        except OSError:
-            now_tree = None                     # the Parquet tree is not readable from here: say nothing, not 0
-        if now_tree is not None:
-            out["changed"] = len({p for p, stat in now_tree.items() if held.get(p) != stat}
-                                 | (set(held) - set(now_tree)))
+        if scan_parquet:
+            try:
+                # The same comparison ``dirty.changes`` makes, against the manifest just read rather than through a
+                # second open of the live file: a file whose size or mtime differs, a new one and a gone one.
+                now_tree = dirty.scan(base.kind_datasets(kind))
+            except OSError:
+                now_tree = None                 # the Parquet tree is not readable from here: say nothing, not 0
+            if now_tree is not None:
+                out["changed"] = len({p for p, stat in now_tree.items() if held.get(p) != stat}
+                                     | (set(held) - set(now_tree)))
+                out["changed_status"] = CHECKED
     if audit.ROUNDS in names:
         row = con.execute(f"SELECT max(checked_at) FROM {audit.ROUNDS}").fetchone()
         last = row[0] if row else None
@@ -929,6 +960,17 @@ def _identity(counts: dict | None) -> dict:
 #: The example rows the Jobs board's file panel shows of a table or a view (the spine mock: "6 real rows").
 SERVED_SAMPLE_ROWS = 6
 
+#: What a relation's ``rows`` means: a count read from the file (tables, a millisecond each), or no count taken on
+#: this call (views, whose count runs their query -- :func:`served_count` takes it on its own call).
+COUNTED, NOT_COUNTED = "counted", "not_counted"
+#: What ``build.changed`` means: compared against the Parquet tree just now, or not computed on this call. Never a
+#: zero standing in for the second one (#1535 / #1549).
+CHECKED, UNKNOWN = "checked", "unknown"
+#: How long :func:`served_count` lets a view's count run before it gives up, so a count can never hold a request
+#: open: the budget the Grafana row allows a call is 15 s (home-server ``homeops/act.py`` ``RC_TIMEOUT``), and this
+#: call is not the one a board waits for.
+COUNT_TIMEOUT_S = 120
+
 
 def _relations(con) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
     """``({table: columns}, {view: columns})`` of the file this connection holds, its bookkeeping left out (the
@@ -967,9 +1009,14 @@ def _read_served(kind: str) -> dict:
         build_id, _ = opens.stamp_of(con, serving.VERSION_TABLE, kind)
         out = {"kind": kind, "file": serving.live_path(kind).name, "schema_version": version,
                "build": {**_build_of(kind, con, names), "build_id": build_id},
-               **{group: [{"name": n, "rows": int(con.execute(f'SELECT count(*) FROM "{n}"').fetchone()[0]),
-                           "columns": c} for n, c in rels.items()]
-                  for group, rels in (("tables", tables), ("views", views))}}
+               "tables": [{"name": n, "rows": int(con.execute(f'SELECT count(*) FROM "{n}"').fetchone()[0]),
+                           "rows_status": COUNTED, "columns": c} for n, c in tables.items()],
+               # A view holds a query, not rows, and counting it runs that query: ``price_bars_daily`` is 21.3 s
+               # cold and 11.6 s warm, over a 15 s budget on its own (#1549). The card says what the file holds --
+               # the definition and its columns -- and leaves the cardinality to :func:`served_count`, which no
+               # board waits for. ``rows`` stays a number or null, never a word: the Jobs panel sums that column.
+               "views": [{"name": n, "rows": None, "rows_status": NOT_COUNTED, "columns": c}
+                         for n, c in views.items()]}
         if kind == "spine" and {"security", "index_membership"} <= names:
             out["funnel"] = _spine_counts(con)
             out["tier_rule"] = (con.execute("SELECT max(tier_rule) FROM security").fetchone()[0]
@@ -1004,6 +1051,46 @@ def served(kind: str, now: datetime | None = None) -> dict:
              {"A": funnel["tier_a"], "B": funnel["excluded_type"], "C": funnel["otc"], "D": funnel["no_exchange"]})
     return {**got, "tier_rule": got.get("tier_rule"), "identity": _identity(funnel), "tiers": tiers,
             "my_universe": {**_my_universe_card(universe), "rule_values": asdict(mine.load_rules())}}
+
+
+def served_count(kind: str, name: str, now: datetime | None = None) -> dict:
+    """``GET /api/build/served/<kind>/count/<name>``: the row count of one table or view of ``kind``'s live file.
+
+    This is the slow path the card's ``rows_status = "not_counted"`` points at. A view's count runs the view's
+    query -- measured 21.26 s cold and 11.63 s warm for ``prices.price_bars_daily``, 3.82 s for
+    ``ownership.short_interest`` -- so it is taken here, on its own call, with its own hourly cache entry and a
+    deadline (:data:`COUNT_TIMEOUT_S`, a timer that interrupts the connection), and never on the card a board
+    waits for.
+
+    ``{name, rows, rows_status}``: ``rows`` is the number, or null with ``rows_status = "not_counted"`` when the
+    count did not finish inside the timeout. ``KeyError`` for a name the file does not hold as data, ``ValueError``
+    for a kind that is not served, :class:`SampleUnavailable` before the file's first build.
+    """
+    def read(_key):
+        con = _open_served(kind)
+        try:
+            tables, views = _relations(con)
+            if name not in tables and name not in views:
+                raise KeyError(name)
+            # DuckDB has no statement timeout -- there is no such configuration parameter, and setting one
+            # raises -- so the deadline is a timer that interrupts the connection, which makes the running
+            # statement raise `InterruptException`.
+            deadline = threading.Timer(COUNT_TIMEOUT_S, con.interrupt)
+            deadline.daemon = True
+            deadline.start()
+            try:
+                rows = int(con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0])
+            except duckdb.Error:
+                # Interrupted at the deadline, or the view's query failed on what it reads: say so, rather than
+                # a number nobody can trust.
+                return {"name": name, "rows": None, "rows_status": NOT_COUNTED}
+            finally:
+                deadline.cancel()
+            return {"name": name, "rows": rows, "rows_status": COUNTED}
+        finally:
+            con.close()
+
+    return dict(_cached_sample(f"#count/{kind}/{name}", now or datetime.now(timezone.utc), read, kind=kind))
 
 
 def read_served_sample(kind: str, table: str, now: datetime | None = None) -> dict:

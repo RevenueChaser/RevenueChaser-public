@@ -1905,10 +1905,21 @@ def api_build_issues(dataset: str):
 @app.route("/api/build/served/<kind>")
 def api_build_served(kind: str):
     """One served DuckDB file whole, for the Grafana Jobs board's file panel (avo, 23 Nov 2026): ``schema_version``,
-    ``build`` (``build_id``, ``built_at``, ``mode``), ``tables`` and ``views`` (``{name, rows, columns}``), and for
+    ``build`` (``build_id``, ``built_at``, ``mode``), ``tables`` and ``views`` (``{name, rows, rows_status,
+    columns}``: a table's rows are counted, a view's are null with ``rows_status: "not_counted"`` and belong to
+    ``/count/<table>``; ``build.changed`` is null with ``changed_status: "unknown"``, never a zero), and for
     the spine ``tier_rule``, ``identity``, ``tiers`` and ``my_universe`` (``newdata.served``). Read-only: one
     ``serving.open_read``, closed before the answer; the file's part is read at most once an hour per build."""
     return _served_answer(lambda newdata: newdata.served(kind))
+
+
+@app.route("/api/build/served/<kind>/count/<table>")
+def api_build_served_count(kind: str, table: str):
+    """The row count of one table or view of a served file: ``{kind, name, rows, rows_status}``. The card
+    (``/api/build/served/<kind>``) counts its tables, which costs a millisecond each, and leaves a view's count to
+    this call, because counting a view runs the view's query (#1549). ``rows`` is null with
+    ``rows_status: "not_counted"`` when it does not finish inside ``newdata.COUNT_TIMEOUT_S``."""
+    return _served_answer(lambda newdata: {"kind": kind, **newdata.served_count(kind, table)})
 
 
 @app.route("/api/build/served/<kind>/sample/<table>")
