@@ -267,24 +267,68 @@ class YahooStop(Exception):
 
 
 def test_yahoo_float_not_paced_and_stopped_on_429(monkeypatch):
+    """A refusal that outlasts the ladder stops the run; between two ordinary names there is still no pause of ours
+    (avo, 23 Nov 2026), and the ladder's own waits are the only ones (avo, 26 Nov 2026)."""
     asked = []
 
     def lookup(ticker):
         asked.append(ticker)
         if ticker == "FLG":
             raise YahooStop("Too Many Requests. Rate limited. HTTP 429")
-        return {"floatShares": 1000.0 * len(asked), "sharesOutstanding": 2000.0, "quoteType": "EQUITY",
-                "currency": "USD"}
+        return {"floatShares": 1000.0, "sharesOutstanding": 2000.0, "quoteType": "EQUITY", "currency": "USD"}
     monkeypatch.setattr(floats, "_lookup", lookup)
     sleeps = []
     ctx = _ctx(floats.YAHOO, sleeps=sleeps)
     out = floats.YAHOO_FLOAT.to_parquet_all(ctx, floats.YAHOO_FLOAT.fetch(ctx, TUE))
-    assert asked == ["AAPL", "BRK-B", "FLG"]                              # stopped at the 429: GAPX never asked
-    assert sleeps == []                                                   # no pause of ours (avo, 23 Nov 2026)
+    assert asked == ["AAPL", "BRK-B", "FLG", "FLG", "FLG"]                # the ladder, then the stop: no GAPX
+    assert sleeps == [2.0, 4.0]                                          # only the keyless ladder's waits
     rows = {r["ticker"]: r for p in out for r in stage.read_rows(p)}
     assert set(rows) == {"AAPL", "BRK-B"} and rows["AAPL"]["float_shares"] == 1000.0
     assert rows["BRK-B"]["security_id"] == "072726:02" and rows["AAPL"]["source_as_of"] == TUE
-    assert any("429" in n for n in ctx.notes) and ctx.calls["yfinance"][2] == 1
+    assert any("429" in n and "after 2 names asked" in n for n in ctx.notes)
+    assert ctx.calls["yfinance"][2] == 3                                 # one 429 counted per refused attempt
+
+
+def test_yahoo_float_asks_a_refused_name_again_and_keeps_it(monkeypatch):
+    """A transient refusal must not end the day's run: Yahoo publishes no limit, so the retry is the pace."""
+    asked = []
+
+    def lookup(ticker):
+        asked.append(ticker)
+        if ticker == "FLG" and asked.count("FLG") == 1:
+            raise YahooStop("Too Many Requests. Rate limited. HTTP 429")
+        return {"floatShares": 7.0, "sharesOutstanding": 8.0, "quoteType": "EQUITY", "currency": "USD"}
+    monkeypatch.setattr(floats, "_lookup", lookup)
+    sleeps = []
+    ctx = _ctx(floats.YAHOO, sleeps=sleeps)
+    out = floats.YAHOO_FLOAT.to_parquet_all(ctx, floats.YAHOO_FLOAT.fetch(ctx, TUE))
+    rows = {r["ticker"]: r for p in out for r in stage.read_rows(p)}
+    assert rows["FLG"]["float_shares"] == 7.0 and "GAPX" in rows         # FLG kept, the run went on
+    assert sleeps == [2.0] and not ctx.notes                             # one wait, no stop
+
+
+def test_yahoo_float_keeps_the_names_asked_before_a_pause(monkeypatch):
+    """``check_cap`` leaves through ``Paused`` before the loop's end: without the flush in ``finally`` the names
+    asked since the last batch file were thrown away, and the day read as a round quota of whole batches."""
+    asked = []
+
+    def lookup(ticker):
+        asked.append(ticker)
+        return {"floatShares": 3.0, "sharesOutstanding": 4.0, "quoteType": "EQUITY", "currency": "USD"}
+    monkeypatch.setattr(floats, "_lookup", lookup)
+    ctx = _ctx(floats.YAHOO)
+    real = ctx.check_cap
+
+    def pause_after_two(provider):
+        if len(asked) >= 2:
+            raise base.Paused("stopped, the prices fetch switch is off")
+        return real(provider)
+    monkeypatch.setattr(ctx, "check_cap", pause_after_two)
+    with pytest.raises(base.Paused):
+        floats.YAHOO_FLOAT.fetch(ctx, TUE)
+    kept = {t for p in sorted(floats.YAHOO_FLOAT.raw_dir(TUE).glob("batch-*.json.gz"))
+            for t in base.read_raw_json(p)["rows"]}
+    assert kept == set(asked) and len(kept) == 2                         # nothing asked was thrown away
 
 
 def test_yahoo_float_asks_every_tier_a_name_in_one_run(monkeypatch):
