@@ -314,6 +314,10 @@ class RunContext:
     #: A pass of nothing but these does not start a whole build of a kind that holds one
     #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
     scheduled: bool = False
+    #: Whether this run skips the DuckDB build (``--no-duckdb`` / ``--no-parquet`` / the fetch-only pass), so it
+    #: never takes the builder lock. ``_stage`` sets it before the fetch, because the fetch is what reads it:
+    #: ``sec_reads.asker`` lets a fetch-only run ask for longer than its default slice (risk R1 does not apply).
+    skip_build: bool = False
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
     # The seconds each step took, in the order the steps ran: ``step`` stamps the clock as it changes
     # (``__setattr__``), and ``step_times`` is what the run's ``job_runs2.counts["steps"]`` holds (review of
@@ -1540,6 +1544,7 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
         raw_only_mode = params.get("no_parquet") is True
         skip_build = (raw_only_mode or params.get("no_duckdb") is True or params.get("no_build") is True
                       or FETCH_ONLY_PASS)
+        ctx.skip_build = skip_build
         measure.begin(ctx.run_id)
         with raw_only_run(raw_only_mode):
             if mode == "backfill":

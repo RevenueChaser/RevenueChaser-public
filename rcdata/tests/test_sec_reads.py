@@ -16,6 +16,7 @@ import pytest
 from revenuechaser.core import job_lock
 from revenuechaser.core.providers import deepseek, evren
 from revenuechaser.rcdata import read, serving
+from revenuechaser.rcdata.build import base
 from revenuechaser.rcdata.build.sec_reads import asker, questions, reads
 from revenuechaser.rcdata.needs import serve
 
@@ -185,6 +186,33 @@ def test_a_run_stops_at_its_slice_and_the_next_run_asks_the_rest(http_mock, monk
     monkeypatch.setattr(asker, "SLICE_S", 900.0)
     run()
     assert len(http_mock.requests) == 2
+
+
+def test_a_fetch_only_run_asks_for_the_slice_the_environment_gives(http_mock, monkeypatch):
+    """``--no-duckdb`` takes no builder lock, so R1 does not apply and the run may ask for longer: the whole
+    reason the 15-minute slice exists is the lock this run never holds (debt.note, 25 Nov 2026)."""
+    http_mock.add("/chat/completions", chat('{"products": ["x"]}'))
+    monkeypatch.setattr(asker, "SLICE_S", -1.0)             # the default slice is spent before the first company
+    monkeypatch.setenv(asker.SLICE_ENV, "7200")
+    question()
+    fx.run(reads.NAME, reread=True, no_duckdb=True)
+    assert len(http_mock.requests) == 2                     # asked anyway: the env slice is what the run read
+
+
+def test_a_run_that_builds_ignores_the_slice_environment(http_mock, monkeypatch):
+    monkeypatch.setattr(asker, "SLICE_S", -1.0)
+    monkeypatch.setenv(asker.SLICE_ENV, "7200")
+    question()
+    check = run()
+    assert http_mock.requests == [] and "2 left for the next run" in check["note"]
+    assert asker.SLICE_ENV in check["note"]                 # and the run says why it kept the default
+
+
+def test_a_slice_value_that_is_not_positive_seconds_keeps_the_default(monkeypatch):
+    monkeypatch.setenv(asker.SLICE_ENV, "nope")
+    ctx = base.RunContext(run_id="r1", dataset=reads.NAME, skip_build=True)
+    assert asker.slice_s(ctx) == asker.SLICE_S
+    assert any(asker.SLICE_ENV in n and "positive" in n for n in ctx.notes)
 
 
 def test_a_provider_stop_keeps_the_answers_already_paid_for(http_mock):
