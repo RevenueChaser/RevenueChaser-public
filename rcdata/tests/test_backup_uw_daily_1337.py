@@ -1,7 +1,7 @@
 """``uw-raw-daily`` and the backup's own freshness number (#1337).
 
 The UW raw backup is weekly, so on 21 Nov 2026 it held nothing newer than 15 Nov while `raw/uw/option_list` was
-filled to 20 Nov: five sessions in no backup at all, of a source that ends on 9 Dec 2026 and serves no history
+filled to 20 Nov: five sessions in no backup at all, of a source that ends on 6 Dec 2026 and serves no history
 (#1283). A weekly step that runs is a step that passed, so nothing said so."""
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def test_a_daily_run_writes_one_folder_a_day_into_the_weekly_steps_folder(backup
 
 def test_the_uw_parquet_tree_is_copied_too(backup_dir, trees):
     """Parquet is otherwise never backed up, because a build writes it again from the raw files. UW's typed copy is
-    the exception: after 9 Dec 2026 neither it nor the raw day files can be fetched again, and the served option
+    the exception: after 6 Dec 2026 neither it nor the raw day files can be fetched again, and the served option
     history is 30 sessions while the Parquet keeps every one of them."""
     assert [name for name, _ in backup.uw_raw_sources()] == ["uw", "uw_parquet", "spx_gamma"]
     summary = backup.run_backup(only="uw-raw-daily")["uw-raw-daily"]

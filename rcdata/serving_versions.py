@@ -16,7 +16,7 @@ SERVING_SCHEMA_VERSION = {"market": 6, "spine": 12, "ownership": 7}
 #           News chain (#783), avo 12 Nov 2026 "FDA kesin eklensin". A day is that day's newest fetch, so the table
 #           shrinks by the source's choice like ``economic_event`` and is in ``SHRINKS_BY_CHOICE`` with it.
 # market 6: ``economic_event``'s key gains ``source``: TradingView's and the Fed's calendars
-#           (``build/econ_calendar_sources.py``) stand beside UW's before UW ends on 9 Dec 2026 (#1433 lane F,
+#           (``build/econ_calendar_sources.py``) stand beside UW's before UW ends on 6 Dec 2026 (#1433 lane F,
 #           #1417 G-4). A primary key cannot be altered in place, so the file is built whole once.
 # ownership 2: ``sec13f_ticker_period`` gains ``started_filers``, ``started_shares`` and ``stopped_shares``, its flows
 #              and new/exited holders count only the filers that reported both quarters, and ``sec13f_filer_breaks``

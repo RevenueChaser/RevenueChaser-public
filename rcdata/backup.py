@@ -5,7 +5,7 @@ One job a week (Sunday 03:30, registry row ``RC-Backup-Weekly``), everything ont
 ``<RAW_STORE_BACKUP_DIR>/weekly-v2/<step>/`` (an empty ``RAW_STORE_BACKUP_DIR`` is refused: log, exit 2, nothing
 written), the newest ``KEEP`` (4) copies of every file kept, the oldest deleted only after the new copy verified.
 Raw downloads and Parquet get no backup (they are fetched again) -- the one exception is Unusual Whales, whose
-raw **and** Parquet folders are both copied, because neither can be fetched again after 9 Dec 2026 (#1337, #1283).
+raw **and** Parquet folders are both copied, because neither can be fetched again after 6 Dec 2026 (#1337, #1283).
 Nothing leaves the machine.
 
 The steps, in the order they run (``--only`` picks some of them, or one DuckDB kind for a copy by hand):
@@ -493,7 +493,7 @@ def uw_raw_sources() -> list[tuple[str, Path]]:
 
     The UW raw folder, the UW **Parquet** folder and the SPX Gamma tree. Parquet is otherwise never backed up,
     because it is written again from the raw files -- but UW's typed copy is the only one that outlives the
-    subscription (#1337, #1283): after 9 Dec 2026 neither the raw day files nor the Parquet can be fetched again,
+    subscription (#1337, #1283): after 6 Dec 2026 neither the raw day files nor the Parquet can be fetched again,
     and the served option history is 30 sessions while the Parquet keeps every one of them.
     """
     from ..module_spx_gamma import config as spx_config
