@@ -63,6 +63,8 @@ input[type=text]{flex:1;min-width:200px}
 .prow-move .v{color:var(--text);font-weight:600}
 .tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
 .tag{background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:1px 7px;font-size:11.5px;color:var(--muted)}
+.more{display:block;width:100%;min-height:44px;margin-top:10px;background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--text);font:600 13px/1.4 inherit;cursor:pointer}
+.more:hover{border-color:var(--accent)}
 .empty{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:24px;color:var(--muted);text-align:center}
 .badge-stale{display:inline-block;margin-left:6px;padding:0 6px;border:1px solid var(--amber);border-radius:6px;color:var(--amber);font-size:11px;font-weight:600}
 .badge-writer{display:inline-block;margin-left:6px;padding:0 6px;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px}
@@ -183,6 +185,8 @@ var META = __META__;
 var WRITER = __WRITER__;
 var QUERY = "";
 var FOCAL = null;
+var VISIBLE = __VISIBLE__;
+var EXPANDED = false;
 var RCF = null;
 var BY = {};
 // The shared filter bar (rc_filters, #383 C1b) plus the board's own search box narrow the focal picker.
@@ -199,7 +203,13 @@ function onQuery(){
   render();
 }
 function onFocal(ticker){
+  // A new company opens short again (#1568).
+  if(ticker && ticker !== FOCAL) EXPANDED = false;
   if(ticker) FOCAL = ticker;
+  render();
+}
+function showAllPeers(){
+  EXPANDED = true;
   render();
 }
 function rebuildOptions(){
@@ -273,7 +283,15 @@ function render(){
   var list = INLINE ? (PEERS[FOCAL] || []) : PEERS[FOCAL];
   if(list === undefined){ loadPeers(FOCAL); body.innerHTML = '<div class="empty">Loading…</div>'; return; }
   if(list === null){ body.innerHTML = '<div class="empty">The peers did not load. Press Refresh.</div>'; return; }
-  body.innerHTML = list.map(peerRow).join("") || '<div class="empty">No peers.</div>';
+  if(!list.length){ body.innerHTML = '<div class="empty">No peers.</div>'; return; }
+  // Display fold (#1568): the first VISIBLE rows, the rest behind one button.
+  var shown = (EXPANDED || list.length <= VISIBLE) ? list : list.slice(0, VISIBLE);
+  var html = shown.map(peerRow).join("");
+  if(shown.length < list.length){
+    html += '<button type="button" class="more" onclick="showAllPeers()">Show all ' + list.length +
+      ' related companies (' + (list.length - shown.length) + ' more)</button>';
+  }
+  body.innerHTML = html;
 }
 // One small request per focal ticker; the answer is kept, so going back to a ticker costs nothing.
 function loadPeers(t){
@@ -316,6 +334,7 @@ function init(){
     # Inline: the whole board in the page. Served: no row in the page, unless there is none to fetch.
     boot = {**embedded, "peers": peers} if inline else (None if companies else embedded)
     JS = fill(JS, {"__BEYOND_H__": str(int(comov_config.DEFAULT_HORIZON)),
+                   "__VISIBLE__": str(int(config.VISIBLE_PEERS)),
                    "__MOD__": script_json(MODULE),
                    "__BOOT__": script_json(boot),
                    "__PEERS_URL__": script_json(PEERS_URL),
@@ -335,7 +354,8 @@ function init(){
         f"the stored profiles and scores with no network call. A pair's score is {config.W_DO:g} × how alike the "
         f"two business descriptions read (local embeddings) + {config.W_CHAIN:g} × the customer and supplier "
         f"types and names they share + {config.W_STRUCT:g} × matching structure (business model, role). Each "
-        f"company shows its top {config.TOP_PEERS} peers; the percentile ranks a peer among every pair compared.")
+        f"company shows its top {config.TOP_PEERS} peers — the first {config.VISIBLE_PEERS} open with the board and "
+        "the rest on the button under them; the percentile ranks a peer among every pair compared.")
     page = f"""<!DOCTYPE html>
 <html lang="en">
 <head>

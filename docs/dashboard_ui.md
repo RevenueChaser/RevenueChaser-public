@@ -376,6 +376,8 @@ nested grouping). Count is `{n} names`.
 
 - Filters first, then Theme, then **one** focal combobox. No Company B / A-vs-B.
 - Panel **Most related to** `{TICKER} — {name}`.
+- The panel opens with the first `config.VISIBLE_PEERS` peers; a full-width button (min 44 px) reveals the
+  rest of the stored `config.TOP_PEERS` and the fold returns when the focal ticker changes (#1568).
 - Each peer: ticker + full name; sector → industry; theme path coarse→medium→fine.
   Color: sector gutter (11 Morningstar names) + three theme hues.
 
