@@ -295,6 +295,67 @@ def _holdings_sql(quarter: str) -> str:
         ORDER BY accession"""
 
 
+def _live_rows(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
+    """``{table: live row count}`` for this dataset's two tables, read from the live ownership file; ``{}`` when
+    there is no live file yet (a first build has nothing to lose).
+
+    ``SourceError`` when the live file's tables cannot be listed at all. An empty catalog answer must not read as
+    "the live file holds neither table": that would be a fail-open, and the one thing this function exists to stop
+    is a 0 published over live rows (#1544, Grok xReview round 2 (a)). A live ownership file always holds tables.
+    """
+    live = serving.live_path(KIND)
+    if not live.exists():
+        return {}
+    con.execute(f"ATTACH {base.sql_path(live)} AS nport_live (READ_ONLY)")
+    try:
+        known = {r[0] for r in con.execute("SELECT table_name FROM duckdb_tables() "
+                                           "WHERE database_name = 'nport_live'").fetchall()}
+        if not known:
+            raise base.SourceError(f"{NAME}: no table of the live ownership file could be listed; refused rather "
+                                   f"than served")
+        return {t: int(con.execute(f'SELECT count(*) FROM nport_live."{t}"').fetchone()[0])
+                for t in (TABLE, HISTORY) if t in known}
+    finally:
+        con.execute("DETACH nport_live")
+
+
+def _refuse_shrink(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, counts: dict[str, int]) -> None:
+    """``SourceError`` when this build would serve far fewer rows than the live ownership file holds.
+
+    ``allow_shrink`` on a ``sec/nport`` request relaxes **both** of this dataset's tables, because
+    ``base.shrink_scope`` is ``tables`` plus ``feeds`` and :class:`Nport` declares ``tables = (TABLE, HISTORY)``.
+    A relaxed table skips ``serving._verify_against_live``'s ``before > 0 and after == 0`` **and** its
+    ``MAX_SHRINK`` check -- that is ``swap``'s own contract, a relaxed table "may shrink or empty", and
+    ``test_pr220_review_gaps`` holds it, so the shared guard is not the place to fix this. With the flag nothing
+    else stands between this build and the 14,014,752 history rows the live file held on 25 Nov 2026.
+
+    Two refusals, both read from the live file rather than from a predicate, because four paths reach 0 -- no typed
+    N-PORT quarter, no live spine ETF, no CUSIP map, and a CUSIP map that joins nothing:
+
+    * **any table at 0** while the live file holds rows for it;
+    * **the history table past** :data:`serving.MAX_SHRINK` of its live rows. Only the history table: it is
+      cumulative over quarters and has no reason to fall, while ``etf_holdings_nport`` legitimately shrinks when a
+      long-equity rule or a spine ETF set moves (ownership serving 6 lost about 1.2% of it that way).
+
+    A request that **names** a table in ``allow_shrink_tables`` means that table, so it is left alone; the broad
+    ``allow_shrink: true`` is not a request to empty either of these (#1544).
+    """
+    live, named = _live_rows(con), set(getattr(ctx, "shrink_tables", ()) or ())
+    refused = []
+    for table, built in sorted(counts.items()):
+        held = live.get(table)
+        if not held or table in named:
+            continue
+        if not built:
+            refused.append(f"{table}: 0 built, {held:,} live")
+        elif table == HISTORY and built < held * (1 - serving.MAX_SHRINK):
+            refused.append(f"{table}: {built:,} built, {held:,} live, past the "
+                           f"{serving.MAX_SHRINK:.0%} the swap allows")
+    if refused:
+        raise base.SourceError(f"{NAME}: refused rather than served -- {'; '.join(refused)}. A shrink that is "
+                               f"meant names its table in allow_shrink_tables.")
+
+
 class Nport:
     name = NAME
     kind = KIND
@@ -409,8 +470,10 @@ class Nport:
         cusips = common.spine_cusips() or {}
         if not held or not etfs or not cusips:
             ctx.notes.append(f"{TABLE}: " + ("no typed N-PORT quarter" if not held else "no live spine ETFs or CUSIPs"))
-            return {TABLE: common.create_table(con, TABLE, SERVED), HISTORY: common.create_table(con, HISTORY,
-                                                                                                  HISTORY_SERVED)}
+            counts = {TABLE: common.create_table(con, TABLE, SERVED),
+                      HISTORY: common.create_table(con, HISTORY, HISTORY_SERVED)}
+            _refuse_shrink(ctx, con, counts)
+            return counts
         # The newest quarter by its set's window (``2026q3`` sorts as its name; a dated name by its first day).
         newest = max(held, key=lambda f: (sec13f_sets.window(f.name[8:] + SUFFIX + ".zip", SUFFIX) or (date.min,))[0])
         common.temp_rows(con, "_np_etf", [("etf_ticker", "TEXT"), ("series_id", "TEXT")],
@@ -440,7 +503,9 @@ class Nport:
         con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip")
         quarters, mapped = con.execute(f"SELECT count(DISTINCT quarter), count(ticker) FROM {HISTORY}").fetchone()
         ctx.notes.append(f"{HISTORY}: {hist} holdings over {quarters} quarters ({hist - mapped} without a spine ticker)")
-        return {TABLE: n, HISTORY: hist}
+        counts = {TABLE: n, HISTORY: hist}
+        _refuse_shrink(ctx, con, counts)
+        return counts
 
     @staticmethod
     def _history(con: duckdb.DuckDBPyConnection, held: list[Path]) -> int:
