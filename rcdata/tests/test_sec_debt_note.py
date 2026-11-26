@@ -194,10 +194,12 @@ def test_a_company_with_no_input_is_named_with_the_reason_it_has_none(world):
     """#1419: the reason went only to the log, so the company's ``no_text`` row could not say why it was skipped
     and no count of the reasons could be read. ``inputs`` now returns it beside the inputs.
 
-    4's only block is a segment note, so ``note.choose`` picks nothing: ``why_skipped([])`` is "no debt note"."""
+    4's only block is a segment note, so ``note.choose`` picks nothing. ``why_skipped([])`` would say only "no
+    debt note" for every company it dropped, so the reason is named from the rows instead (Grok round 1, 26 Nov
+    2026): 4 filed an annual top-level block, and none of its names is one the question reads."""
     got, whys = debt_note.inputs(["1", "4"])
     assert list(got) == ["1"]
-    assert whys == {"4": "no debt note"}
+    assert whys == {"4": debt_note.NO_ALLOWED_NAME}
 
 
 def test_a_company_whose_chosen_note_is_unusable_is_named_with_that_reason(world, monkeypatch):
@@ -206,5 +208,21 @@ def test_a_company_whose_chosen_note_is_unusable_is_named_with_that_reason(world
     monkeypatch.setattr(note, "why_skipped", lambda chosen: "note too long" if chosen else "no debt note")
     got, whys = debt_note.inputs(["1", "4"])
     assert got == {}
-    assert whys == {"1": "note too long", "4": "no debt note"}
+    assert whys == {"1": "note too long", "4": debt_note.NO_ALLOWED_NAME}
+
+
+def test_the_three_reasons_before_a_note_is_chosen_are_told_apart(world, monkeypatch):
+    """``choose`` drops a row before ``why_skipped`` can judge it, so every company it emptied used to be stored as
+    "no debt note": a 40-F filer, a company whose debt note is nested, one whose block names are not read, and one
+    that filed no annual report at all were one count (Grok round 1, 26 Nov 2026). They are four reasons now."""
+    rows = {"8": [block(cik="8", form="40-F")],
+            "9": [block(cik="9", top=False)],
+            "4": [block("SegmentReportingDisclosureTextBlock", cik="4")]}
+    monkeypatch.setattr(read, "form_notes",
+                        lambda ciks=(), local_name=None, kind=None, text=True:
+                        [r for c in ciks for r in rows.get(c, [])])
+    got, whys = debt_note.inputs(["8", "9", "4", "10"])
+    assert got == {}
+    assert whys == {"8": debt_note.NO_ANNUAL_FORM, "9": debt_note.NO_TOP_LEVEL,
+                    "4": debt_note.NO_ALLOWED_NAME, "10": debt_note.NO_ROWS}
 

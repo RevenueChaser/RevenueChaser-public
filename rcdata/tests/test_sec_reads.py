@@ -793,3 +793,15 @@ def test_a_stored_no_text_row_gains_the_reason_without_a_call(http_mock):
         ("999", "no_text", "no debt note")]
     assert len(http_mock.requests) == calls          # the stored answers are current; nothing was asked again
 
+    # A reason that changed is replaced, not kept: the first words a company was skipped with would otherwise
+    # stand for good, and the count of reasons would describe a pass that is over (Grok round 1, 26 Nov 2026).
+    questions.QUESTIONS.clear()
+    question(inputs=lambda wanted: (
+        {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), TEXT[c], "ours-2")
+         for c in wanted if c in TEXT},
+        {c: "note too long" for c in wanted if c not in TEXT}))
+    run()
+    assert rows("SELECT cik, status, error FROM read_answer WHERE status = 'no_text'") == [
+        ("999", "no_text", "note too long")]
+    assert len(http_mock.requests) == calls          # still nothing asked for it
+

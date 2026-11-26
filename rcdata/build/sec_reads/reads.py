@@ -176,13 +176,16 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
                    "document": "", "input_hash": "", "provider": q.provider, "model": q.writer_model}
             # The question's own reason, when it named one (#1419): without it the row says only that there was
             # no text, and a coverage figure cannot be explained or its reasons counted. A row that is already
-            # stored without a reason is written once more with it, at no call: otherwise every company skipped
-            # before this change would keep an empty reason until its prompt version moved. Only a row of this
-            # writer's own key is corrected; one written by another writer is left alone rather than doubled.
+            # stored without a reason, or with a reason that is no longer the one it would be given, is written
+            # once more with it, at no call: otherwise every company skipped before this change would keep an
+            # empty reason until its prompt version moved, and a company whose reason changed would keep the
+            # first one. Only a row of this writer's own key is corrected; one written by another writer is left
+            # alone rather than doubled. The row's ``fetched_at`` and ``run_id`` stay as filed, because the
+            # observation has not changed, only the words for it.
             old_row = have.get(_key(row))
             why = whys.get(cik) or None
             if old_row is not None:
-                if why and old_row["status"] == asker.NO_TEXT and not (old_row.get("error") or ""):
+                if why and old_row["status"] == asker.NO_TEXT and (old_row.get("error") or "") != why:
                     no_text.append({**old_row, "error": why})
             elif (q.id, q.prompt_version, cik) not in textless:
                 no_text.append({**row, "status": asker.NO_TEXT, "attempts": 0, "fetched_at": time.time(),

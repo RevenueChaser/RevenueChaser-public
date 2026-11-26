@@ -95,6 +95,27 @@ def scope() -> list[str]:
     return sorted(out)
 
 
+#: A company with no ``form_notes`` row at all: it filed no annual report this service has read.
+NO_ROWS = "no note rows"
+#: Its rows hold no form :data:`sec_debt_note.FORMS` reads (a 40-F filer, say).
+NO_ANNUAL_FORM = "no annual form"
+#: Its annual rows are all nested inside another block.
+NO_TOP_LEVEL = "no top-level note"
+#: Its top-level annual blocks are all on :data:`sec_debt_note.DENY`, or none carries a name
+#: :func:`sec_debt_note.choose` reads (``DISCLOSURES`` or ``TABLES``).
+NO_ALLOWED_NAME = "no allowed note name"
+
+
+def _why_nothing_chosen(rows: list[dict]) -> str:
+    """Why :func:`sec_debt_note.choose` picked nothing from a company's rows. ``choose`` drops a row before
+    ``why_skipped`` can judge it, so the three pre-choice reasons are named from the rows themselves."""
+    if not any(r.get("form") in note.FORMS for r in rows):
+        return NO_ANNUAL_FORM
+    if not any(r.get("top_level") and r.get("form") in note.FORMS for r in rows):
+        return NO_TOP_LEVEL
+    return NO_ALLOWED_NAME
+
+
 def _input(name: str, rows: list[dict]) -> Input | str:
     """One company's input from its newest annual report's note rows (with text), or the reason it has none.
 
@@ -121,8 +142,11 @@ def inputs(ciks: list[str]) -> tuple[dict[str, Input], dict[str, str]]:
     then only the chosen names are read with text, one company at a time (a filing holds ~76 blocks; its debt note
     is a few of them).
 
-    Both skips name their reason (#1419): nothing chosen on the rows without text, and a chosen note that
-    :func:`_input` then refuses. Both reasons are ``sec_debt_note.why_skipped``'s own words.
+    Every company without an input names its reason (#1419). Three of them come before a note is chosen, and
+    ``sec_debt_note.why_skipped`` cannot tell them apart, because :func:`sec_debt_note.choose` has already dropped
+    the rows it would have judged: no note row at all, no annual form among them, and no top-level block. Naming
+    them here keeps the stored reasons a vocabulary the backlog can be counted by (Grok round 1, 26 Nov 2026);
+    ``why_skipped``'s own words carry the rest.
     """
     _ready()
     comp = company_profile.companies()
@@ -132,11 +156,14 @@ def inputs(ciks: list[str]) -> tuple[dict[str, Input], dict[str, str]]:
         by_cik: dict[str, list[dict]] = {}
         for r in read.form_notes(ciks[i:i + BATCH], text=False):
             by_cik.setdefault(common.norm_cik(r["cik"]), []).append(r)
+        for cik in ciks[i:i + BATCH]:
+            if common.norm_cik(cik) not in by_cik:
+                whys[common.norm_cik(cik)] = NO_ROWS
         for cik, rows in by_cik.items():
             chosen = note.choose(rows)
             wanted = {str(r.get("local_name")) for r in chosen}
             if not wanted:
-                whys[cik] = note.why_skipped(chosen) or "no debt note"
+                whys[cik] = _why_nothing_chosen(rows)
                 continue
             full = [r for n in sorted(wanted) for r in read.form_notes([cik], local_name=n)]
             inp = _input((comp.get(cik) or {}).get("name") or cik, full)
