@@ -197,10 +197,14 @@ def test_a_served_file_lists_its_tables_and_views_with_rows_and_columns_and_its_
     tables = {t["name"]: t for t in got["tables"]}
     assert set(tables) == {"market_series", "other"}, "the version row and the manifest are bookkeeping"
     assert tables["market_series"]["rows"] == 9 and tables["other"]["rows"] == 0
+    assert tables["market_series"]["rows_status"] == newdata.COUNTED
     assert tables["market_series"]["columns"] == [{"name": "series_id", "type": "VARCHAR"},
                                                   {"name": "obs_date", "type": "DATE"},
                                                   {"name": "value", "type": "DOUBLE"}]
-    assert got["views"] == [{"name": "series_ids", "rows": 3, "columns": [{"name": "series_id", "type": "VARCHAR"}]}]
+    # A view's count runs the view's query, so the card does not take it (#1549); ``/count/<name>`` does.
+    assert got["views"] == [{"name": "series_ids", "rows": None, "rows_status": newdata.NOT_COUNTED,
+                             "columns": [{"name": "series_id", "type": "VARCHAR"}]}]
+    assert newdata.served_count("market", "series_ids")["rows"] == 3
     assert "identity" not in got and "my_universe" not in got, "the spine's own parts are the spine's"
 
 

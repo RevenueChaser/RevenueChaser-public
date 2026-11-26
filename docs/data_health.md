@@ -1095,7 +1095,19 @@ while another member fetches or builds (`base.WAITING`), and `took_s` is every s
 
 `GET /api/build/served/<kind>` (`newdata.served`) is one served file whole: `schema_version` (the file's own
 version row), `build` (`build_id`, `built_at`, `mode` and the manifest and audit numbers), and `tables` and `views`,
-each `{name, rows, columns: [{name, type}]}`, the build's bookkeeping left out. The spine adds `tier_rule`,
+each `{name, rows, rows_status, columns: [{name, type}]}`, the build's bookkeeping left out. A **table**'s rows are
+counted on the call, which DuckDB answers from metadata in about a millisecond even at 14 million rows
+(`rows_status: "counted"`). A **view**'s are not: counting a view runs the view's query, measured 21.26 s cold and
+11.63 s warm for `prices.price_bars_daily`, over the 15 s a Grafana call is allowed on its own, so the card gives
+`rows: null` with `rows_status: "not_counted"` and the count belongs to `GET /api/build/served/<kind>/count/<name>`
+(`newdata.served_count`), which has its own hourly cache entry and a statement timeout
+(`newdata.COUNT_TIMEOUT_S`) and which no board waits for. For the same reason `build.changed` — how many Parquet
+files now differ from the manifest the file was built from — is `null` with `changed_status: "unknown"` unless a
+caller asks for the walk (`_build_of(..., scan_parquet=True)`): `dirty.scan` globs every `*.parquet` of the kind
+and stats each one twice, which measured 127.07 s cold for `sec_forms`, whose Parquet is one folder per CIK
+(#1535, #1549). Unknown is said rather than a zero, because a zero reads as "nothing changed" to whoever is
+deciding a swap. A cache miss is computed once: a second caller that arrives during one waits for its answer
+instead of starting its own read. The spine adds `tier_rule`,
 `identity` (the funnel Settings draws, with `spine/security`'s open issues), `tiers` (`{A, B, C, D}`) and
 `my_universe` (Settings' card plus `by_tier`, `entered_names` / `left_names` of its last change day and
 `rule_values`, the rules file with its entry and exit floors). `GET /api/build/served/<kind>/sample/<table>`
