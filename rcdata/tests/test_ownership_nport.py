@@ -299,6 +299,46 @@ def test_the_history_names_a_holding_after_the_cusips_owner_at_the_report_date(s
     assert con.execute(f"SELECT ticker FROM {nport.TABLE}").fetchall() == [("MSFT",)]
 
 
+def _build_with_isins(sets, monkeypatch, isin_rows, run_id):
+    """A two-quarter build whose only spine ISIN items are ``isin_rows`` (``common.spine_isin_history``'s shape)."""
+    sets.routes.insert(0, (FOLDER + NEW, _zip(TABLES, Q3), 200, {}))
+    sets.routes.insert(0, (FOLDER + OLD, _zip(TABLES, Q2), 200, {}))
+    _backfill(date(2026, 1, 1))
+    monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000002848")])
+    monkeypatch.setattr(common, "spine_cusips", lambda: {"594918104": "MSFT"})
+    monkeypatch.setattr(common, "spine_isin_history", lambda con: list(isin_rows))
+    con = duckdb.connect()
+    ctx = base.RunContext(run_id=run_id, dataset=nport.NAME)
+    nport.DATASET.build(ctx, con)
+    return con
+
+
+def test_a_holding_reported_with_no_cusip_is_named_by_its_compustat_isin(sets, monkeypatch):
+    """#1564, avo 26 Nov 2026: a foreign issuer that trades in the US has no spine ISIN, because the spine derives
+    one from the CUSIP and a CINS cannot be turned into a real ISIN. The fund reports the real ISIN and no CUSIP
+    (Accenture as IE00B4BNMY34, $191bn of ETF rows), so the holding was dropped from the served table and reached
+    the history with no ticker. Compustat's own ISIN item names it."""
+    con = _build_with_isins(sets, monkeypatch, [
+        {"isin": "ES0113900J37", "ticker": "SAN", "valid_from": date(2019, 1, 1),
+         "valid_to": date(9999, 12, 31)}], "b5")
+    # Served table: the ISIN-only holding is kept and named, beside the CUSIP-named one. One row per reported line,
+    # not per holding -- the fund lists Banco Santander twice (212,710,002 and 4 shares); only the history sums them.
+    assert con.execute(f"SELECT ticker, count(*), count(cusip) FROM {nport.TABLE} GROUP BY ticker "
+                       f"ORDER BY ticker").fetchall() == [("MSFT", 1, 1), ("SAN", 2, 0)]
+    # history: the same holding, named in the quarter it is reported
+    assert con.execute(f"SELECT ticker FROM {nport.HISTORY} WHERE isin = 'ES0113900J37'").fetchall() == [("SAN",)]
+
+
+def test_an_isin_period_that_ended_before_the_report_date_does_not_name_the_holding(sets, monkeypatch):
+    """The ISIN leg is dated for the reason #1559 gave on the CUSIP side: 4,558 securities changed ISIN at least
+    once (Medtronic was US5850551061 until 2015-01-26), so an item out of force must name nothing."""
+    con = _build_with_isins(sets, monkeypatch, [
+        {"isin": "ES0113900J37", "ticker": "OLDSAN", "valid_from": date(2019, 1, 1),
+         "valid_to": date(2026, 5, 1)}], "b6")
+    assert con.execute(f"SELECT ticker FROM {nport.TABLE}").fetchall() == [("MSFT",)]
+    assert con.execute(f"SELECT ticker FROM {nport.HISTORY} WHERE isin = 'ES0113900J37'").fetchall() == [(None,)]
+
+
 def test_the_check_counts_a_change_in_the_history_too(two_quarters):
     """Grok xReview 22 Nov 2026: a live file whose served table matches but which has no history read as
     "unchanged", so a build that changes only the history was not seen."""
