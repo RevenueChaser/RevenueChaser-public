@@ -98,5 +98,23 @@ def test_the_layer_hands_the_board_only_ok_answers_of_the_current_prompt(monkeyp
              "answer": {"total_usd": 5.0}},
             {"cik": "2", "status": "partial", "prompt_version": sec_debt_note.PROMPT_VERSION, "answer": {}},
             {"cik": "3", "status": "ok", "prompt_version": "debt.note-0", "answer": {"total_usd": 1.0}}]
-    monkeypatch.setattr(read, "sec_reads", lambda ciks, question: rows if question == "debt.note" else [])
+    monkeypatch.setattr(read, "sec_reads", lambda ciks, question, **kw: rows if question == "debt.note" else [])
     assert layer._debt_notes({"1", "2", "3"}) == {"1": {"total_usd": 5.0, "accession": "a1"}}
+
+
+def test_a_newer_partial_does_not_hide_the_companys_older_ok_answer(monkeypatch):
+    """#1545, finding G2: ``read.sec_reads`` keeps one row a company -- the newest filing, whatever its status --
+    so a company whose newest 10-K was read ``partial`` lost the ``ok`` answer of the one before it, and the board
+    showed no debt note at all. The layer asks for ``ok`` rows alone, so the ranking happens among them."""
+    stored = [{"cik": "1", "status": "partial", "prompt_version": sec_debt_note.PROMPT_VERSION,
+               "filing_date": "2026-03-01", "accession": "a2", "answer": {}},
+              {"cik": "1", "status": "ok", "prompt_version": sec_debt_note.PROMPT_VERSION,
+               "filing_date": "2025-03-01", "accession": "a1", "answer": {"total_usd": 5.0}}]
+
+    def sec_reads(ciks, question, *, statuses=("ok", "partial"), **kw):
+        """``read.sec_reads``'s own contract: the rows of ``statuses``, then one a company, newest filing first."""
+        found = [r for r in stored if r["status"] in statuses]
+        return sorted(found, key=lambda r: r["filing_date"], reverse=True)[:1]
+
+    monkeypatch.setattr(read, "sec_reads", sec_reads)
+    assert layer._debt_notes({"1"}) == {"1": {"total_usd": 5.0, "accession": "a1"}}

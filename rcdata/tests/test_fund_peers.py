@@ -2,8 +2,11 @@
 then industry, industry group, sector), the closest annual revenue first within a rung."""
 from __future__ import annotations
 
+from datetime import date
+
 import duckdb
 
+from revenuechaser.rcdata.build import ticker_history
 from revenuechaser.rcdata.build.fundamentals import tables
 
 from . import fund_fixture as fx
@@ -48,6 +51,30 @@ def test_the_ladder_fills_from_the_sub_industry_out_by_revenue():
     assert con.execute("SELECT DISTINCT ticker, revenue FROM peer_group WHERE cik = '1'").fetchall() == [
         ("AAA", 100.0)]                                                  # the company's shortest ticker
     assert con.execute("SELECT count(*) FROM peer_group WHERE cik = '7'").fetchone() == (0,)   # alone in its sector
+
+
+def test_the_company_is_not_named_by_a_symbol_it_used_to_go_by(monkeypatch):
+    """#1545: AAA is the shorter of the company's two tickers, so the old rule named it AAA -- but the spine holds
+    a closed ``tic`` period saying AAA was what the security now called AAA-B went by. A symbol the company left
+    behind never names it, and the shortest of what is left does."""
+    con = _con()
+    monkeypatch.setattr(ticker_history, "periods",
+                        lambda con=None: [ticker_history.Period("AAA", date(2020, 1, 1), date(2025, 6, 1),
+                                                                "AAA-B", "012141", "01")])
+    assert tables._peers(con, k=5) > 0
+    assert con.execute("SELECT DISTINCT ticker FROM peer_group WHERE cik = '1'").fetchall() == [("AAA-B",)]
+    # The peers of the other companies name it by that ticker too: one name per company, everywhere.
+    assert con.execute("SELECT DISTINCT peer_ticker FROM peer_group WHERE peer_cik = '1'").fetchall() == [("AAA-B",)]
+
+
+def test_a_company_all_of_whose_symbols_are_old_keeps_the_shortest(monkeypatch):
+    """A name beats none: the drop never leaves a company out of ``peer_group`` altogether (#1545)."""
+    con = _con()
+    monkeypatch.setattr(ticker_history, "periods",
+                        lambda con=None: [ticker_history.Period(t, date(2020, 1, 1), date(2025, 6, 1), "ZZZ",
+                                                                "012141", "01") for t in ("AAA", "AAA-B")])
+    assert tables._peers(con, k=5) > 0
+    assert con.execute("SELECT DISTINCT ticker FROM peer_group WHERE cik = '1'").fetchall() == [("AAA",)]
 
 
 def test_the_build_serves_it():
