@@ -31,6 +31,8 @@ AS_OF = date(2026, 11, 25)
 #: Wed 25 Nov 2026, 18:00 New York (the session is complete), the evening avo took the decision.
 WED_EVENING = datetime(2026, 11, 25, 23, 0, tzinfo=timezone.utc)
 
+#: ``kinds_full`` gives every dataset its own ``full`` automation row, and a dataset's own row wins over its
+#: kind's (#527), so these tests set the mode with ``ops.dataset_mode_set``, never ``kind_mode_set``.
 pytestmark = pytest.mark.usefixtures("kinds_full")
 
 
@@ -91,7 +93,7 @@ def test_an_ordinary_source_still_fetches_and_builds_in_one_turn(one_source):
 
 
 def test_the_build_pass_takes_a_long_reads_stage_whatever_the_mode_says(long_source, monkeypatch):
-    ops.kind_mode_set("market", "parquet", by="avo")
+    ops.dataset_mode_set(MS, "parquet", by="avo")
     _staged_check(1.0, monkeypatch)
     name, why, rid, error = _one(due.enqueue_due(stage="build"))
     assert rid is not None and not error, why
@@ -128,7 +130,7 @@ def test_a_stage_is_overdue_once_it_passes_the_ceiling(one_source, monkeypatch, 
 def test_a_stage_under_a_partial_mode_is_built_once_the_ceiling_passes(one_source, monkeypatch):
     """The gap this fixes: under ``parquet`` automation the stage note counted as the mode's finished run, so the
     source staged every hour and was never built at all."""
-    ops.kind_mode_set("market", "parquet", by="avo")
+    ops.dataset_mode_set(MS, "parquet", by="avo")
     _staged_check(2.0, monkeypatch)
     assert _one(due.enqueue_due())[2] is None and _queued() == [], "a fresh stage waits for its ordinary build"
     monkeypatch.setattr(ops, "run_started_at", lambda run_id: WED_EVENING.timestamp() - 30 * 3600.0)
@@ -147,7 +149,7 @@ def test_the_fetch_pass_does_not_stage_over_an_overdue_stage(one_source, monkeyp
 
 
 def test_the_build_pass_takes_an_overdue_raw_only_stage_too(one_source, monkeypatch):
-    ops.kind_mode_set("market", "raw", by="avo")
+    ops.dataset_mode_set(MS, "raw", by="avo")
     _staged_check(40.0, monkeypatch, note=base.NO_PARQUET_NOTE)
     name, why, rid, error = _one(due.enqueue_due(stage="build"))
     assert rid is not None and not error, why
@@ -156,7 +158,7 @@ def test_the_build_pass_takes_an_overdue_raw_only_stage_too(one_source, monkeypa
 
 def test_an_off_source_is_left_to_avos_own_hand(one_source, monkeypatch):
     """``off`` is avo's word that this source is built by hand; the ceiling does not overrule a switch."""
-    ops.kind_mode_set("market", "off", by="avo")
+    ops.dataset_mode_set(MS, "off", by="avo")
     _staged_check(90.0, monkeypatch)
     name, why, rid, error = _one(due.enqueue_due())
     assert rid is None and "automation off" in why and _queued() == []
