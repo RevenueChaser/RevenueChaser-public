@@ -2489,7 +2489,13 @@ provider, model): `filing_date`, `status` (`ok`, `partial`, `empty`, `no_text`),
 JSON), `raw` (the replies, one per chunk), `missing_chunks`, `rules_version` (the cutter version of the text), and
 `fetched_at` (when it was asked) and `run_id`; since version 2 also `form` and `input_kind` (what was read, so a
 fallback shows), `calls`, `tokens_in` and `tokens_out` (what the key has cost over every attempt) and `error` (how
-the last unusable call failed); since version 3 `report_date` (the period the filing reports on). The input hash is the hash of the system prompt and the question's staleness text:
+the last unusable call failed -- or, on a `no_text` row, which has no call, why the question found no text for
+that company: the question's own words -- for `debt.note`, `sec_debt_note.why_skipped`'s, plus the four reasons
+that come before a note is chosen, which `why_skipped` cannot tell apart because `choose` has already dropped
+those rows (`no note rows`, `no annual form`, `no top-level note`, `no allowed note name`), #1419. A question that
+names no reason leaves it empty, and a `no_text` row stored without a reason, or with one that is no longer the
+reason it would be given, is written once more with it at no call, so the companies skipped before #1419 are
+explained too); since version 3 `report_date` (the period the filing reports on). The input hash is the hash of the system prompt and the question's staleness text:
 the text sent, or `Input.hash_text` when a question leaves its context lines out of it, so a changed context does
 not pay for the answer again. An `ok` answer on (question, prompt version, company, input hash) is current
 **whoever wrote it**: changing a question's writer asks nothing again, and the reader serves every writer's rows,

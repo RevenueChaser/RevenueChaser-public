@@ -87,7 +87,8 @@ SCHEMA = [("question", "TEXT"), ("prompt_version", "TEXT"), ("cik", "TEXT"), ("a
           ("document", "TEXT"), ("filing_date", "DATE"), ("input_hash", "TEXT"), ("provider", "TEXT"),
           ("model", "TEXT"), ("status", "TEXT"), ("attempts", "INTEGER"), ("answer", "TEXT"), ("raw", "TEXT"),
           ("missing_chunks", "TEXT"), ("rules_version", "TEXT"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT"),
-          # Serving version 2: what was read, what it cost, and how the last unusable call failed.
+          # Serving version 2: what was read, what it cost, and how the last unusable call failed -- or, on a
+          # ``no_text`` row, which has no call, why the question found no text for the company (#1419).
           ("form", "TEXT"), ("input_kind", "TEXT"), ("calls", "INTEGER"), ("tokens_in", "INTEGER"),
           ("tokens_out", "INTEGER"), ("error", "TEXT"),
           # Serving version 3: the period the filing reports on (``filing_section.report_date``).
@@ -157,7 +158,7 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
     behind = tree_behind(q, have)
     if behind:
         raise base.SourceError(behind)
-    inputs = q.inputs(ciks)
+    inputs, whys = q.read_inputs(ciks)
     answered = {_text_key(k) for k, r in have.items() if r["status"] == asker.OK}
     textless = {(k[0], k[1], k[2]) for k, r in have.items() if r["status"] == asker.NO_TEXT}   # by any writer
     by_cik: dict[str, list[dict]] = {}
@@ -173,9 +174,26 @@ def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tupl
         if inp is None or not (inp.text or inp.hash):
             row = {"question": q.id, "prompt_version": q.prompt_version, "cik": cik, "accession": "",
                    "document": "", "input_hash": "", "provider": q.provider, "model": q.writer_model}
-            if _key(row) not in have and (q.id, q.prompt_version, cik) not in textless:
+            # The question's own reason, when it named one (#1419): without it the row says only that there was
+            # no text, and a coverage figure cannot be explained or its reasons counted. A row that is already
+            # stored without a reason, or with a reason that is no longer the one it would be given, is written
+            # once more with it, at no call: otherwise every company skipped before this change would keep an
+            # empty reason until its prompt version moved, and a company whose reason changed would keep the
+            # first one. Only a row of this writer's own key is corrected; one written by another writer is left
+            # alone rather than doubled. The correction carries **this run's** ``fetched_at`` and ``run_id``:
+            # ``base.upsert_partition`` merges by key and the newest ``fetched_at`` wins, so a rewrite that kept
+            # the stored one would tie with it and the winner would be whichever row ``row_number()`` happened to
+            # put first -- the correction landed on one CI run and not the next. ``fetched_at`` is the merge's
+            # ordering key, not only a timestamp.
+            old_row = have.get(_key(row))
+            why = whys.get(cik) or None
+            if old_row is not None:
+                if why and old_row["status"] == asker.NO_TEXT and (old_row.get("error") or "") != why:
+                    no_text.append({**old_row, "error": why, "fetched_at": time.time(),
+                                    "run_id": ctx.run_id})
+            elif (q.id, q.prompt_version, cik) not in textless:
                 no_text.append({**row, "status": asker.NO_TEXT, "attempts": 0, "fetched_at": time.time(),
-                                "run_id": ctx.run_id})
+                                "run_id": ctx.run_id, "error": why})
             continue
         job = asker.Job(q, cik, inp, q.input_hash(inp))
         old = have.get(_job_key(job))
