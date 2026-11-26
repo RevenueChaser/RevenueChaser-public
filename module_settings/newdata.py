@@ -1059,7 +1059,8 @@ def served_count(kind: str, name: str, now: datetime | None = None) -> dict:
     This is the slow path the card's ``rows_status = "not_counted"`` points at. A view's count runs the view's
     query -- measured 21.26 s cold and 11.63 s warm for ``prices.price_bars_daily``, 3.82 s for
     ``ownership.short_interest`` -- so it is taken here, on its own call, with its own hourly cache entry and a
-    statement timeout (:data:`COUNT_TIMEOUT_S`), and never on the card a board waits for.
+    deadline (:data:`COUNT_TIMEOUT_S`, a timer that interrupts the connection), and never on the card a board
+    waits for.
 
     ``{name, rows, rows_status}``: ``rows`` is the number, or null with ``rows_status = "not_counted"`` when the
     count did not finish inside the timeout. ``KeyError`` for a name the file does not hold as data, ``ValueError``
@@ -1071,12 +1072,20 @@ def served_count(kind: str, name: str, now: datetime | None = None) -> dict:
             tables, views = _relations(con)
             if name not in tables and name not in views:
                 raise KeyError(name)
-            con.execute(f"SET statement_timeout = '{int(COUNT_TIMEOUT_S)}s'")
+            # DuckDB has no statement timeout -- there is no such configuration parameter, and setting one
+            # raises -- so the deadline is a timer that interrupts the connection, which makes the running
+            # statement raise `InterruptException`.
+            deadline = threading.Timer(COUNT_TIMEOUT_S, con.interrupt)
+            deadline.daemon = True
+            deadline.start()
             try:
                 rows = int(con.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0])
             except duckdb.Error:
-                # Out of time, or the view's query failed: say so, rather than a number nobody can trust.
+                # Interrupted at the deadline, or the view's query failed on what it reads: say so, rather than
+                # a number nobody can trust.
                 return {"name": name, "rows": None, "rows_status": NOT_COUNTED}
+            finally:
+                deadline.cancel()
             return {"name": name, "rows": rows, "rows_status": COUNTED}
         finally:
             con.close()

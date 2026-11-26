@@ -150,3 +150,29 @@ def test_two_callers_that_miss_the_same_key_compute_it_once(monkeypatch):
         t.join(10)
         assert not t.is_alive(), "a reader did not finish"
     assert calls == ["market"], f"the file was read {len(calls)} times for one cache key"
+
+
+def test_a_count_that_cannot_be_trusted_is_not_a_number(monkeypatch, client, tmp_path):
+    """The deadline's own branch, reached deterministically.
+
+    ``served_count`` gives a view ``COUNT_TIMEOUT_S`` seconds and then interrupts the connection, because DuckDB
+    has **no** statement timeout -- ``SET statement_timeout`` raises `CatalogException: unrecognized configuration
+    parameter`. Either way the count ends in a `duckdb.Error`, and the answer is `null` with ``not_counted``, never
+    a 0 that would read as an empty view. A view over a file that has gone takes the same branch as an interrupt.
+    """
+    _market_file()
+    _no_walking(monkeypatch)
+    gone = tmp_path / "gone.parquet"
+    path = serving.live_path("market")
+    con = duckdb.connect(str(path))
+    try:
+        con.execute(f"COPY (SELECT 1 AS a) TO '{gone.as_posix()}'")
+        con.execute(f"CREATE VIEW unreadable AS SELECT * FROM read_parquet('{gone.as_posix()}')")
+    finally:
+        con.close()
+    gone.unlink()
+
+    assert newdata.served_count("market", "unreadable", now=NOW) == {
+        "name": "unreadable", "rows": None, "rows_status": newdata.NOT_COUNTED}
+    body = client.get("/api/build/served/market/count/unreadable").get_json()
+    assert body["ok"] is True and body["rows"] is None and body["rows_status"] == newdata.NOT_COUNTED

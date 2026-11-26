@@ -1100,8 +1100,10 @@ counted on the call, which DuckDB answers from metadata in about a millisecond e
 (`rows_status: "counted"`). A **view**'s are not: counting a view runs the view's query, measured 21.26 s cold and
 11.63 s warm for `prices.price_bars_daily`, over the 15 s a Grafana call is allowed on its own, so the card gives
 `rows: null` with `rows_status: "not_counted"` and the count belongs to `GET /api/build/served/<kind>/count/<name>`
-(`newdata.served_count`), which has its own hourly cache entry and a statement timeout
-(`newdata.COUNT_TIMEOUT_S`) and which no board waits for. For the same reason `build.changed` — how many Parquet
+(`newdata.served_count`), which has its own hourly cache entry and a deadline
+(`newdata.COUNT_TIMEOUT_S` seconds, a timer that interrupts the connection, because DuckDB has no statement
+timeout) and which no board waits for. A count that is interrupted, or a view whose query fails on what it reads,
+answers `rows: null` with `rows_status: "not_counted"` rather than a number nobody can trust. For the same reason `build.changed` — how many Parquet
 files now differ from the manifest the file was built from — is `null` with `changed_status: "unknown"` unless a
 caller asks for the walk (`_build_of(..., scan_parquet=True)`): `dirty.scan` globs every `*.parquet` of the kind
 and stats each one twice, which measured 127.07 s cold for `sec_forms`, whose Parquet is one folder per CIK
