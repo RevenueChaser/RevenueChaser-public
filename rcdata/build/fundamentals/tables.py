@@ -14,6 +14,7 @@ from ....core import calendar
 from ... import ops
 from .. import base
 from .. import dirty as dirty_set
+from .. import ticker_history
 from . import (KIND, common, companyfacts, earnings, estimates, facts, filings, fsds, transcripts,
                uw_earnings, wrds_fund)
 
@@ -383,13 +384,18 @@ def _earnings(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
 
 
 def _earnings_reported(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
-    """``earnings_reported``: UW's reported EPS per company and quarter, its consensus and its surprise as served."""
+    """``earnings_reported``: UW's reported EPS per company and quarter, its consensus and its surprise as served.
+
+    Named by :func:`_company_ticker`'s ticker and not by the symbol UW wrote (#1545): UW serves a two-class
+    company under each of its symbols, and an old symbol until it catches up. One row per company and quarter
+    already: ``uw_earnings`` keeps the newest at stage time (``uw_earnings.py``'s ``stage_glob`` select)."""
     _clear(con, "earnings_reported", ciks, "true")
+    _company_ticker(con)
     con.execute(f"""
         INSERT INTO earnings_reported
-        SELECT u.cik, u.ticker, u.period_end, u.report_date, u.eps_reported, u.eps_estimate, u.surprise_pct,
-               u.source, u.source_as_of, u.fetched_at, u.run_id
-        FROM {uw_earnings.STAGING} u
+        SELECT u.cik, coalesce(t.ticker, u.ticker), u.period_end, u.report_date, u.eps_reported, u.eps_estimate,
+               u.surprise_pct, u.source, u.source_as_of, u.fetched_at, u.run_id
+        FROM {uw_earnings.STAGING} u LEFT JOIN {COMPANY_TICKER} t ON t.cik = u.cik
         WHERE u.cik IN (SELECT cik FROM fundamental_company) AND u.eps_reported IS NOT NULL""")
     return common.count(con, "earnings_reported")
 
@@ -510,13 +516,21 @@ def _customers(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
 
 
 def _estimates(con: duckdb.DuckDBPyConnection, ciks=None) -> int:
-    """``estimate_latest``: each company, ticker and period's newest estimates."""
+    """``estimate_latest``: each company and period's newest estimates, named by :func:`_company_ticker`'s ticker.
+
+    One row per company and period, not per symbol the provider wrote (#1545): a two-class company's two symbols
+    carry the same company's estimates, and a board that reads the company's period got both."""
     _clear(con, "estimate_latest", ciks, "true")
-    names = ", ".join(f'"{c}"' for c, _ in estimates.schema())
+    _company_ticker(con)
+    names = ", ".join("coalesce(t.ticker, e.ticker)" if c == "ticker" else f'e."{c}"'
+                      for c, _ in estimates.schema())
     con.execute(f"""
-        INSERT INTO estimate_latest SELECT {names}, '{estimates.NAME}' FROM {estimates.STAGING}
-        WHERE cik IS NOT NULL AND ticker IS NOT NULL AND period IS NOT NULL
-        QUALIFY row_number() OVER (PARTITION BY cik, ticker, period ORDER BY source_as_of DESC, fetched_at DESC) = 1""")
+        INSERT INTO estimate_latest
+        SELECT {names}, '{estimates.NAME}'
+        FROM {estimates.STAGING} e LEFT JOIN {COMPANY_TICKER} t ON t.cik = e.cik
+        WHERE e.cik IS NOT NULL AND e.ticker IS NOT NULL AND e.period IS NOT NULL
+        QUALIFY row_number() OVER (PARTITION BY e.cik, e.period
+                                   ORDER BY e.source_as_of DESC, e.fetched_at DESC) = 1""")
     return common.count(con, "estimate_latest")
 
 
@@ -531,16 +545,18 @@ def _estimate_view(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def _peers(con: duckdb.DuckDBPyConnection, k: int = PEER_K, run_id: str | None = None, ciks=None) -> int:
-    """``peer_group`` from ``fundamental_company`` (GICS, one ticker per company: its shortest) and the newest
-    annual SEC revenue in ``fundamental_fact``."""
+    """``peer_group`` from ``fundamental_company`` (GICS, one ticker per company: :func:`_company_ticker`'s) and
+    the newest annual SEC revenue in ``fundamental_fact``."""
     _clear(con, "peer_group", ciks, "true")
+    _company_ticker(con)
     level = " ".join(f"WHEN a.{c} = b.{c} THEN {i}" for i, c in enumerate(PEER_LEVELS))
     names = "CASE r.lvl " + " ".join(f"WHEN {i} THEN '{c}'" for i, c in enumerate(PEER_LEVELS)) + " END"
     con.execute(f"""
-        WITH co AS (SELECT cik, list(ticker ORDER BY length(ticker), ticker)[1] AS ticker,
-                           any_value(gsector) AS gsector, any_value(ggroup) AS ggroup, any_value(gind) AS gind,
-                           any_value(gsubind) AS gsubind
-                    FROM fundamental_company WHERE gsector IS NOT NULL GROUP BY cik),
+        WITH co AS (SELECT t.cik, t.ticker,
+                           any_value(c.gsector) AS gsector, any_value(c.ggroup) AS ggroup,
+                           any_value(c.gind) AS gind, any_value(c.gsubind) AS gsubind
+                    FROM {COMPANY_TICKER} t JOIN fundamental_company c ON c.cik = t.cik
+                    WHERE c.gsector IS NOT NULL GROUP BY t.cik, t.ticker),
              rev AS (SELECT cik, value FROM fundamental_fact
                      WHERE field = 'revenue' AND period_type = '{facts.ANNUAL}' AND NOT preliminary
                      QUALIFY row_number() OVER (PARTITION BY cik ORDER BY fiscal_year DESC, period_end DESC) = 1),
@@ -559,6 +575,35 @@ def _peers(con: duckdb.DuckDBPyConnection, k: int = PEER_K, run_id: str | None =
 
 def _links() -> str:
     return "(SELECT DISTINCT gvkey, cik FROM fundamental_company WHERE gvkey IS NOT NULL)"
+
+
+#: The build connection's TEMP table naming each company by one ticker, written by :func:`_company_ticker`.
+COMPANY_TICKER = "_company_ticker"
+
+
+def _company_ticker(con: duckdb.DuckDBPyConnection) -> None:
+    """Write :data:`COMPANY_TICKER`, ``(cik, ticker)``: the one ticker a table keyed by company is named by.
+
+    A company can hold several of the universe's tickers (two share classes, or a rename the spine has not
+    dropped yet), and a table with one row per company and period then holds one per ticker, each named by
+    whichever symbol its source wrote (#1545). The ticker is picked the way ``peer_group`` picked it before this
+    table existed - the shortest - after the symbols ``ticker_history`` holds a closed period for (the company's
+    old names, BK before BNY) are set aside. A company all of whose tickers are old keeps the shortest of them,
+    because a name beats none; with no spine file ``ticker_history.periods()`` is empty and the rule is the
+    shortest alone.
+
+    Written by each table that needs it rather than once by :meth:`Tables.build`, so no caller has to order the
+    two and a test that builds one table on its own gets the same rule. It costs one spine read each time."""
+    old = sorted({p.symbol for p in ticker_history.periods()})
+    con.execute("CREATE OR REPLACE TEMP TABLE _old_symbol (symbol TEXT PRIMARY KEY)")
+    if old:
+        con.execute("INSERT INTO _old_symbol SELECT unnest(?)", (old,))
+    con.execute(f"""
+        CREATE OR REPLACE TEMP TABLE {COMPANY_TICKER} AS
+        WITH t AS (SELECT c.cik, c.ticker,
+                          c.ticker IN (SELECT symbol FROM _old_symbol) AS renamed
+                   FROM fundamental_company c WHERE c.ticker IS NOT NULL)
+        SELECT cik, list(ticker ORDER BY renamed, length(ticker), ticker)[1] AS ticker FROM t GROUP BY cik""")
 
 
 def _companies(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rows: list[dict], ciks=None) -> int:

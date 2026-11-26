@@ -93,6 +93,24 @@ def test_asked_again_after_a_week_and_the_newer_snapshot_wins(yf):
         (1.55, date(2026, 11, 4))]
 
 
+def test_a_company_that_changed_ticker_keeps_one_row_a_period(yf):
+    """#1545: the provider is asked under the ticker of the day, so after a rename the staging holds the company's
+    periods twice -- once under each symbol. ``estimate_latest`` is the company's newest estimates per period, so
+    it holds one row a period, named by the ticker the universe holds today (the measured 28 duplicated
+    company-periods of the audit of 21 Nov 2026)."""
+    asked, answers = yf
+    fx.spine([{**c, "ticker": "MSFTOLD"} if c["ticker"] == "MSFT" else c for c in fx.COMPANIES])
+    fx.run(estimates.NAME, "2026-10-28")
+    assert "MSFTOLD" in asked
+    fx.spine()                                                    # the rename reaches the spine
+    answers["MSFT"] = _blocks(eps_avg=1.55)
+    fx.run(estimates.NAME, "2026-11-04")
+    assert fx.q("SELECT ticker, period, eps_est_avg FROM estimate_latest WHERE cik = '789019' "
+                "ORDER BY period") == [("MSFT", "+1q", 1.6), ("MSFT", "+1y", 7.2), ("MSFT", "0q", 1.55),
+                                       ("MSFT", "0y", 6.5)]
+    assert fx.q("SELECT count(*) FROM estimate_latest WHERE ticker = 'MSFTOLD'") == [(0,)]
+
+
 def test_failures_in_a_row_stop_the_run(yf, monkeypatch):
     asked, answers = yf
     monkeypatch.setattr(estimates, "FAIL_STREAK", 2)

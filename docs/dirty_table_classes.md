@@ -101,7 +101,7 @@ The four source tables are rebuilt from all their `date=` partitions on every bu
 | `audit_flag` | derivation (whole) | — | the newest monthly `wrds/audit` snapshot is reloaded whole, so the table is rebuilt whole by every build |
 | `fundamental_revision` | cumulative | `new_as_of` range | a log of what changed between two monthly Compustat snapshots |
 | `segment_revenue`, `customer_share` | restated | key `cik` | built from the newest annual report's inline XBRL and Compustat's segments; a new report rewrites the company's rows |
-| `estimate_latest` | derivation (whole) | — | "the newest estimates per company, ticker and period"; the snapshots stay in Parquet |
+| `estimate_latest` | derivation (whole) | — | "the newest estimates per company and period", named by the company's one ticker; the snapshots stay in Parquet |
 | `fundamental_company` | derivation (whole) | — | one row per company, recomputed from the facts |
 | `peer_group` | derivation (whole) | — | each company's nearest peers on the GICS ladder, ordered by the newest annual revenue: depends on every company at once |
 

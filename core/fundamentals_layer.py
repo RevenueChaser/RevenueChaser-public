@@ -270,10 +270,14 @@ def records_many(tickers) -> dict[str, tuple[list[dict], list[dict], dict]]:
 def _debt_notes(ciks) -> dict[str, dict]:
     """``{cik: answer}`` of the SEC service's ``debt.note`` (#737): ``ok`` rows of the current prompt only, each
     answer with its ``accession``. No ``sec_reads.duckdb`` reads as no answer. Whether an answer may be used for a
-    record is ``module_fundamentals.debt.note_debt``'s."""
+    record is ``module_fundamentals.debt.note_debt``'s.
+
+    The read asks for ``ok`` rows alone, because ``read.sec_reads`` keeps one row a company -- the newest filing --
+    whatever its status: with ``partial`` read as well, a newer ``partial`` is that one row and hides the company's
+    older ``ok`` answer, which the layer then serves no note for at all (#1545, finding G2)."""
     from ..rcdata import read, sec_debt_note
     out = {}
-    for r in read.sec_reads(ciks, "debt.note"):
+    for r in read.sec_reads(ciks, "debt.note", statuses=("ok",)):
         if r.get("status") == "ok" and r.get("prompt_version") == sec_debt_note.PROMPT_VERSION \
                 and isinstance(r.get("answer"), dict):
             out[str(r["cik"])] = {**r["answer"], "accession": r.get("accession")}
