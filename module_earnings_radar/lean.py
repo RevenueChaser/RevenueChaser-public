@@ -71,10 +71,15 @@ def _strike(item: dict) -> float | None:
         return None
 
 
-def select(prints: list | None, *, spot: float | None = None, expected_move_pct: float | None = None,
+def select(prints: list | None, *, spot: float | None = None, expected_move_frac: float | None = None,
            earnings_date: date | None = None, sessions: int = R5_LEAN_SESSIONS,
            expiry_days: int = R5_LEAN_EXPIRY_DAYS, band_slack: float = R5_LEAN_BAND_SLACK) -> list:
-    """The prints R5's lean reads. ``expected_move_pct`` is R4's figure as a fraction (0.08 = 8%)."""
+    """The prints R5's lean reads. ``expected_move_frac`` is R4's expected move as a **fraction** (0.08 = 8%).
+
+    The unit is in the name on purpose (#1528): the pipeline carries the expected move in percent
+    (``_expected_move_pct`` serves 8.0 for 8%), and a percent read as a fraction makes the band 100x
+    too wide, which keeps every strike instead of slicing them.
+    """
     rows = [p for p in (prints or []) if isinstance(p, dict)]
     if not rows:
         return []
@@ -85,8 +90,8 @@ def select(prints: list | None, *, spot: float | None = None, expected_move_pct:
         rows = [p for p in rows if (_day(p.get("executed_at")) or min(keep_days)) in keep_days]
 
     low = high = None
-    if spot and spot > 0 and expected_move_pct:
-        band = abs(float(expected_move_pct)) * float(band_slack)
+    if spot and spot > 0 and expected_move_frac:
+        band = abs(float(expected_move_frac)) * float(band_slack)
         low, high = float(spot) * (1 - band), float(spot) * (1 + band)
     if low is not None:
         rows = [p for p in rows if (k := _strike(p)) is None or low <= k <= high]

@@ -755,7 +755,8 @@ class EarningsPipeline:
         # The lean reads a slice of the same answer, never a second request (#256, redesign.md R5): the last few
         # sessions, strikes inside R4's expected-move band, expiries from the report day out. ``flow`` keeps the
         # whole tape, because R8's retail share and the card's buckets are measured over all of it.
-        lean_prints = lean_slice.select(flow_recent_raw, spot=spot_num, expected_move_pct=em_pct,
+        lean_prints = lean_slice.select(flow_recent_raw, spot=spot_num,
+                                        expected_move_frac=_lean_move_frac(em_pct),
                                         earnings_date=ed if report_date else None)
         lean_flow = (self.uw.aggregate_flow(ticker, lean_prints) or {}) if lean_prints else {}
         r5 = rule5_positioning.score(
@@ -1112,6 +1113,20 @@ def _expected_move_pct(*sources: dict) -> float:
                 continue
             return v * 100 if v < 1 else v
     return 0.0
+
+
+def _lean_move_frac(em_pct: float | None) -> float | None:
+    """R5's band wants the expected move as a fraction; ``_expected_move_pct`` serves percent (#1528).
+
+    8% arrives as ``8.0`` and the band is ``abs(move) * slack``, so handing the percent straight to
+    ``lean.select`` made the band 1200% wide and kept every strike. Zero or unusable means "unknown",
+    which the slice reads as "keep every strike" - not as an empty band.
+    """
+    try:
+        value = float(em_pct)
+    except (TypeError, ValueError):
+        return None
+    return value / 100 if value else None
 
 
 def _compute_earnings_reactions(hist: list[dict], closes: list[float], ohlc: list[dict]) -> dict[str, str]:

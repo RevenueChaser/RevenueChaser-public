@@ -57,27 +57,27 @@ class TestStrikeBand:
     def test_a_strike_outside_the_expected_move_band_is_dropped(self):
         # spot 100, move 5% x slack 1.5 -> 92.5 .. 107.5
         rows = [_print("2026-08-13", strike=105.0), _print("2026-08-13", strike=150.0)]
-        kept = lean.select(rows, spot=100.0, expected_move_pct=0.05, earnings_date=ED)
+        kept = lean.select(rows, spot=100.0, expected_move_frac=0.05, earnings_date=ED)
         assert [p["strike"] for p in kept] == [105.0]
 
     def test_the_band_is_the_expected_move_widened_by_the_slack(self):
         edge = 100.0 * (1 + 0.05 * R5_LEAN_BAND_SLACK)
         rows = [_print("2026-08-13", strike=edge), _print("2026-08-13", strike=edge + 0.01)]
-        kept = lean.select(rows, spot=100.0, expected_move_pct=0.05, earnings_date=ED)
+        kept = lean.select(rows, spot=100.0, expected_move_frac=0.05, earnings_date=ED)
         assert [p["strike"] for p in kept] == [pytest.approx(edge)]
 
     def test_no_expected_move_keeps_every_strike(self):
         """The band is unknown, which is not the same as empty."""
         rows = [_print("2026-08-13", strike=1.0), _print("2026-08-13", strike=900.0)]
-        assert len(lean.select(rows, spot=100.0, expected_move_pct=None, earnings_date=ED)) == 2
+        assert len(lean.select(rows, spot=100.0, expected_move_frac=None, earnings_date=ED)) == 2
 
     def test_no_spot_keeps_every_strike(self):
         rows = [_print("2026-08-13", strike=1.0), _print("2026-08-13", strike=900.0)]
-        assert len(lean.select(rows, spot=None, expected_move_pct=0.05, earnings_date=ED)) == 2
+        assert len(lean.select(rows, spot=None, expected_move_frac=0.05, earnings_date=ED)) == 2
 
     def test_a_print_without_a_strike_is_kept(self):
         rows = [_print("2026-08-13", strike=None)]
-        assert len(lean.select(rows, spot=100.0, expected_move_pct=0.05, earnings_date=ED)) == 1
+        assert len(lean.select(rows, spot=100.0, expected_move_frac=0.05, earnings_date=ED)) == 1
 
 
 class TestExpiryProximity:
@@ -119,4 +119,4 @@ class TestEmptyAndJunk:
 
     def test_an_unparseable_timestamp_or_expiry_is_kept(self):
         rows = [_print("2026-08-13", expiry="not-a-day"), {"executed_at": "nope", "strike": 100.0}]
-        assert len(lean.select(rows, spot=100.0, expected_move_pct=0.05, earnings_date=ED)) == 2
+        assert len(lean.select(rows, spot=100.0, expected_move_frac=0.05, earnings_date=ED)) == 2

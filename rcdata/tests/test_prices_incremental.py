@@ -357,3 +357,49 @@ def test_a_yahoo_name_the_spine_picks_up_moves_to_its_new_id(live, monkeypatch):
     assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [NEWF_FIGI])) == len(days)
     assert f"sym:NEWF -> {NEWF_FIGI}" in _note(row), _note(row)
     _same_as_whole(monkeypatch, row)
+
+RNMF_CIK = "7770001"
+
+
+def test_a_renamed_yahoo_tickers_old_id_moves_to_the_spines_current_id(live, monkeypatch):
+    """#1490 finding 8 (#1509): RNMF, a fund only Yahoo prices, is served under ``cik:7770001:RNMF``. The fund is
+    then renamed: the spine carries the new ticker and not the old one, so neither the spine join nor the fund's
+    ticker claim reaches the old ticker's Yahoo file -- the file kept keying the **old** id, and the fund came out
+    under two ids from one file, the old one frozen as soon as that file stopped changing. Now the old ticker's rows
+    key to the spine's current id (``yahoo_bars.RENAMED_SQL``, the CIK a rename keeps) and the re-key guard moves the
+    old id's stored bars there, as C3 moves a re-keyed ``cik:`` id."""
+    from revenuechaser.rcdata.build.prices import yahoo_bars
+
+    from .test_prices_wrds import _spine_etf_table
+    days = ["2026-10-21", "2026-10-22", "2026-10-23", "2026-10-26", "2026-10-27"]
+    answer = [{"date": d, "open": 7.0, "high": 7.0, "low": 7.0, "close": 7.0, "volume": 900.0, "split": 0}
+              for d in days]
+    monkeypatch.setattr(yahoo_bars, "_lookup", lambda t: [dict(r) for r in answer])
+    fund = {"ticker": "RNMF", "cik": RNMF_CIK, "name": "RENAMED FUND", "exchange": "NYSE", "tier": "B",
+            "security_type": "etf", "gvkey": None, "iid": None, "composite_figi": None}
+    _respine(SPINE + [fund])
+    _spine_etf_table([("RNMF", 5e9)])
+    row = base.run_request({"dataset": yahoo_bars.NAME, "params": {"as_of": "2026-10-27", "names": ["RNMF"]}})
+    assert row["result"] != "failed", row
+    assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [f"cik:{RNMF_CIK}:RNMF"])) == len(days)
+    # The rename: the same CIK under a new ticker, and the old ticker's Yahoo file left where it is (review D2).
+    _respine(SPINE + [{**fund, "ticker": "RNMG"}])
+    _spine_etf_table([("RNMG", 5e9)])
+    row = _serve()
+    assert not _q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [f"cik:{RNMF_CIK}:RNMF"]), \
+        "the renamed fund is still served under its old ticker's id"
+    assert len(_q("SELECT 1 FROM price_bar_daily WHERE security_id = ?", [f"cik:{RNMF_CIK}:RNMG"])) == len(days)
+    assert f"cik:{RNMF_CIK}:RNMF -> cik:{RNMF_CIK}:RNMG" in _note(row), _note(row)
+    _same_as_whole(monkeypatch, row)
+    # Two securities of one CIK say nothing about which one the old ticker was: one CIK reaches an issuer's other
+    # classes (review of #1490, findings 3 and 4), so the rows stay where they are and nothing is moved.
+    import duckdb
+    con = duckdb.connect()
+    con.execute(f"CREATE TABLE {yahoo_bars.STAGING} (ticker TEXT, cik TEXT)")
+    con.execute(f"INSERT INTO {yahoo_bars.STAGING} VALUES ('RNMF', ?)", [RNMF_CIK])
+    con.execute("CREATE TABLE stg_spine (ticker TEXT, cik TEXT, security_id TEXT)")
+    con.execute("INSERT INTO stg_spine VALUES ('RNMG', ?, ?)", [RNMF_CIK, f"cik:{RNMF_CIK}:RNMG"])
+    assert con.execute(yahoo_bars.RENAMED_SQL).fetchall() == [("RNMF", f"cik:{RNMF_CIK}:RNMG")]
+    con.execute("INSERT INTO stg_spine VALUES ('RNMH', ?, ?)", [RNMF_CIK, f"cik:{RNMF_CIK}:RNMH"])
+    assert con.execute(yahoo_bars.RENAMED_SQL).fetchall() == []
+    con.close()

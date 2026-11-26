@@ -629,8 +629,9 @@ class WrdsPrices:
                 ("price_revision", ["security_id", "session_date", "close", "source", "revised_by"], mine)):
             a, r = stage.compare_live(con, table, cols, where)
             added, removed = added + a, removed + r
-        newest = max((con.execute(f"SELECT max(source_as_of) FROM {STAGING[t]}").fetchone()[0] for t in YEARLY),
-                     default=None, key=lambda d: d or date.min)
+        # The newest session staged, not the newest fetch day: the freshness label reads this as the data's age.
+        newest = max((con.execute(f"SELECT max({TABLES[t]['date']}) FROM {STAGING[t]}").fetchone()[0]
+                      for t in ("secd", "dsf")), default=None, key=lambda d: d or date.min)
         rows = sum(stage.count(con, STAGING[t]) for t in ("secd", "dsf"))
         for t in ("secd", "dsf"):
             span = con.execute(f"SELECT min(year({TABLES[t]['date']})), max(year({TABLES[t]['date']})), count(*) "

@@ -2045,8 +2045,8 @@ def api_build_timer():
 @app.route("/api/build/kinds")
 def api_build_kinds():
     """One row per serving DuckDB for the Grafana Jobs board (avo, 24 Nov 2026: a fetch time per DuckDB, steered from
-    Grafana): ``kind``, ``hours`` (Amsterdam, None = every hour), ``source`` (``kind_fetch_hours``, ``FETCH_HOURS`` or
-    ``every hour``), ``next_fetch`` (ISO, the next ``:45`` that takes it) and ``switch_on`` (its ``file-<kind>`` switch).
+    Grafana): ``kind``, ``hours`` (Amsterdam, None = every hour), ``source`` (``kind_fetch_hours`` or ``every hour``),
+    ``next_fetch`` (ISO, the next ``:45`` that takes it) and ``switch_on`` (its ``file-<kind>`` switch).
     Read-only: no row is created."""
     from revenuechaser.rcdata import ops
     from revenuechaser.rcdata.build import due
@@ -2066,7 +2066,7 @@ def api_build_kinds():
 @app.route("/api/build/fetch-hours/<kind>", methods=["POST"])
 def api_build_fetch_hours(kind: str):
     """Set the Amsterdam hours the storage fetch takes one serving file's sources at: ``{"hours": [7, 22]}``, or
-    ``{"hours": "every"}`` to drop the row (the code's own hours, ``due.FETCH_HOURS``, else every hour). 400 for an
+    ``{"hours": "every"}`` to drop the row, which is every hour. 400 for an
     unknown kind, a body without ``hours``, an empty list, all 24 hours, or anything but whole hours 0-23."""
     from revenuechaser.rcdata import ops
     from revenuechaser.rcdata.build import due

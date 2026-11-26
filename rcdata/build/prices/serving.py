@@ -92,6 +92,9 @@ TOLERANCE = 1e-4
 # shortcut: the cent rounding is read from the sample's KO rows, Alpaca does not document it; measure it on the server
 # (count of rows left, and their sizes) and narrow or widen this once a full Tier A build runs.
 HALF_CENT = 0.005
+# The newest session of a **stock** bar: the ``index:SPX`` row is written a session ahead of the equity bars, so an
+# unfiltered ``max(session_date)`` reported the store one day fresher than it is (plan v2 step 1, #1413).
+NEWEST_STOCK_SQL = "SELECT max(session_date) FROM price_bar_daily WHERE security_id NOT LIKE 'index:%'"
 FLOAT_OVER = 1.05
 FLOAT_DISAGREE = 0.25
 # A cover count behind a market cap and Yahoo's sharesOutstanding further apart than this, on the newest session up to
@@ -400,6 +403,19 @@ def _spine(con: duckdb.DuckDBPyConnection) -> int:
     return stage.count(con, "stg_spine")
 
 
+def _etf_own_start(con: duckdb.DuckDBPyConnection) -> None:
+    """``_etf_own_start``: the first session each ticker was ever seen trading by a source that keys by ticker --
+    Alpaca's bars and Yahoo's bars -- which is a fund's own listing window, whatever Compustat holds under that
+    ticker. ``universe.ETF_TIC_SERIES_SQL`` reads it: a Compustat series whose prices all stop before the fund began
+    trading is a reused ticker's earlier fund and may not be claimed by this one (review S1, #1510). A source this
+    build has no staging table for simply names no ticker, and the claim rule then behaves as it did."""
+    parts = [f"SELECT {universe.norm('ticker')} AS tic, session_date FROM {name}"
+             for name in ("stg_alpaca_bars", yahoo_bars.STAGING) if _has(con, name)]
+    body = " UNION ALL ".join(parts) or "SELECT NULL AS tic, CAST(NULL AS DATE) AS session_date WHERE false"
+    con.execute("CREATE OR REPLACE TEMP TABLE _etf_own_start AS SELECT tic, min(session_date) AS first_day "
+                f"FROM ({body}) WHERE tic IS NOT NULL AND session_date IS NOT NULL GROUP BY 1")
+
+
 def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
     """``_universe_ticker`` and ``_universe``: what this build stores (``prices.universe``, avo's rule of 4 Nov
     2026). Every stored source is filtered through ``_universe``, so a name outside today's universe -- a SPAC, a
@@ -413,7 +429,11 @@ def _universe(ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> int:
         con.execute("INSERT INTO _universe_ticker SELECT unnest(?) EXCEPT SELECT ticker FROM _universe_ticker",
                     [beside])
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe_etf AS {universe.UNIVERSE_ETF_SQL}")
+    _etf_own_start(con)
     con.execute(f"CREATE OR REPLACE TEMP TABLE _etf_tic_series AS {universe.ETF_TIC_SERIES_SQL}")
+    con.execute("CREATE OR REPLACE TEMP TABLE _yahoo_rekey AS "
+                + (yahoo_bars.RENAMED_SQL if _has(con, yahoo_bars.STAGING)
+                   else "SELECT NULL AS ticker, NULL AS security_id WHERE false"))
     con.execute(f"CREATE OR REPLACE TEMP TABLE _universe AS {universe.UNIVERSE_SQL}")
     # A fund only Yahoo prices (no spine row, no Alpaca bar, no Compustat series) is in the universe by its ticker,
     # never by its CIK: a CIK reaches an issuer's other classes (review of #1490, findings 3 and 4).
@@ -466,9 +486,11 @@ REKEYED_SQL = """
     GROUP BY 1 HAVING count(DISTINCT s.security_id) = 1"""
 
 
-# A live id the Yahoo fetch saw (``sym:T``, ``figi:X``) whose Yahoo rows this build serves under another id: Compustat
-# or the spine picked the name up (``yahoo_bars.ID``), Yahoo is not asked for it any more, and the old id would be
-# carried frozen beside the new one (review N2, avo's D1 of 24 Nov 2026 "Yeni id'ye taşı": moved as C3 moves).
+# A live id the Yahoo fetch saw (``sym:T``, ``figi:X``, ``cik:C:T``) whose Yahoo rows this build serves under another
+# id: Compustat or the spine picked the name up, or the name was renamed and its old ticker file now keys to the
+# spine's current id (``yahoo_bars.ID``, ``yahoo_bars.RENAMED_SQL``). Yahoo is not asked for the old name any more,
+# and the old id would be carried frozen beside the new one (review N2 and #1490 finding 8; avo's D1 of
+# 24 Nov 2026 "Yeni id'ye taşı": moved as C3 moves).
 YAHOO_REKEYED_SQL = f"""
     SELECT y.security_id AS old_id, any_value({yahoo_bars.ID}) AS new_id
     FROM {yahoo_bars.STAGING} y {yahoo_bars.JOIN}
@@ -492,7 +514,7 @@ def _move_rekeyed(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, live: di
     does it is a whole build with a backup."""
     old = sorted(sid for sid in live if sid.startswith("cik:"))
     pairs = dict(con.execute(REKEYED_SQL, [old]).fetchall()) if old else {}
-    if _has(con, yahoo_bars.STAGING, "_etf_tic_series", "stg_spine"):
+    if _has(con, yahoo_bars.STAGING, "_etf_tic_series", "_yahoo_rekey", "stg_spine"):
         pairs |= dict(con.execute(YAHOO_REKEYED_SQL, [sorted(set(live) - set(pairs))]).fetchall())
     if pairs:
         carried = stage.carry_live_as(con, pairs)
@@ -620,7 +642,8 @@ CREATE OR REPLACE TEMP TABLE _hist_all AS
 """
 # Yahoo's bars (``yfinance/bars``, avo 24 Nov 2026, F28): asked only for the names Compustat has not priced lately,
 # priority 3, so ``HIST_FIRST`` serves one only on a session no Compustat row of the security has. Keyed by
-# ``yahoo_bars.ID``: the Compustat series claiming a fund's ticker, else the spine's id, else the fetch's; a ``class:``
+# ``yahoo_bars.ID``: the Compustat series claiming a fund's ticker, else the spine's id, else the spine's id of a
+# renamed name's CIK (``_yahoo_rekey``), else the fetch's; a ``class:``
 # id never (review of #1490, findings 2 and 3).
 YAHOO_BARS = f"""
     SELECT {yahoo_bars.ID} AS security_id, y.session_date, y.ticker AS symbol, y.cik,
@@ -1055,7 +1078,7 @@ class PricesServing:
         # session: applied now, it would turn today's bars into a basis that does not exist yet. What is wrong with
         # the action itself (no ratio, no amount) is named at once, so a malformed one gets the window's notice;
         # only what needs the close before the ex-date, and a kind the factors never apply, waits.
-        newest = "(SELECT max(session_date) FROM price_bar_daily WHERE security_id NOT LIKE 'index:%')"
+        newest = f"({NEWEST_STOCK_SQL})"
         # The row CRSP's real ex-date stands in for (above): it records the same split, so applying it too would
         # step the basis twice, and its own day is not the day the basis changed. It stays in the table, unapplied,
         # and ``action_not_applied`` names it with this reason (avo, 22 Nov 2026).
@@ -1240,8 +1263,7 @@ class PricesServing:
     def _issues(con: duckdb.DuckDBPyConnection, have: dict[str, int], live: bool = False,
                 alpaca: list | None = None) -> list[tuple[str, str, str]]:
         found: list[tuple[str, str, str]] = []
-        newest = con.execute("SELECT max(session_date) FROM price_bar_daily WHERE security_id NOT LIKE 'index:%'"
-                             ).fetchone()[0]
+        newest = con.execute(NEWEST_STOCK_SQL).fetchone()[0]
         if newest is not None:
             # The Tier A names the store keeps (review S1 of #382): an untyped or excluded Tier A name is left out of
             # the store on purpose, so its missing bar is no finding.
@@ -1367,7 +1389,7 @@ class PricesServing:
         # On the live copy only the rebuilt rows can differ from the live file's.
         added, removed = stage.compare_live(con, "price_bar_daily", cols,
                                             incremental.where("session_date") if incremental.active(ctx) else "")
-        newest = con.execute("SELECT max(session_date) FROM price_bar_daily").fetchone()[0]
+        newest = con.execute(NEWEST_STOCK_SQL).fetchone()[0]
         n_issues = len(ctx.pending.get(NAME, []))
         ctx.notes.append(f"{n_issues} build issues found")
         return {"dataset": NAME, "result": "changed" if added or removed else "unchanged",
@@ -1548,7 +1570,8 @@ def _report_parts() -> str:
                           f"WHERE source = '{wrds_history.COMPUSTAT}'"),
             "alpaca": "SELECT security_id, session_date, close FROM _alp"}
     pair = ("SELECT '{name}' AS comparison, count(DISTINCT x.security_id) AS securities, count(*) AS sessions, "
-            f"count(*) FILTER (WHERE abs(x.close - y.close) > {TOLERANCE} * y.close) AS close_differs, "
+            f"count(*) FILTER (WHERE abs(x.close - y.close) > greatest({TOLERANCE} * y.close, {HALF_CENT})) "
+            "AS close_differs, "
             "max(abs(x.close - y.close) / y.close) AS max_close_diff, CAST(NULL AS INTEGER) AS return_differs, "
             "CAST(NULL AS DOUBLE) AS max_return_diff, min(x.session_date) AS first_session, "
             "max(x.session_date) AS last_session "

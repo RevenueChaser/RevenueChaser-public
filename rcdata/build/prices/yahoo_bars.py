@@ -40,9 +40,26 @@ STALE_SESSIONS = 5
 #: the fund's ticker (``universe.ETF_TIC_SERIES_SQL``, ``pick = 1``), so a fund Compustat picks up later keeps one id
 #: (review finding 2), else the spine's row of the ticker and CIK, else the id the fetch saw. A ``class:`` id is
 #: never served from Yahoo (finding 3): :data:`SERVED` says so.
-ID = "coalesce(e.gid, s.security_id, y.security_id)"
+ID = "coalesce(e.gid, s.security_id, r.security_id, y.security_id)"
 JOIN = ("LEFT JOIN stg_spine s ON s.ticker = y.ticker AND s.cik IS NOT DISTINCT FROM y.cik "
-        "LEFT JOIN _etf_tic_series e ON e.pick = 1 AND e.tic = " + universe.norm("y.ticker"))
+        "LEFT JOIN _etf_tic_series e ON e.pick = 1 AND e.tic = " + universe.norm("y.ticker")
+        + " LEFT JOIN _yahoo_rekey r ON r.ticker = y.ticker")
+#: ``_yahoo_rekey``: the ticker files of a **renamed** name and the security id the spine now holds it under
+#: (#1490 finding 8, #1509). The spine does not carry the old ticker any more, so neither the spine join nor the
+#: fund's ticker claim reaches those rows: they kept keying the old id, and the name was served under two ids from
+#: one file -- the old one frozen as soon as the old file stopped changing, which no check saw. The link is the CIK
+#: the fetch stored with the rows: a rename keeps the CIK. It holds only when the spine has **exactly one** security
+#: of that CIK, under another ticker, because one CIK reaches an issuer's other classes (review of #1490, findings 3
+#: and 4) -- more than one and the rows stay where they are. ``prices/serving``'s re-key guard then moves the old
+#: id's stored bars to the new id, as it moves any id nothing keys any more (``_move_rekeyed``). An old and a new
+#: ticker file of one id is the shape :data:`ACTIONS_SQL` already dedups (review N1).
+RENAMED_SQL = f"""
+    SELECT y.ticker, any_value(s.security_id) AS security_id
+    FROM (SELECT DISTINCT ticker, cik FROM {STAGING} WHERE nullif(cik, '') IS NOT NULL) y
+    JOIN stg_spine s ON s.cik = y.cik AND s.ticker <> y.ticker
+    WHERE s.security_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM stg_spine o WHERE o.ticker = y.ticker)
+    GROUP BY 1 HAVING count(DISTINCT s.security_id) = 1"""
 SERVED = f"{ID} NOT LIKE 'class:%'"
 SCHEMA = [("ticker", "TEXT"), ("cik", "TEXT"), ("security_id", "TEXT"), ("session_date", "DATE"),
           ("open", "DOUBLE"), ("high", "DOUBLE"), ("low", "DOUBLE"), ("close", "DOUBLE"), ("volume", "DOUBLE"),

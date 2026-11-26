@@ -22,6 +22,7 @@ from revenuechaser.rcdata.build import base
 from revenuechaser.rcdata.build.prices import actions, bars, cover_shares, floats, wrds_history
 from revenuechaser.rcdata.build.prices import serving as prices_serving
 from revenuechaser.rcdata.build.prices import stage as prices_stage
+from revenuechaser.rcdata.build.prices import universe as prices_universe
 from revenuechaser.rcdata.build.spine import wrds
 
 from .prices_fixture import SPINE, BarsAnswer, bar, write_spine
@@ -665,6 +666,38 @@ def test_two_compustat_series_on_one_fund_ticker_store_one_and_name_the_others(f
     assert "stored 012121:01" in shared["TWIN"]
     assert "DOT.X" not in _issue_details("universe_etf_no_bar")
     wrds.reset()
+
+
+def test_a_fund_cannot_claim_a_compustat_series_that_stopped_before_it_began_trading():
+    """Review S1 (#1510): ``ETF_TIC_SERIES_SQL`` over a hand-made staging. The ticker-only claim took any series
+    carrying a routeless fund's ticker on a recent day, so a reused ticker's **earlier** fund -- one that stopped
+    trading days before the new fund's first session, inside the same recent window -- handed the new fund its whole
+    history under the earlier fund's gvkey, two funds in one series. The claim now has to reach the fund's own
+    trading window (``serving._etf_own_start``, the sources that key by ticker): a series whose newest priced day
+    falls before the first session the ticker was ever seen trading is not this fund's. The claim is dropped, not
+    cut by date, so the fund keeps its own id and its own sources' bars. A fund no ticker-keyed source has seen has
+    no window to compare, and the rule leaves its claim as it was."""
+    con = duckdb.connect()
+    con.execute("SET VARIABLE rc_build_date = DATE '2026-10-27'")
+    con.execute("CREATE TABLE stg_wrds_secd (gvkey TEXT, iid TEXT, datadate DATE, tic TEXT, prccd DOUBLE, "
+                "cshtrd DOUBLE)")
+    con.executemany("INSERT INTO stg_wrds_secd VALUES (?, ?, ?, ?, ?, ?)", [
+        ("066666", "01", "2026-10-16", "REUSE", 9.0, 1000.0),      # the earlier fund: stopped before REUSE listed
+        ("077777", "01", "2026-10-26", "KEEPS", 40.0, 2000.0),     # the fund's own series, priced to the newest day
+        ("088888", "01", "2026-10-26", "NOOWN", 12.0, 500.0)])     # a fund no ticker-keyed source has a session of
+    con.execute("CREATE TABLE stg_spine (ticker TEXT, gvkey TEXT, security_id TEXT)")
+    con.execute("CREATE TABLE _universe_etf AS SELECT * FROM (VALUES ('REUSE', 'REUSE'), ('KEEPS', 'KEEPS'), "
+                "('NOOWN', 'NOOWN')) t(ticker, tic)")
+    con.execute("CREATE TABLE stg_alpaca_bars (ticker TEXT, session_date DATE)")
+    con.executemany("INSERT INTO stg_alpaca_bars VALUES (?, ?)", [
+        ("REUSE", "2026-10-20"), ("REUSE", "2026-10-26"),          # the new fund's own first session is the 20th
+        ("KEEPS", "2026-10-01")])
+    prices_serving._etf_own_start(con)
+    assert dict(con.execute("SELECT tic, first_day FROM _etf_own_start").fetchall()) == {
+        "REUSE": date(2026, 10, 20), "KEEPS": date(2026, 10, 1)}
+    claims = dict(con.execute(f"SELECT tic, gid FROM ({prices_universe.ETF_TIC_SERIES_SQL}) WHERE pick = 1"
+                              ).fetchall())
+    assert claims == {"KEEPS": "077777:01", "NOOWN": "088888:01"}, claims
 
 
 def test_a_fund_only_my_universe_holds_is_stored_and_checked(fake):

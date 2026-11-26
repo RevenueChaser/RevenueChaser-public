@@ -314,6 +314,10 @@ class RunContext:
     #: A pass of nothing but these does not start a whole build of a kind that holds one
     #: (:class:`WholeBuildByHand`); everything else -- a Fetch press, the CLI, a build called directly -- does.
     scheduled: bool = False
+    #: Whether this run skips the DuckDB build (``--no-duckdb`` / ``--no-parquet`` / the fetch-only pass), so it
+    #: never takes the builder lock. ``_stage`` sets it before the fetch, because the fetch is what reads it:
+    #: ``sec_reads.asker`` lets a fetch-only run ask for longer than its default slice (risk R1 does not apply).
+    skip_build: bool = False
     scope: Scope = field(default_factory=Scope)                     # a request's "tiers" / "names" (empty: daily)
     # The seconds each step took, in the order the steps ran: ``step`` stamps the clock as it changes
     # (``__setattr__``), and ``step_times`` is what the run's ``job_runs2.counts["steps"]`` holds (review of
@@ -1036,6 +1040,49 @@ def heavy_names() -> frozenset[str]:
     return frozenset(name for name, ds in DATASETS.items() if heavy(ds))
 
 
+#: The prefix of a fetch-only run's own lock (``job_lock.WRITES_PREFIX``, ``__main__._fetch_lock_names``).
+FETCH_LOCK_PREFIX = "rcdata_fetch_"
+
+
+def fetch_lock_name(dataset: str) -> str:
+    """The ``rcdata_fetch_<dataset>`` lock of one dataset's fetch-only run; ``/`` becomes ``_`` as it does there."""
+    return FETCH_LOCK_PREFIX + dataset.replace("/", "_")
+
+
+def long_read(ds) -> bool:
+    """Whether one fetch of ``ds`` is a long model read (``long_read = True``): minutes to hours of provider calls.
+
+    The flag steers **the pass**, not a person (``due._pass_mode``, ``due.enqueue_due``): a pass queues such a
+    dataset fetch-only (``--no-duckdb``), under its own ``rcdata_fetch_<dataset>`` lock, and then queues the short
+    locked build of what that staged, so no queued turn holds the builder lock through a long read
+    (avo, 25 Nov 2026, the build-lock split, option A; #1532). Without the split a ``sec/reads`` pass held
+    ``rcdata_build`` for as long as it asked, and every other build waited behind it. A run a person asks for by
+    name, and a Fetch press, are not touched: theirs is one turn on purpose.
+    """
+    return bool(getattr(ds, "long_read", False))
+
+
+def long_read_names() -> frozenset[str]:
+    """The datasets whose fetch is a long model read."""
+    from . import DATASETS
+    return frozenset(name for name, ds in DATASETS.items() if long_read(ds))
+
+
+def heavy_fetch_problem() -> str | None:
+    """Why a build must not start now, or None: a live fetch-only run of a *heavy* dataset.
+
+    Option A lets a fetch-only run and a build run side by side, which is what makes the split worth having; avo
+    accepted its memory risk on 25 Nov 2026 on one condition -- not while a heavy dataset is being fetched. A heavy
+    run reached 6.4-6.8 GB resident on homesrv's 15.4 GB (``heavy``), so a build beside it is the global OOM kill of
+    #812 again. A light fetch is not held off: it was never the one that filled the machine.
+    """
+    heavy_locks = {fetch_lock_name(name): name for name in heavy_names()}
+    held = [(heavy_locks[held], pid) for held, pid in job_lock.holders() if held in heavy_locks]
+    if not held:
+        return None
+    return "a heavy dataset is being fetched: " + ", ".join(f"{name} (pid {pid})" for name, pid in sorted(held))
+
+
 def whole_build_by_hand(kind: str) -> tuple[str, ...]:
     """The datasets of ``kind`` that hold its whole build back for a person (``whole_build_by_hand = True``, #446
     step 8). Empty for every other kind, which is built whole by the hourly pass exactly as before."""
@@ -1092,6 +1139,12 @@ def idle_problem(lock: str = BUILDER_LOCK) -> str | None:
     held = job_lock.blocking_holders(lock)
     if held:
         return "job lock held: " + ", ".join(f"{name} (pid {pid})" for name, pid in sorted(held))
+    if lock == BUILDER_LOCK:
+        # A fetch-only run declares no file of its own (``job_lock.WRITES_PREFIX``), so ``blocking_holders`` never
+        # names one; the heavy ones are held off by memory, not by a file they share (#1532, option A, Q4).
+        busy = heavy_fetch_problem()
+        if busy:
+            return busy
     peers = rawstore._peer_pids(Path(config.MARKET_DIR) / "ops.sqlite")
     if peers:
         return "another builder runs: pid " + ", ".join(str(p) for p in peers)
@@ -1491,6 +1544,7 @@ def _stage(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = Fal
         raw_only_mode = params.get("no_parquet") is True
         skip_build = (raw_only_mode or params.get("no_duckdb") is True or params.get("no_build") is True
                       or FETCH_ONLY_PASS)
+        ctx.skip_build = skip_build
         measure.begin(ctx.run_id)
         with raw_only_run(raw_only_mode):
             if mode == "backfill":

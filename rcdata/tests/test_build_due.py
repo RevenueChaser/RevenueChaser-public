@@ -204,7 +204,7 @@ def ran(monkeypatch):
         ops.finish_request(req["id"], "done")
         return ops.latest_check(req["dataset"])
     monkeypatch.setattr(base, "run_request", fake)
-    monkeypatch.setattr(due, "FETCH_HOURS", {})       # the fetch's hours per kind are test_store_split's
+    # No ``kind_fetch_hours`` row here: every hour takes every kind. The hours are test_store_split's.
     return seen
 
 
