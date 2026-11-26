@@ -603,7 +603,7 @@ def _company_ticker(con: duckdb.DuckDBPyConnection) -> None:
         WITH t AS (SELECT c.cik, c.ticker,
                           c.ticker IN (SELECT symbol FROM _old_symbol) AS renamed
                    FROM fundamental_company c WHERE c.ticker IS NOT NULL)
-        SELECT cik, list(ticker ORDER BY length(ticker), ticker)[1] AS ticker FROM t GROUP BY cik""")
+        SELECT cik, list(ticker ORDER BY renamed, length(ticker), ticker)[1] AS ticker FROM t GROUP BY cik""")
 
 
 def _companies(ctx: base.RunContext, con: duckdb.DuckDBPyConnection, rows: list[dict], ciks=None) -> int:
