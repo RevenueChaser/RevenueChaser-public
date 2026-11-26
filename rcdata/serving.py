@@ -99,6 +99,11 @@ CGROUP_ROOT = Path("/sys/fs/cgroup")
 # relatedness run, 8 workers reading business texts from sec_forms.duckdb, grew to 7.3 GB anon and was OOM-killed on
 # 15 Nov 2026 (measured: 400 business texts took one process from 49 MB to 2.6 GB). A reader needs no more than this.
 READ_MEMORY_LIMIT_DEFAULT = "1GiB"
+# The most a read may spill (``RC_DUCKDB_READ_MAX_TEMP``, a DuckDB size), held to 90 % of the spill disk's free
+# space when the connection opens. DuckDB's own default is 90 % of free space alone, which on homesrv is 90 % of the
+# **system** disk: ``RC_TMP_DIR`` is ``/srv/tmp/rc`` on ``/``, measured 15.7 GiB free at 85 % full on 26 Nov 2026.
+# Past the cap the read fails and the disk survives; a full root froze the box for 40 minutes on 15 Nov 2026.
+READ_MAX_TEMP_DEFAULT = "20GB"
 # A build step's own scratch connection (``connect_scratch``, ``connect_scratch_file``): the same adaptive limit as the build's, overridden
 # by ``RC_DUCKDB_SCRATCH_MEMORY_LIMIT``. Before #1098 these were opened as a bare ``duckdb.connect()``, with no
 # limit at all, so each could take DuckDB's own default of 80 % of the machine's RAM: that is memory the kernel
@@ -314,8 +319,7 @@ def open_read(kind: str) -> duckdb.DuckDBPyConnection:
     path = live_path(kind)
     if not path.exists():
         raise ServingFileMissing(f"no {kind} serving file at {path} yet")
-    con = connect_read(path)
-    con.execute(f"SET memory_limit = '{read_memory_limit()}'")
+    con = connect_read(path)            # capped there, for every reader of this instance
     from . import opens
     opens.note(kind, path, con, VERSION_TABLE)       # #566: which build this job read; never raises
     return con
@@ -368,12 +372,31 @@ def read_live(kind: str, work):
 
 
 def connect_read(path: Path) -> duckdb.DuckDBPyConnection:
-    """A read-only connection to ``path`` that spills into this process's own directory (``read_spill_dir``).
+    """A read-only connection to ``path``, capped, that spills into this process's own directory
+    (``read_spill_dir``) and cannot fill that directory's disk.
 
     Every read-only open of a serving file goes through here, so the one database instance a process keeps per path
     is always asked for with the same configuration.
+
+    **The caps belong to the door, not to one caller.** ``memory_limit`` is a setting of the DuckDB *instance*, and
+    a process keeps one instance per path, so a ``SET`` on any connection is read by every other connection to that
+    file (measured 26 Nov 2026). Until now only :func:`open_read` set it, so every read that came through this
+    function itself ran at DuckDB's own default of 80 % of RAM: ``backup._table_fingerprints``,
+    ``backup._store_schema``, :func:`_verify` inside the swap, the fingerprint check in ``restore.restore_live``
+    and ``build/spine/stage.py``. A ``sec_forms`` pack was OOM-killed at 5.55 GB anon RSS over exactly that read,
+    and the step that proves a 5.2 GB build before it goes live, and the step that proves a rollback, are the same
+    read (26 Nov 2026).
+
+    Both are applied with ``SET`` rather than in the connect configuration, because a second open of the same path
+    with a *different* configuration raises ``ConnectionException`` -- and the spill cap is computed from free
+    space, which moves between two opens.
     """
-    return duckdb.connect(str(path), read_only=True, config={"temp_directory": str(read_spill_dir(path))})
+    spill = read_spill_dir(path)
+    con = duckdb.connect(str(path), read_only=True, config={"temp_directory": str(spill)})
+    con.execute(f"SET memory_limit = '{read_memory_limit()}'")
+    con.execute("SET max_temp_directory_size = "
+                f"'{_spill_cap(_size('RC_DUCKDB_READ_MAX_TEMP', READ_MAX_TEMP_DEFAULT), spill.parent)}'")
+    return con
 
 
 _SPILL_DIRS: set[Path] = set()

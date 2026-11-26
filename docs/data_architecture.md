@@ -1055,7 +1055,14 @@ spill folder write over each other's blocks. A bare `duckdb.connect()` is not al
 (`core/tests/test_scratch_connections.py`): it has no limit — DuckDB's own default is 80 % of the machine's RAM —
 and no spill folder, so such a step grows until the kernel ends the build. Serving **readers** keep their fixed cap
 (`RC_DUCKDB_READ_MEMORY_LIMIT`, default `1GiB`): many run at once, so a share of free memory each would add up to
-more than the machine has. Each dataset's build logs one line with its seconds and
+more than the machine has. That cap, and a spill cap (`RC_DUCKDB_READ_MAX_TEMP`, default `20GB`, held to 90 % of
+the spill disk's free space), are applied by `serving.connect_read` itself, so a read that does not go through
+`open_read` has them too — `backup._table_fingerprints`, `backup._store_schema`, the swap's own `_verify`,
+`restore.restore_live`'s fingerprint check and `build/spine/stage.py` all did run uncapped before 26 Nov 2026, and
+a `sec_forms` pack was OOM-killed at 5.55 GB over one of them. Both are instance-wide: a process keeps one DuckDB
+instance per path, so the setting one connection makes is read by every connection to that file. Because of the
+cap, a whole-row checksum that does not fit is taken in parts (`backup.CHECKSUM_PARTS`, 64 then 256, split by
+`rowid % n`); the sum is the same number, so a stored fingerprint stays comparable with a new one. Each dataset's build logs one line with its seconds and
 its spill peak (`base.spill_peak`, sampled every 2 s), the measure for moving the spill to the SSD or chunking a kind.
 
 **Files.** Serving kinds: `market`, `spine`, `prices`, `delisted`, `ownership`, `fundamentals`, `options`, `sec_forms`, `sec_reads`. Each kind is one
