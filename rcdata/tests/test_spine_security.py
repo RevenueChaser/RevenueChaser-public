@@ -6,6 +6,7 @@ from datetime import date
 
 import pytest
 
+from revenuechaser.core.identity import isin as isin_mod
 from revenuechaser.core.providers import sec_edgar
 from revenuechaser.rcdata import ops, serving
 from revenuechaser.rcdata.build import base
@@ -79,13 +80,40 @@ def test_identifiers_and_gics_of_the_ten_names(built):
     assert (msft["sector"], msft["industry"]) == ("Technology", "Software & Services")
     assert _sec("HEI-A")["cusip"] == "422806208" and _sec("HEI")["cusip"] == "422806109"
     etn = _sec("ETN")
-    assert etn["cusip"] == "G29183103" and etn["isin"] is None          # a CINS: no US ISIN is derived
+    assert etn["cusip"] == "G29183103"                                  # a CINS: no US ISIN is derived from it
+    assert (etn["isin"], etn["isin_source"]) == ("IE00B8KQN827", "wrds/sec_idhist")
     assert etn["figi"] == "BBG000BJ3PD2"                                # asked as ID_CINS
     # NVR's CUSIP is there but OpenFIGI does not know it; the FIGI came from the ``TICKER`` job instead.
     assert _sec("NVR")["figi"] == "BBG000BW5N90" and _sec("NVR")["cusip"] == "62944T105"
     assert _sec("NVR")["figi_source"] == "openfigi/map (TICKER)"
     assert _sec("TM")["sector"] == "Consumer Cyclical"
     assert _sec("WFC-PC")["cusip"] is None
+    # The derivation stays the fallback where Compustat has no ISIN item: CNA's US CUSIP still yields one, so the
+    # column is filled and corrected (AEM, ETN above) without being emptied where the file is silent. This is
+    # behaviour the change keeps, so it is asserted here rather than in a test of its own (red-on-base).
+    cna = _sec("CNA")
+    assert (cna["isin"], cna["isin_source"]) == ("US1261171003", "derived from the CUSIP (ISO 6166)")
+
+
+def test_the_isin_is_read_from_compustat_and_never_derived_over_it(built):
+    """#1561. The spine served ``US`` + CUSIP + check digit for every CUSIP, which is wrong for a non-US issuer
+    whose CUSIP body is numeric: measured 26 Nov 2026 on the live file, 646 rows carried an ISIN that Compustat
+    contradicts (AEM ``US0084741083`` served, ``CA0084741085`` in ``comp.sec_idhist``). The item is the value."""
+    aem = _sec("AEM")
+    assert aem["cusip"] == "008474108"
+    assert (aem["isin"], aem["isin_source"]) == ("CA0084741085", "wrds/sec_idhist")
+    # The derivation of that same CUSIP, which the spine must not prefer over the file.
+    assert isin_mod.from_cusip("008474108") == "US0084741083"
+
+
+def test_the_isin_period_in_force_wins_over_one_that_ended(built):
+    """MSFT carries two ISIN items, the first ended in 2001: the open period is the served value, and the ended one
+    stays in ``security_history`` so a dated reader can still find it (the ETF lane's N-PORT resolver)."""
+    assert (_sec("MSFT")["isin"], _sec("MSFT")["isin_source"]) == ("US5949181045", "wrds/sec_idhist")
+    assert _q("SELECT value, valid_from, valid_to FROM security_history "
+              "WHERE gvkey = '012141' AND field = 'isin' ORDER BY valid_from") == [
+        ("US5949181003", date(1986, 3, 13), date(2002, 1, 1)), ("US5949181045", date(2002, 1, 1), None)]
+
 
 
 def test_history_tables(built):

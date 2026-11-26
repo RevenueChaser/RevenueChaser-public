@@ -53,8 +53,8 @@ def test_the_funnel_counts_the_spine_and_the_issues_come_by_kind():
     funnel = newdata.collect(NOW)["identity"]
     steps = {s["key"]: s for s in funnel["steps"]}
     assert [(s["key"], s["count"]) for s in funnel["steps"]] == [
-        ("sec", 14), ("listed", 12), ("tier_a", 10), ("cusip", 10), ("figi", 10), ("gics", 9), ("index", 7)]
-    assert steps["listed"]["out_of"] == 14 and steps["figi"]["out_of"] == 10
+        ("sec", 15), ("listed", 13), ("tier_a", 11), ("cusip", 11), ("figi", 11), ("gics", 10), ("index", 7)]
+    assert steps["listed"]["out_of"] == 15 and steps["figi"]["out_of"] == 11
     # avo's spine row check, 24 Nov 2026: each label says what its count counts (Tier A or B; gsubind, not sector)
     assert steps["listed"]["label"] == "Listed on an exchange (Tier A or B)"
     assert steps["gics"]["label"] == "With a GICS sub-industry"
