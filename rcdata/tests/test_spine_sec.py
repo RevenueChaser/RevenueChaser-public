@@ -32,7 +32,7 @@ def _run(day: str) -> dict:
 
 def test_one_get_with_the_contact_in_the_user_agent_and_a_typed_snapshot(env):
     row = _run("2026-10-27")
-    assert row["result"] == "changed" and row["rows"] == 14 and row["calls"] == 1
+    assert row["result"] == "changed" and row["rows"] == 15 and row["calls"] == 1
     (req,) = env.calls("company_tickers_exchange")
     assert str(req.url) == "https://sec.test/files/company_tickers_exchange.json"
     assert "ops@example.org" in req.headers["user-agent"] and "If-Modified-Since" not in req.headers

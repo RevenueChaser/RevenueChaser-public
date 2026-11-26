@@ -245,9 +245,9 @@ def test_the_served_spine_carries_the_funnel_the_tiers_and_my_universe():
     assert {"equity_universe", "security_master", "index_constituents", "index_tickers"} <= {
         v["name"] for v in got["views"]}
     assert got["tier_rule"] is not None
-    assert got["tiers"] == {"A": 10, "B": 2, "C": 1, "D": 1}
+    assert got["tiers"] == {"A": 11, "B": 2, "C": 1, "D": 1}
     steps = {s["key"]: s["count"] for s in got["identity"]["steps"]}
-    assert steps["sec"] == 14 and steps["tier_a"] == 10
+    assert steps["sec"] == 15 and steps["tier_a"] == 11
     mu = got["my_universe"]
     assert mu["built"] is True and mu["total"] == mu["kinds"]["stock"]
     assert sum(mu["by_tier"]["stock"].values()) == mu["kinds"]["stock"]

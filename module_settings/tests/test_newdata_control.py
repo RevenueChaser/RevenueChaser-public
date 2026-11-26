@@ -55,8 +55,8 @@ def _bars(rows):
 def test_the_universe_sets_are_counted_from_the_spine_with_bs_tickers_split_by_type():
     u = newdata.collect(NOW)["universe"]
     c = u["counts"]
-    assert (c["A"], c["C"], c["D"]) == (10, 1, 1)
-    assert c["E"] + c["R"] == 2 and u["total"] == 14
+    assert (c["A"], c["C"], c["D"]) == (11, 1, 1)
+    assert c["E"] + c["R"] == 2 and u["total"] == 15
     assert len(u["tickers"]["E"]) == c["E"] and len(u["tickers"]["R"]) == c["R"]
     con = serving.open_read("spine")
     try:

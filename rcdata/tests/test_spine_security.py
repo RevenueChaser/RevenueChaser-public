@@ -88,6 +88,11 @@ def test_identifiers_and_gics_of_the_ten_names(built):
     assert _sec("NVR")["figi_source"] == "openfigi/map (TICKER)"
     assert _sec("TM")["sector"] == "Consumer Cyclical"
     assert _sec("WFC-PC")["cusip"] is None
+    # The derivation stays the fallback where Compustat has no ISIN item: CNA's US CUSIP still yields one, so the
+    # column is filled and corrected (AEM, ETN above) without being emptied where the file is silent. This is
+    # behaviour the change keeps, so it is asserted here rather than in a test of its own (red-on-base).
+    cna = _sec("CNA")
+    assert (cna["isin"], cna["isin_source"]) == ("US1261171003", "derived from the CUSIP (ISO 6166)")
 
 
 def test_the_isin_is_read_from_compustat_and_never_derived_over_it(built):
@@ -109,12 +114,6 @@ def test_the_isin_period_in_force_wins_over_one_that_ended(built):
               "WHERE gvkey = '012141' AND field = 'isin' ORDER BY valid_from") == [
         ("US5949181003", date(1986, 3, 13), date(2002, 1, 1)), ("US5949181045", date(2002, 1, 1), None)]
 
-
-def test_a_us_name_with_no_isin_item_is_still_derived(built):
-    """The derivation stays as the fallback: CNA has no ISIN item, and its US CUSIP still yields one, so the change
-    fills and corrects rows without emptying the column where Compustat is silent."""
-    cna = _sec("CNA")
-    assert (cna["isin"], cna["isin_source"]) == ("US1261171003", "derived from the CUSIP (ISO 6166)")
 
 
 def test_history_tables(built):
