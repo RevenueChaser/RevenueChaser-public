@@ -542,9 +542,9 @@ def test_the_older_series_is_still_found_once_n_cen_names_the_new_one(switched):
         (OLD_SERIES, "2026q2"), (NEW_SERIES, "2026q3")]
 
 
-def test_a_quarter_both_series_report_is_read_once_on_the_served_series(switched):
-    """A transition quarter the fund filed under both ids: one row per (quarter, ETF), the served series', so no
-    holding is served twice."""
+def test_a_transition_quarter_is_read_once_and_the_earlier_one_is_still_kept(switched):
+    """The fund filed 2026q3 under both ids. The earlier quarter is still kept (what the base drops), and the
+    transition quarter is read once, on the served series, so no holding is served twice."""
     both = {**Q3_NEW,
             "SUBMISSION": [*ROWS["SUBMISSION"], ("0000001-26-000003", "30-AUG-2026", "NPORT-P", "31-DEC-2026",
                                                  "30-JUN-2026")],
@@ -556,12 +556,16 @@ def test_a_quarter_both_series_report_is_read_once_on_the_served_series(switched
                                                "700", "0.1")],
             "IDENTIFIERS": [*Q3_NEW["IDENTIFIERS"], ("41", "US5949181045", "MSFT")]}
     _ctx, con = switched(q3=both)
-    assert con.execute(f"SELECT series_id, quarter, balance FROM {nport.HISTORY} WHERE quarter = '2026q3'"
-                       ).fetchall() == [(NEW_SERIES, "2026q3", 100.0)]
+    assert con.execute(f"SELECT series_id, quarter, balance FROM {nport.HISTORY} ORDER BY quarter").fetchall() == [
+        (OLD_SERIES, "2026q2", 90.0), (NEW_SERIES, "2026q3", 100.0)]
 
 
-def test_an_older_series_a_spine_etf_is_served_on_is_never_taken(switched):
-    """One fund would be read under two tickers. The same guard ``_with_old_series`` already applies."""
-    _ctx, con = switched(spine=(("VOO", OLD_SERIES), ("VTI", NEW_SERIES)))
-    assert con.execute(f"SELECT DISTINCT etf_ticker, series_id FROM {nport.HISTORY} ORDER BY etf_ticker"
-                       ).fetchall() == [("VOO", OLD_SERIES), ("VTI", NEW_SERIES)]
+def test_an_older_series_is_taken_unless_a_spine_etf_is_served_on_it(switched):
+    """Taken when it is free -- the quarter the base drops -- and never when another spine ETF is served on it,
+    because then one fund would be read under two tickers (the guard ``_with_old_series`` already applies)."""
+    _ctx, con = switched()
+    assert con.execute(f"SELECT etf_ticker, series_id, quarter FROM {nport.HISTORY} ORDER BY quarter").fetchall() == [
+        ("VTI", OLD_SERIES, "2026q2"), ("VTI", NEW_SERIES, "2026q3")]
+    _ctx, con = switched(spine=(("VOO", OLD_SERIES), ("VTI", NEW_SERIES)), run_id="s2")
+    assert con.execute(f"SELECT etf_ticker, series_id, quarter FROM {nport.HISTORY} ORDER BY etf_ticker"
+                       ).fetchall() == [("VOO", OLD_SERIES, "2026q2"), ("VTI", NEW_SERIES, "2026q3")]
