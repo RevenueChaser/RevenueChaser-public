@@ -98,7 +98,10 @@ class Question:
     system: str
     prompt_version: str
     scope: Callable[[], Iterable[str]]
-    inputs: Callable[[list[str]], dict[str, Input]]
+    #: ``inputs(ciks)`` gives each company's text. A question that knows why a company has none returns
+    #: ``(inputs, {cik: why})`` instead, and the reason is stored on that company's ``no_text`` row
+    #: (#1419); the mapping alone keeps the old behaviour. Read through :meth:`read_inputs`, never directly.
+    inputs: Callable[[list[str]], dict[str, Input] | tuple[dict[str, Input], dict[str, str]]]
     parse: Callable[[str], dict | None]
     provider: str = PROVIDER
     model: str = ""
@@ -117,6 +120,19 @@ class Question:
         """The user messages the text is sent as: the exact bytes, so the input hash is theirs."""
         n = max(1, self.chunk_chars)
         return [self.user(text[i:i + n]) for i in range(0, len(text), n)] or [self.user("")]
+
+    def read_inputs(self, ciks: list[str]) -> tuple[dict[str, Input], dict[str, str]]:
+        """``(each company's input, why a named company has none)``.
+
+        The reasons are the question's own words (``sec_debt_note.why_skipped``), computed while the inputs were
+        read, so nothing is read twice to find them. A question that returns the mapping alone names no reason and
+        gives an empty one (#1419).
+        """
+        out = self.inputs(ciks)
+        if isinstance(out, tuple):
+            inputs, whys = out
+            return inputs, {c: w for c, w in whys.items() if w}
+        return out, {}
 
     def messages(self, inp: Input) -> list[str]:
         """The user messages sent for ``inp``: its own ready ones, else the chunks of its text."""

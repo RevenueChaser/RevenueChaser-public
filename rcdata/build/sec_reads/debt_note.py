@@ -95,13 +95,17 @@ def scope() -> list[str]:
     return sorted(out)
 
 
-def _input(name: str, rows: list[dict]) -> Input | None:
-    """One company's input from its newest annual report's note rows (with text), or None with the reason logged."""
+def _input(name: str, rows: list[dict]) -> Input | str:
+    """One company's input from its newest annual report's note rows (with text), or the reason it has none.
+
+    The reason used to go to the log alone, where no row and no count could reach it (#1419); it is returned now
+    and stored on the company's ``no_text`` row. It is still logged, because the log is read while a run goes on.
+    """
     chosen = note.choose(rows)
     why = note.why_skipped(chosen)
     if why is not None:
         logger.info("%s: cik %s skipped: %s", ID, (rows or [{}])[0].get("cik"), why)
-        return None
+        return why
     first = chosen[0]
     message = note.build_user(name, first.get("form"), chosen)
     end = note.balance_date(chosen)
@@ -112,25 +116,35 @@ def _input(name: str, rows: list[dict]) -> Input | None:
                  form=str(first.get("form") or ""))
 
 
-def inputs(ciks: list[str]) -> dict[str, Input]:
-    """Each company's one message. The blocks are chosen on the rows without text, then only the chosen names are
-    read with text, one company at a time (a filing holds ~76 blocks; its debt note is a few of them)."""
+def inputs(ciks: list[str]) -> tuple[dict[str, Input], dict[str, str]]:
+    """``(each company's one message, why a company has none)``. The blocks are chosen on the rows without text,
+    then only the chosen names are read with text, one company at a time (a filing holds ~76 blocks; its debt note
+    is a few of them).
+
+    Both skips name their reason (#1419): nothing chosen on the rows without text, and a chosen note that
+    :func:`_input` then refuses. Both reasons are ``sec_debt_note.why_skipped``'s own words.
+    """
     _ready()
     comp = company_profile.companies()
     out: dict[str, Input] = {}
+    whys: dict[str, str] = {}
     for i in range(0, len(ciks), BATCH):
         by_cik: dict[str, list[dict]] = {}
         for r in read.form_notes(ciks[i:i + BATCH], text=False):
             by_cik.setdefault(common.norm_cik(r["cik"]), []).append(r)
         for cik, rows in by_cik.items():
-            wanted = {str(r.get("local_name")) for r in note.choose(rows)}
+            chosen = note.choose(rows)
+            wanted = {str(r.get("local_name")) for r in chosen}
             if not wanted:
+                whys[cik] = note.why_skipped(chosen) or "no debt note"
                 continue
             full = [r for n in sorted(wanted) for r in read.form_notes([cik], local_name=n)]
             inp = _input((comp.get(cik) or {}).get("name") or cik, full)
-            if inp is not None:
+            if isinstance(inp, str):
+                whys[cik] = inp
+            else:
                 out[cik] = inp
-    return out
+    return out, whys
 
 
 DEBT_NOTE = Question(

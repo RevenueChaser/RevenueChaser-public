@@ -54,8 +54,9 @@ def question(ciks=("789019", "320193", "999"), text=None, **kw) -> questions.Que
     q = questions.Question(
         id=kw.pop("id", "test.products"), owner="test", system="List the products as JSON.",
         prompt_version=kw.pop("prompt_version", "t1"), scope=lambda: list(ciks),
-        inputs=lambda wanted: {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), text[c], "ours-2")
-                               for c in wanted if c in text},
+        inputs=kw.pop("inputs", None) or (
+            lambda wanted: {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), text[c], "ours-2")
+                            for c in wanted if c in text}),
         parse=parse, **kw)
     return questions.register(q)
 
@@ -751,3 +752,49 @@ def test_the_daily_check_is_due_from_the_0105_amsterdam_pass(monkeypatch):
 
 def test_the_dataset_says_its_limits_for_the_settings_page_and_grafana():
     assert reads.DATASET.limits == "EVREN: no day cap · DeepSeek: 200 companies a day"
+
+
+def test_a_no_text_row_carries_the_reason_the_question_named(http_mock):
+    """#1419: a company with no text gets a ``no_text`` row, but nothing on it said why, so the board's coverage
+    could not be explained and the reasons could not be counted. A question that names its reasons now has them
+    stored in the row's ``error`` column; no new column, no schema bump."""
+    http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
+    question(inputs=lambda wanted: (
+        {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), TEXT[c], "ours-2")
+         for c in wanted if c in TEXT},
+        {c: "no debt note" for c in wanted if c not in TEXT}))
+    run()
+    assert rows("SELECT cik, status, error FROM read_answer ORDER BY cik") == [
+        ("320193", "ok", None), ("789019", "ok", None), ("999", "no_text", "no debt note")]
+
+
+def test_a_question_that_names_no_reason_leaves_the_no_text_row_without_one(http_mock):
+    """The second return value is optional: a question whose ``inputs`` returns the mapping alone is asked exactly
+    as before and its ``no_text`` row carries no reason."""
+    http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
+    question()
+    run()
+    assert rows("SELECT cik, status, error FROM read_answer ORDER BY cik") == [
+        ("320193", "ok", None), ("789019", "ok", None), ("999", "no_text", None)]
+
+
+def test_a_stored_no_text_row_gains_the_reason_without_a_call(http_mock):
+    """The backlog matters most: every company skipped before #1419 already has a ``no_text`` row, and a stored row
+    stops a new one being written, so without this the reason would never appear for them. The row is written once
+    more with the reason and nothing is asked for it."""
+    http_mock.add("/chat/completions", chat('{"products": ["Azure"]}'))
+    question()
+    run()
+    assert rows("SELECT cik, error FROM read_answer WHERE status = 'no_text'") == [("999", None)]
+    calls = len(http_mock.requests)
+
+    questions.QUESTIONS.clear()
+    question(inputs=lambda wanted: (
+        {c: questions.Input(f"acc-{c}", f"{c}.htm", date(2026, 2, 1), TEXT[c], "ours-2")
+         for c in wanted if c in TEXT},
+        {c: "no debt note" for c in wanted if c not in TEXT}))
+    run()
+    assert rows("SELECT cik, status, error FROM read_answer WHERE status = 'no_text'") == [
+        ("999", "no_text", "no debt note")]
+    assert len(http_mock.requests) == calls          # the stored answers are current; nothing was asked again
+
