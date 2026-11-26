@@ -260,6 +260,12 @@ def status_of(dataset: str, last: dict | None, base: dict | None, cadence: str,
     that is not ``skipped``, ``base`` (read on its own, so any number of skips after a run cannot hide it)."""
     if last is None:
         return "never", "no check yet: never built", None
+    from revenuechaser.rcdata.build import due as build_due
+    ended = build_due.SOURCE_ENDS.get(dataset)
+    if ended is not None and calendar._as_ny(now).date() > ended:
+        # A provider that has stopped answering is not a late dataset: the snapshot it last read is the answer
+        # (#1432). Before the failure branch below, because every check past that day fails for the same reason.
+        return "unchanged", build_due.SOURCE_ENDED_WHY.format(day=ended.isoformat()), base
     if last["result"] == "failed":
         return "stale", "the last check failed", last
     if base is None:

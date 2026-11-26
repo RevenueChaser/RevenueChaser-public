@@ -83,6 +83,16 @@ DAY_CAPPED = frozenset({"alphavantage"})
 #: 3rd-9th of Jan/Apr/Jul/Oct (2024-2026; 2025q3 came 18 Nov, a shutdown), so the night of the 15th (avo, 17 Nov 2026:
 #: "Senede 4 defa baksın").
 CHECK_DATES = {"sec/nport": ((1, 15), (4, 15), (7, 15), (10, 15))}
+#: The last day a dataset's provider answers; past it the dataset is never due again and the rows it last read
+#: stand. ``uw/institutions``: avo's Unusual Whales plan ends **6 December 2026** (avo, 24 Nov 2026), and the 13F
+#: type slices are built from the newest ``uw_institution`` snapshot of our own ownership file, so they outlive the
+#: plan (migration lane E, #1432). Without this line the quarterly pass would call a dead endpoint on every pass
+#: for ever, because a failed check is due again at once. A run a person starts (Fetch, the CLI) is not held, so
+#: the line simply comes out again if avo stays on UW. Kept here rather than on the dataset for the reason
+#: :data:`CHECK_DATES` is.
+SOURCE_ENDS = {"uw/institutions": date(2026, 12, 6)}
+#: Why such a dataset is not due, and why its Settings row is not stale. One sentence, one home.
+SOURCE_ENDED_WHY = "its source ended {day}: the rows it last read stand (a run a person starts still reads it)"
 #: The New York hours a ``CHECK_DATES`` dataset may start in: 20:00-22:59, 02:00-04:59 in Amsterdam.
 NIGHT_HOURS = range(20, 23)
 #: The earliest New York hour a dataset may be due in, where its source publishes on its own clock. Compustat's
@@ -212,6 +222,9 @@ def is_due(ds, mode: str = "full") -> tuple[bool, str]:
         return False, ATTENDED_WHY
     if mode == "off":                       # after attended: the Settings row reads "by hand only" first too
         return False, f"automation off for {ds.kind}"
+    ended = SOURCE_ENDS.get(ds.name)
+    if ended is not None and calendar.today_ny() > ended:
+        return False, SOURCE_ENDED_WHY.format(day=ended.isoformat())
     if getattr(ds, "starts_by_hand", False) and not ops.ever_built(ds.name) \
             and not (mode in STAGE_DONE and _stage_done(ops.latest_check(ds.name) or {"result": None}, mode)):
         # Under a partial mode a person's first staged run is its first run: the storage fetch builds nothing, so
