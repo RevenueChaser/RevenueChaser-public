@@ -338,7 +338,9 @@ def test_the_repo_default_raw_root_is_refused_before_the_fetch(sources, monkeypa
     monkeypatch.setattr(config, "MARKET_RAW_DIR", tmp_path / "checkout" / ".market_raw")
     row = _run()
     assert row["result"] == "failed" and base.RAW_DIR_ENV in row["note"]
-    assert sources.requests == [] and not (tmp_path / "checkout").exists()
+    # Not "the folder does not exist": the run writes its own scratch beside the root. What must not exist is raw
+    # data in the repository, so the two roots a fetch writes to are what is checked.
+    assert sources.requests == [] and not base.raw_root().exists() and not base.parquet_root().exists()
     monkeypatch.setenv(base.RAW_DIR_ENV, str(tmp_path / "checkout" / ".market_raw"))
     assert _run()["result"] == "changed"
 
