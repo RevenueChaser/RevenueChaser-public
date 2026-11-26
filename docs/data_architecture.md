@@ -1454,7 +1454,8 @@ market series (as-of today) on the first pass of each trading day. `weekly` and 
 the last check. A check with no `next_check_due` (past the calendar's table) is due once the as-of is newer. A
 loop run (`run` without `--once`) does this once, at start. A due-step error (a due check that raised, `ops.sqlite`
 locked or Redis not answering while queueing) is printed, the queue is still drained, and the pass exits 1. A second `--once` started while
-one runs exits 3 on the `rcdata_build` lock before its due step. A failed or skipped check is retried every hourly
+one runs exits 3 on the `rcdata_build` lock before its due step; `--fetch-only` holds no such lock, so two of
+those pass each other and only a second fetch of the *same* dataset waits (`rcdata_fetch_<dataset>`, #1541). A failed or skipped check is retried every hourly
 pass with no backoff: for the SPX slice at worst about 24 runs a day, each one UW call plus its retries. A pause
 holds a dataset twice: `due.py` does not queue it, and `base.run_request` skips a request of it that was queued
 anyway (PR #222).
@@ -2480,7 +2481,9 @@ build-lock split (option A, avo 25 Nov 2026, #1532) that route is the pass's own
 `long_read`, so a pass stages it fetch-only and queues the short `build_only` turn on its next round instead of
 fetching and building in one. The data it stages is built within `due.STAGE_GAP_MAX_H` hours (24), and a build
 does not start while a `heavy` dataset is being fetched beside it (`base.heavy_fetch_problem`, the condition avo
-set when he accepted the memory risk of two processes). A fetch-only run reads its slice from
+set when he accepted the memory risk of two processes). That condition reads the `rcdata_fetch_<dataset>` locks,
+so it holds only because the hourly `--fetch-only` pass takes one per dataset of each batch; until #1541 the pass
+took none, and the condition could fire for a fetch run by hand alone. A fetch-only run reads its slice from
 `RC_SEC_READS_SLICE_S` (seconds) when it is set, because the 15-minute default exists for the builder lock it
 does not hold: at 15 minutes and EVREN's one request at a time, a 316-company backlog takes about a hundred
 passes (`debt.note`, 25 Nov 2026). A run that builds ignores the variable, and so does a value that is not a
@@ -2624,7 +2627,10 @@ Two separate things, deliberately not conflated:
   there is none. `rcdata/build/base.py` `backup_problem()` is the builder's name for it: the CLI reads it once
   before the writer turn and exits 3 without touching the store (a stale copy never becomes fresh by waiting), and
   `POST /api/build/request/<dataset>` refuses a Settings Fetch or Backfill press with 409 so nothing sits in the
-  queue that the builder would refuse. A fetch-only run (`--no-duckdb`) is not gated: it opens no serving file.
+  queue that the builder would refuse. A fetch-only run is not gated: it opens no serving file. That is both
+  `--no-duckdb` and the hourly `--fetch-only` pass, which took the gate and the builder lock until #1541 and so
+  lost a `:45` window whenever any job lock was held (a refused tick writes no check row, and `due._fetch_hour`'s
+  one retry fires only on a `failed` row).
   Pause, Resume, the switches and the timer are not gated either — they only stop writes. Silent where no backup
   folder is configured (a developer's machine, CI) and where `RC_BUILD_BACKUP_GATE=0` turns it off.
 - **What is not pruned** — the old `market/`, `market-heavy/`, `weekly/`, `spx_gamma_mirror/` and snapshot files

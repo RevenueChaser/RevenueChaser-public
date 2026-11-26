@@ -147,12 +147,28 @@ def _fetch_lock_names(args) -> list[str]:
     """The ``rcdata_fetch_<dataset>`` locks a fetch-only command (``--no-duckdb`` / ``--no-parquet``) needs, one
     per dataset it names.
 
+    Empty for the hourly ``--fetch-only`` pass, which takes no ``--dataset`` and does not know its datasets until
+    ``due.enqueue_due`` has run: that pass locks per batch instead, inside the drain (``_run_queue``'s
+    ``lock_fetch``, #1541).
+
     The ``/`` of a dataset name becomes ``_``: ``job_lock._lock_path`` puts the name straight into a path, so
     ``sec/companyfacts`` would open a ``rcdata_fetch_sec/`` directory inside the store dir and hide the lock
     inside it, where ``holders()`` -- which globs ``*.lock`` one level deep -- can never name it.
     """
     names = list(getattr(args, "datasets", None) or ([args.dataset] if getattr(args, "dataset", None) else []))
-    return [f"rcdata_fetch_{n.replace('/', '_')}" for n in names]
+    return [base.fetch_lock_name(n) for n in names]
+
+
+def _fetching_now() -> set[str]:
+    """The datasets a fetch-only run holds the lock of right now, by ``rcdata_fetch_<dataset>`` (#1541).
+
+    Read before a claim, so the hourly fetch pass leaves such a dataset's request **queued** for the next tick
+    instead of claiming it and then having to give it back: ``ops.next_request`` marks a request running, and
+    there is no un-claim.
+    """
+    from . import DATASETS as registry
+    held = {name for name, _ in job_lock.holders()}
+    return {name for name in registry if base.fetch_lock_name(name) in held}
 
 
 def _take_fetch_locks(stack: contextlib.ExitStack, locks: list[str], wait: float) -> tuple[bool, str | None]:
@@ -265,9 +281,14 @@ def _build_line(batch: list[dict], rows: list[dict], seconds: float) -> str | No
 
 
 def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
-               attended_ok: bool = False, fetch_only: bool = False, or_by: str | None = None,
-               reasons: list[str] | None = None) -> int:
+               attended_ok: bool = False, fetch_only: bool = False, lock_fetch: bool = False,
+               or_by: str | None = None, reasons: list[str] | None = None) -> int:
     """Drain the queue: one batch per turn, and **one heavy dataset per process** (#812).
+
+    ``lock_fetch`` is the hourly ``--fetch-only`` pass, which holds no builder lock: each batch is run under one
+    ``rcdata_fetch_<dataset>`` lock per member, taken here because the pass does not know its datasets until
+    ``due.enqueue_due`` has run (#1541). A batch whose locks are not free is left queued for the next tick, so a
+    slow fetch is never run twice over.
 
     After a batch that ran a heavy dataset (``base.heavy``), the rest of this process leaves every heavy request
     in the queue and goes on with the others, so the next heavy one runs in the next pass with this process's
@@ -280,6 +301,9 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
     while True:
         # ``next_request`` takes skip or only, never both; the attended runner is the only caller with ``only``.
         skip_now = tuple({*skip, *base.heavy_names()}) if ran_heavy and only is None and dataset is None else skip
+        if lock_fetch:
+            # A dataset another fetch holds: its request waits for the next tick, queued (#1541).
+            skip_now = tuple({*skip_now, *_fetching_now()})
         try:
             req = ops.next_request(dataset, skip=skip_now, only=only, by=by, fetch_only=fetch_only, or_by=or_by)
         except ops.BUSY_ERRORS as e:
@@ -304,33 +328,48 @@ def _run_queue(dataset: str | None, once: bool, *, skip=(), only=None, by=None,
             ran_heavy += mine
             print(f"one heavy dataset per pass (#812): running {', '.join(mine)}; another heavy dataset's "
                   "request stays queued for the next pass", file=sys.stderr, flush=True)
-        started = time.monotonic()
-        try:
-            rows = base.run_batch(batch, attended_ok=attended_ok)
-        except ops.BUSY_ERRORS as e:
-            # The run could not write its rows (ops.sqlite locked past busy_timeout, Redis not answering): the
-            # requests are failed when the store lets us, and the loop goes on with the next one.
-            print(f"{req['dataset']}: ops store busy during the run: {e}", file=sys.stderr, flush=True)
-            said.append(f"{req['dataset']}: ops store busy during the run: {e}")
-            worst = 1
-            ended = getattr(e, "rc_ended", frozenset())    # what the batch had already ended stays as it is
-            for r in batch:
-                if r["id"] in ended:
-                    continue
-                try:
-                    ops.finish_request(r["id"], "failed", note=f"ops store busy: {e}"[:300])
-                except ops.BUSY_ERRORS:
-                    pass                 # still running in the file; the next builder start fails it (S2)
-            time.sleep(POLL_S)
-            continue
-        for row in rows:
-            print(base.format_check(row), flush=True)
-            if row["result"] == "failed":
-                said.append(f"{row['dataset']}: {row.get('note') or 'failed'}")
+        with contextlib.ExitStack() as fetch_stack:
+            # #1541: the hourly ``--fetch-only`` pass holds no builder lock, so one ``rcdata_fetch_<dataset>``
+            # lock per member is what keeps a dataset to a single fetch and what lets ``base.heavy_fetch_problem``
+            # see a scheduled heavy fetch. The skip above keeps a held dataset's request queued; this closes the
+            # race between that read and the claim, and a request whose lock went in between is left skipped for
+            # the next tick rather than fetched twice over.
+            lost = [r for r in batch if lock_fetch
+                    and not fetch_stack.enter_context(job_lock.acquire(base.fetch_lock_name(r["dataset"]), wait=0))]
+            for r in lost:
+                print(f"{r['dataset']}: another fetch holds {base.fetch_lock_name(r['dataset'])}; left for the "
+                      "next tick", file=sys.stderr, flush=True)
+                ops.finish_request(r["id"], "skipped", note="another fetch holds this dataset's lock")
+            batch = [r for r in batch if r not in lost]
+            if not batch:
+                continue
+            started = time.monotonic()
+            try:
+                rows = base.run_batch(batch, attended_ok=attended_ok)
+            except ops.BUSY_ERRORS as e:
+                # The run could not write its rows (ops.sqlite locked past busy_timeout, Redis not answering): the
+                # requests are failed when the store lets us, and the loop goes on with the next one.
+                print(f"{req['dataset']}: ops store busy during the run: {e}", file=sys.stderr, flush=True)
+                said.append(f"{req['dataset']}: ops store busy during the run: {e}")
                 worst = 1
-        line = _build_line(batch, rows, time.monotonic() - started)
-        if line:
-            print(line, flush=True)
+                ended = getattr(e, "rc_ended", frozenset())    # what the batch had already ended stays as it is
+                for r in batch:
+                    if r["id"] in ended:
+                        continue
+                    try:
+                        ops.finish_request(r["id"], "failed", note=f"ops store busy: {e}"[:300])
+                    except ops.BUSY_ERRORS:
+                        pass                 # still running in the file; the next builder start fails it (S2)
+                time.sleep(POLL_S)
+                continue
+            for row in rows:
+                print(base.format_check(row), flush=True)
+                if row["result"] == "failed":
+                    said.append(f"{row['dataset']}: {row.get('note') or 'failed'}")
+                    worst = 1
+            line = _build_line(batch, rows, time.monotonic() - started)
+            if line:
+                print(line, flush=True)
 
 
 #: How much of the summary line a failed pass prints. ``homeops/runs.py`` keeps a job's last line as its
@@ -509,8 +548,12 @@ def main(argv: list[str] | None = None) -> int:
     # Every reason this pass has for exiting 1, printed as its last line (``_say_failed``, #1119).
     reasons: list[str] = []
     wait = default_wait_s(args.cmd, getattr(args, "dataset", None)) if args.wait is None else max(0.0, args.wait)
-    fetch_only = bool(getattr(args, "no_duckdb", False))
     fetch_pass = stage == "fetch"
+    # #1541: ``--fetch-only`` and ``--no-duckdb`` write the same files -- raw and Parquet, no serving file -- so
+    # they take the same locks. Reading only ``args.no_duckdb`` here made the hourly pass a builder: it took the
+    # build gate, held ``BUILDER_LOCK`` through its whole fetch, and took no dataset lock, which left
+    # ``base.heavy_fetch_problem`` (avo's one condition for option A) unable to see a scheduled heavy fetch.
+    fetch_only = bool(getattr(args, "no_duckdb", False)) or fetch_pass
     with contextlib.ExitStack() as stack:
         base.FETCH_ONLY_PASS = fetch_pass       # the guard under the queue's own: no request of this pass builds
         stack.callback(setattr, base, "FETCH_ONLY_PASS", False)
@@ -518,9 +561,10 @@ def main(argv: list[str] | None = None) -> int:
             got, problem = _take_fetch_locks(stack, _fetch_lock_names(args), wait)
         else:
             # avo's rule (#212): a live write needs a fresh verified backup. Checked before the turn, because no
-            # wait makes a stale copy fresh, and only for a run that replaces a served file -- a fetch-only run
-            # writes raw files and Parquet partitions, which the next build reads again.
-            stale = None if fetch_pass else base.backup_problem()
+            # wait makes a stale copy fresh. Only a run that replaces a served file reaches this branch: a
+            # fetch-only run, the hourly ``--fetch-only`` pass included, writes raw files and Parquet partitions,
+            # which the next build reads again.
+            stale = base.backup_problem()
             got, problem = (False, stale) if stale else _take_the_turn(stack, wait)
         if not got:
             # Exit 3 is "nothing was done", but it is still a red job row with no reason anywhere, so it says
@@ -618,7 +662,7 @@ def main(argv: list[str] | None = None) -> int:
         # The storage fetch also takes the schedule's own requests (a full one from before the split included) and
         # stages them only; a person's full Fetch waits for the storage build (avo, 24 Nov 2026)
         code = max(_run_queue(args.dataset, args.once, skip=skip, only=only, by=mine,
-                              fetch_only=fetch_only or fetch_pass,
+                              fetch_only=fetch_only, lock_fetch=fetch_pass,
                               or_by=due.REQUESTED_BY if fetch_pass else None, reasons=reasons),
                    due_failed)
         if code:
