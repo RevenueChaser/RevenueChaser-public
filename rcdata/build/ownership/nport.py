@@ -32,8 +32,12 @@ per builder process (#812). Starts by hand.
 Served (C2, avo 16 Nov 2026, Q11 of the 13F plan): ``etf_holdings_nport``, the holdings of the spine's ETFs only
 (``etf.series_id``, ETNs left out; a series with no report yet is read on the ticker's N-CEN series until it has one,
 ``_with_old_series``), from each series' newest report in the newest typed quarter (report date, then
-filing date, then accession), and only the positions whose CUSIP is one spine ticker's current CUSIP
-(``common.spine_cusips``): bonds, derivatives, cash and unmapped lines stay in Parquet. Built whole, from one quarter,
+filing date, then accession), and only the positions this kind can name: by the CUSIP one spine ticker holds today
+(``common.spine_cusips``), else -- for a position reported with no CUSIP -- by the ISIN Compustat's identifier
+history gives one spine ticker today (``common.spine_isin_history``, #1564: a foreign issuer that trades in the US
+has no spine ISIN, because the spine derives one from the CUSIP and a CINS cannot be turned into a real ISIN;
+Accenture is reported as ``IE00B4BNMY34`` with no CUSIP, $191bn of ETF rows). Bonds, derivatives, cash and
+positions neither identifier names stay in Parquet. Built whole, from one quarter,
 whenever this dataset's Parquet changed or the live tables serve an ETF ticker the spine no longer pairs with its
 series (``_stale_etfs``); kept as it is on the live copy otherwise. Long equity only (``asset_cat`` ``EC``,
 ``payoff_profile`` ``Long``): a short, a bond, a derivative or cash with a spine CUSIP is not a holding of the fund's
@@ -489,18 +493,30 @@ class Nport:
                   for c, t in cusips.items()]
         common.temp_rows(con, "_np_cusip_at", [("cusip", "TEXT"), ("ticker", "TEXT"), ("valid_from", "DATE"),
                                                ("valid_to", "DATE")], at)
+        # A security the spine cannot give an ISIN -- a foreign issuer that trades in the US, whose CUSIP is a CINS
+        # -- is named by Compustat's own dated ISIN item instead (#1564). Today's item names the newest quarter,
+        # the dated ones name the history, as with the CUSIP above.
+        isin_at = common.spine_isin_history(con) or []
+        today = calendar.today_ny()
+        isins = {r["isin"]: r["ticker"] for r in isin_at if r["valid_from"] <= today < r["valid_to"]}
+        common.temp_rows(con, "_np_isin", [("isin", "TEXT"), ("ticker", "TEXT")],
+                         [{"isin": i, "ticker": t} for i, t in isins.items()])
+        common.temp_rows(con, "_np_isin_at", [("isin", "TEXT"), ("ticker", "TEXT"), ("valid_from", "DATE"),
+                                              ("valid_to", "DATE")], isin_at)
         fund, hold = (base.sql_path(newest / n) for n in ("fund.parquet", "holdings.parquet"))
         n = common.create_table(con, TABLE, SERVED, f"""
             WITH f AS (SELECT * FROM read_parquet({fund})
                        QUALIFY row_number() OVER (PARTITION BY series_id
                                                   ORDER BY report_date DESC NULLS LAST, filed DESC, accession DESC) = 1)
-            SELECT e.etf_ticker, f.series_id, f.report_date, f.filed, f.accession, c.ticker, h.cusip, h.issuer_name,
+            SELECT e.etf_ticker, f.series_id, f.report_date, f.filed, f.accession,
+                   coalesce(c.ticker, i.ticker) AS ticker, h.cusip, h.issuer_name,
                    h.balance, h.unit, h.currency_value, h.pct_of_net_assets, h.asset_cat, f.quarter
             FROM f JOIN _np_etf e ON e.series_id = f.series_id
             JOIN read_parquet({hold}) h ON h.accession = f.accession
-            JOIN _np_cusip c ON c.cusip = h.cusip
-            WHERE {LONG_EQUITY}
-            ORDER BY e.etf_ticker, h.currency_value DESC NULLS LAST, c.ticker""")
+            LEFT JOIN _np_cusip c ON c.cusip = h.cusip
+            LEFT JOIN _np_isin i ON h.cusip IS NULL AND i.isin = upper(trim(h.isin))
+            WHERE {LONG_EQUITY} AND coalesce(c.ticker, i.ticker) IS NOT NULL
+            ORDER BY e.etf_ticker, h.currency_value DESC NULLS LAST, coalesce(c.ticker, i.ticker)""")
         funds = con.execute(f"SELECT count(DISTINCT etf_ticker) FROM {TABLE}").fetchone()[0]
         ctx.notes.append(f"{TABLE}: {n} holdings of {funds} spine ETFs, quarter {newest.name[8:]}")
         old = dict(spine)
@@ -509,7 +525,8 @@ class Nport:
             ctx.notes.append(f"{TABLE}: {len(moved)} read on their old series until the new one reports "
                              f"({', '.join(moved)})")
         hist = self._history(con, held)
-        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip; DROP TABLE _np_cusip_at")
+        con.execute("DROP TABLE _np_etf; DROP TABLE _np_cusip; DROP TABLE _np_cusip_at; "
+                    "DROP TABLE _np_isin; DROP TABLE _np_isin_at")
         quarters, mapped = con.execute(f"SELECT count(DISTINCT quarter), count(ticker) FROM {HISTORY}").fetchone()
         ctx.notes.append(f"{HISTORY}: {hist} holdings over {quarters} quarters ({hist - mapped} without a spine ticker)")
         counts = {TABLE: n, HISTORY: hist}
@@ -519,8 +536,13 @@ class Nport:
     @staticmethod
     def _history(con: duckdb.DuckDBPyConnection, held: list[Path]) -> int:
         """``etf_holdings_nport_history`` from every typed quarter: each spine ETF's newest report in each quarter
-        (``_np_etf``), its long equity summed per holding, and the spine ticker that held its CUSIP **at the report
-        date** (``_np_cusip_at``) or none. A holding with no report date cannot be dated, so it gets no ticker.
+        (``_np_etf``), its long equity summed per holding, and the spine ticker that held its identifier **at the
+        report date**: its CUSIP (``_np_cusip_at``), else -- when the fund reported no CUSIP, so the holding is keyed
+        by its ISIN -- its ISIN (``_np_isin_at``, #1564), else none. A holding with no report date cannot be dated,
+        so it gets no ticker.
+
+        The ISIN leg is taken only where the CUSIP is absent, which is both where it is needed and what keeps one
+        row per holding: the group's key is then the ISIN itself, so every row of a group carries the same one.
 
         One quarter at a time: the whole history in one query (13.1M rows, 28 quarters) peaked at 3.83 GB against the
         4 GB scope on homesrv (measured 22 Nov 2026, PR #1445); a quarter alone is about 600K rows."""
@@ -545,13 +567,17 @@ class Nport:
                        JOIN read_parquet({holds}, union_by_name = true) h
                          ON h.accession = f.accession AND h.quarter = f.quarter
                        WHERE {LONG_EQUITY} AND coalesce(h.cusip, h.isin, h.issuer_name) IS NOT NULL)
-            SELECT r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession, c.ticker,
+            SELECT r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession,
+                   coalesce(c.ticker, i.ticker) AS ticker,
                    min(r.cusip) AS cusip, min(r.isin) AS isin, min(r.issuer_name) AS issuer_name,
                    min(r.country) AS country, sum(r.balance) AS balance, sum(r.currency_value) AS currency_value,
                    sum(r.pct_of_net_assets) AS pct_of_net_assets, CAST(count(*) AS INTEGER) AS lines
             FROM r LEFT JOIN _np_cusip_at c ON c.cusip = r.cusip AND c.valid_from <= r.report_date
                  AND r.report_date < coalesce(c.valid_to, DATE '9999-12-31')
-            GROUP BY r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession, r.holding, c.ticker
+                 LEFT JOIN _np_isin_at i ON r.cusip IS NULL AND i.isin = upper(trim(r.isin))
+                 AND i.valid_from <= r.report_date AND r.report_date < i.valid_to
+            GROUP BY r.etf_ticker, r.series_id, r.quarter, r.report_date, r.filed, r.accession, r.holding,
+                     c.ticker, i.ticker
             ORDER BY r.etf_ticker, r.quarter, currency_value DESC NULLS LAST, issuer_name"""
 
     def check(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict:
