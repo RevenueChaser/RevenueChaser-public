@@ -7,21 +7,27 @@ import duckdb
 from revenuechaser.rcdata.build.prices import serving as prices_serving
 
 
+def _rows(con, sql, rows):
+    """``executemany`` refuses an empty list; a table a case does not fill stays empty."""
+    if rows:
+        con.executemany(sql, list(rows))
+
+
 def _con(etf, spine=(), series=(), alias=(), universe_etf=None):
     """The five temp tables the check reads, in the build's shapes (``_spine``, ``_universe``, ``GVKEY_ALIAS``)."""
     con = duckdb.connect()
     con.execute("CREATE TABLE stg_etf (ticker TEXT, aum DOUBLE, is_etn BOOLEAN, is_cef BOOLEAN, gvkey TEXT, iid TEXT)")
-    con.executemany("INSERT INTO stg_etf VALUES (?, 1e9, NULL, NULL, ?, ?)", list(etf))
+    _rows(con, "INSERT INTO stg_etf VALUES (?, 1e9, NULL, NULL, ?, ?)", etf)
     con.execute("CREATE TABLE stg_spine (ticker TEXT, cik TEXT, tier TEXT, security_type TEXT, gvkey TEXT, iid TEXT, "
                 "composite_figi TEXT, security_id TEXT, cusip TEXT, is_etf BOOLEAN, inception DATE)")
-    con.executemany("INSERT INTO stg_spine (ticker, gvkey, iid, security_id) VALUES (?, ?, ?, ?)", list(spine))
+    _rows(con, "INSERT INTO stg_spine (ticker, gvkey, iid, security_id) VALUES (?, ?, ?, ?)", spine)
     con.execute("CREATE TABLE _etf_tic_series (gid TEXT, tic TEXT, pick BIGINT)")
-    con.executemany("INSERT INTO _etf_tic_series VALUES (?, ?, ?)", list(series))
+    _rows(con, "INSERT INTO _etf_tic_series VALUES (?, ?, ?)", series)
     con.execute("CREATE TABLE _gvkey_alias (gid TEXT, security_id TEXT)")
-    con.executemany("INSERT INTO _gvkey_alias VALUES (?, ?)", list(alias))
+    _rows(con, "INSERT INTO _gvkey_alias VALUES (?, ?)", alias)
     con.execute("CREATE TABLE _universe_etf (ticker TEXT, tic TEXT)")
-    tickers = universe_etf if universe_etf is not None else [t for t, _, _ in etf]
-    con.executemany("INSERT INTO _universe_etf VALUES (?, ?)", [(t, t) for t in tickers])
+    tickers = universe_etf if universe_etf is not None else list(dict.fromkeys(t for t, _, _ in etf))
+    _rows(con, "INSERT INTO _universe_etf VALUES (?, ?)", [(t, t) for t in tickers])
     return con
 
 
@@ -47,10 +53,17 @@ def test_a_cusip_alias_through_the_fetch_id_that_differs_is_named():
 
 
 def test_one_matching_and_one_differing_claim_is_still_named():
-    """Every claim is compared, not the first one found."""
-    con = _con([("ABC", "333333", "01")], spine=[("ABC", "333333", "01", "333333:01")],
-               alias=[("555555:01", "333333:01")])
+    """Every claim is compared, not the first one found: two CUSIP aliases on the fund's ``sym:`` id."""
+    con = _con([("ABC", "333333", "01")], spine=[("ABC", None, None, "sym:ABC")],
+               alias=[("333333:01", "sym:ABC"), ("555555:01", "sym:ABC")])
     assert _kinds(con) == {("etf_identity_disagrees", "ABC")}
+
+
+def test_a_ticker_the_spine_gives_two_gids_is_named():
+    con = _con([("TWO", "121212", "01"), ("TWO", "343434", "01")], series=[("121212:01", "TWO", 1)])
+    found = prices_serving.etf_identity_issues(con)
+    assert [(k, t) for k, t, _ in found] == [("etf_identity_disagrees", "TWO")]
+    assert "two" in found[0][2]
 
 
 def test_a_spine_gid_no_path_claims_is_unclaimed():

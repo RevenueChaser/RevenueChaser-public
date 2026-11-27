@@ -373,12 +373,18 @@ ETF_CLAIMS_SQL = f"""
 ETF_IDENTITY_SQL = f"""
     WITH sp AS (SELECT {universe.norm('ticker')} AS tic, gvkey || ':' || iid AS gid FROM stg_etf
                 WHERE nullif(gvkey, '') IS NOT NULL AND nullif(iid, '') IS NOT NULL
-                QUALIFY count(*) OVER (PARTITION BY {universe.norm('ticker')}) = 1),
-         c AS (SELECT DISTINCT tic, gid, how FROM ({ETF_CLAIMS_SQL}))
+                QUALIFY count(DISTINCT gvkey || ':' || iid) OVER (PARTITION BY {universe.norm('ticker')}) = 1),
+         c AS (SELECT DISTINCT tic, gid, how FROM ({ETF_CLAIMS_SQL})),
+         twice AS (SELECT {universe.norm('ticker')} AS tic, string_agg(DISTINCT gvkey || ':' || iid, ', ') AS gids
+                   FROM stg_etf WHERE nullif(gvkey, '') IS NOT NULL AND nullif(iid, '') IS NOT NULL
+                   GROUP BY 1 HAVING count(DISTINCT gvkey || ':' || iid) > 1)
     SELECT u.ticker, sp.gid, string_agg(c.how || ' ' || c.gid, '; ' ORDER BY c.how, c.gid)
                              FILTER (WHERE c.gid <> sp.gid), count(c.gid)
     FROM _universe_etf u JOIN sp USING (tic) LEFT JOIN c USING (tic)
-    GROUP BY 1, 2 ORDER BY 1"""
+    GROUP BY 1, 2
+    UNION ALL   -- a ticker the spine gives two gids is named, not skipped (Fable review of #1602)
+    SELECT u.ticker, t.gids, 'the spine itself gives two: ' || t.gids, 1 FROM _universe_etf u JOIN twice t USING (tic)
+    ORDER BY 1"""
 
 
 def etf_identity_filled(con: duckdb.DuckDBPyConnection) -> int:
