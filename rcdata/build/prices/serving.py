@@ -379,7 +379,7 @@ ETF_IDENTITY_SQL = f"""
                    FROM stg_etf WHERE nullif(gvkey, '') IS NOT NULL AND nullif(iid, '') IS NOT NULL
                    GROUP BY 1 HAVING count(DISTINCT gvkey || ':' || iid) > 1)
     SELECT u.ticker, sp.gid, string_agg(c.how || ' ' || c.gid, '; ' ORDER BY c.how, c.gid)
-                             FILTER (WHERE c.gid = sp.gid), count(c.gid)
+                             FILTER (WHERE c.gid <> sp.gid), count(c.gid)
     FROM _universe_etf u JOIN sp USING (tic) LEFT JOIN c USING (tic)
     GROUP BY 1, 2
     UNION ALL   -- a ticker the spine gives two gids is named, not skipped (Fable review of #1602)
