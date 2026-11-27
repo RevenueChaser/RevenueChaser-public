@@ -376,7 +376,7 @@ ETF_IDENTITY_SQL = f"""
                 QUALIFY count(*) OVER (PARTITION BY {universe.norm('ticker')}) = 1),
          c AS (SELECT DISTINCT tic, gid, how FROM ({ETF_CLAIMS_SQL}))
     SELECT u.ticker, sp.gid, string_agg(c.how || ' ' || c.gid, '; ' ORDER BY c.how, c.gid)
-                             FILTER (WHERE c.gid <> sp.gid), count(c.gid)
+                             FILTER (WHERE c.gid = sp.gid), count(c.gid)
     FROM _universe_etf u JOIN sp USING (tic) LEFT JOIN c USING (tic)
     GROUP BY 1, 2 ORDER BY 1"""
 
