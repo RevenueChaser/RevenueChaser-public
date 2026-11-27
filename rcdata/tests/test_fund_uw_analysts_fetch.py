@@ -150,6 +150,30 @@ def test_pass_two_asks_every_ticker_the_feed_saw_and_the_delisted_names_first(ht
     assert [r["ticker"] for r in ua.rows_of(doc["body"])] == ["SGEN"]      # pre-floor rows, the quirk pass 2 is for
 
 
+def test_every_pass_two_call_asks_below_the_floor(http_mock, monkeypatch):
+    """A ticker call carries `older_than` = the day after the floor, so it answers the pre-floor tail instead of
+    the newest 500 rows -- which for a busy name would never reach 2023 and would only repeat pass 1."""
+    monkeypatch.setattr(ua, "delisted_tickers", lambda: ["SGEN"])
+    rows = [_rating("AAA", datetime(2026, 11, 20, 12)), _rating("SGEN", datetime(2023, 11, 1, 12))]
+    http_mock.add("/screener/analysts", uw_like(rows))
+    _fetch()
+    asked = [q for q in _queries(http_mock) if "ticker" in q]
+    assert asked and all(q["older_than"] == ua.PASS2_FROM.isoformat() for q in asked)
+
+
+def test_a_full_pass_two_page_is_paged_on(http_mock, monkeypatch):
+    """Measured: every probe ticker answered in one call (AAPL, the busiest, 127 rows). A name nobody measured
+    with more than a page still has its whole tail read."""
+    monkeypatch.setattr(ua, "delisted_tickers", lambda: ["BIG"])
+    start = datetime(2023, 12, 20, 12)
+    rows = [_rating("BIG", start - timedelta(days=n)) for n in range(7)]
+    http_mock.add("/screener/analysts", uw_like(rows))
+    _fetch()
+    asked = [q["older_than"] for q in _queries(http_mock) if q.get("ticker") == "BIG"]
+    assert asked == [ua.PASS2_FROM.isoformat(), rows[2]["timestamp"], rows[5]["timestamp"]]
+    assert len(ua.rows_of(base.read_raw_json(ua.ticker_path(AS_OF, "BIG"))["body"])) == 7
+
+
 def test_a_rejected_ticker_is_kept_as_an_empty_answer_once_a_later_one_answers(http_mock, monkeypatch):
     monkeypatch.setattr(ua, "delisted_tickers", lambda: ["GONE"])
     rows = [_rating("AAA", datetime(2026, 11, 20, 12))]

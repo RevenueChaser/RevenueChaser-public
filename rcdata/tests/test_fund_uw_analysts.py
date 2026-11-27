@@ -70,6 +70,31 @@ def test_pass_two_asks_the_delisted_names_first(monkeypatch):
     assert ua.ticker_order(["MSFT", "TSM", "FRC"]) == ["ATVI", "FRC", "SGEN", "MSFT", "TSM", "AAPL", "ACN"]
 
 
+def test_only_the_securities_delisted_inside_the_archive_are_asked(monkeypatch):
+    """UW's archive starts in January 2023 (measured: the oldest row of 8 probe tickers was 3 Jan 2023), so a
+    security that stopped trading before it has no row to fetch. Asking all 29,833 delisted securities would be
+    tens of thousands of calls for nothing."""
+    from revenuechaser.rcdata import read
+    seen = {}
+
+    def securities(security_ids=None, delisted_from=None, delisted_to=None):
+        seen["from"] = delisted_from
+        return [{"security_id": "permno:1"}, {"security_id": "permno:2"}]
+
+    monkeypatch.setattr(read, "delisted_securities", securities)
+    monkeypatch.setattr(read, "delisted_symbols",
+                        lambda security_ids=None, symbols=None: [{"symbol": "FRC"}, {"symbol": " "},
+                                                                 {"symbol": "SIVB"}])
+    assert ua.delisted_tickers() == ["FRC", "SIVB"]
+    assert seen["from"] == ua.ARCHIVE_START == date(2022, 12, 1)
+
+
+def test_a_missing_delisted_file_is_no_delisted_names(monkeypatch):
+    from revenuechaser.rcdata import read
+    monkeypatch.setattr(read, "delisted_securities", lambda **kw: (_ for _ in ()).throw(FileNotFoundError("none")))
+    assert ua.delisted_tickers() == []
+
+
 def test_the_dataset_serves_no_table_and_ends_with_the_subscription():
     """It is a one-off archive: nothing reads it yet, and after 6 Dec 2026 it is never due again."""
     from revenuechaser.rcdata.build import due

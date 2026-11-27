@@ -15,9 +15,18 @@ the survivorship-free archive, and avo's plan answers until **6 December 2026**.
   ignores ``page`` here) collects the delisted names too with no universe list at all. Its floor is the token's
   own: an explicit ``older_than`` before :data:`FLOOR` (2023-12-28) is refused, with UW's own text about two years
   of history.
-- *Pass 2, one call per ticker.* A **ticker-filtered** query answers rows older than that floor -- measured, not
-  documented: ACN reached 30 Jan 2023, SCL 1 Aug 2023, WBD 22 Dec 2023. The ticker set is the **delisted universe
-  first** (avo's choice of 27 Nov 2026, option A), then every ticker pass 1 saw, then the live universe.
+- *Pass 2, one call per ticker, asked **below** the floor.* A **ticker-filtered** query answers rows older than
+  that floor -- measured, not documented. Each call is sent with ``older_than`` = :data:`PASS2_FROM` (the day
+  after the floor), so it returns the pre-floor tail itself rather than the newest 500 rows, which for a busy
+  name would never reach 2023 and would only repeat what pass 1 holds. **Measured on 8 of 8 probe tickers,
+  27 Nov 2026** (rows below the floor, oldest row): FRC 24 / 3 Jan 2023, SIVB 21 / 3 Jan 2023, ATVI 30 /
+  5 Jan 2023, SGEN 36 / 4 Jan 2023, WBD 31 / 4 Jan 2023, AAPL 127 / 3 Jan 2023, ACN 52 / 30 Jan 2023, TSM 14 /
+  9 Mar 2023 -- every one under the 500 limit, so **one call per ticker**; the code still pages on a full page.
+  No probe reached December 2022, so :data:`ARCHIVE_START` is where this token's archive begins.
+  The ticker set is the **delisted universe first** (avo's choice of 27 Nov 2026, option A), then every ticker
+  pass 1 saw, then the live universe. A security delisted **before** :data:`ARCHIVE_START` cannot have a row in
+  this archive, so it is not asked: that is what keeps pass 2 to a few thousand calls instead of one per
+  delisted security ever (29,833 of them in the delisted store).
 
 **Identity stays out of it.** A row carries UW's ticker string and nothing else; a dated ticker to security join is
 its own slice (#1444). Joining inside the fetch is how a delisted name is lost twice: its ticker belongs to a live
@@ -59,9 +68,17 @@ PAGE_LIMIT = 500
 #: The token's own earliest day for an **explicit** ``older_than``: before it UW refuses the request. A
 #: ticker-filtered query still answers older rows, which is what pass 2 is for.
 FLOOR = date(2023, 12, 28)
+#: The ``older_than`` every pass-2 call carries: the day after the floor, so the answer is the pre-floor tail.
+PASS2_FROM = date(2023, 12, 29)
+#: The first day any probe found a row under (measured 27 Nov 2026 on 8 tickers: the oldest was 3 Jan 2023). A
+#: security delisted before it is not asked in pass 2, with a month's margin.
+ARCHIVE_START = date(2022, 12, 1)
 #: Pages before pass 1 stops asking: 2,000 pages are a million rows, well past two years of a few hundred ratings
 #: a day, and only stop a feed that never ends.
 MAX_FEED_PAGES = 2_000
+#: Pages one ticker may take in pass 2. Every probe answered in one (the busiest, AAPL, 127 rows), so this only
+#: bounds a name nobody measured.
+MAX_TICKER_PAGES = 10
 #: Provider-side failures in a row that stop the run (UW throttling or down), as every UW dataset here counts them.
 FAIL_STREAK = 5
 #: Requests UW rejects (a 4xx of the request's own: an unknown ticker) in a row with no answer between: one dead
@@ -157,10 +174,16 @@ def table_rows(body, stamps: dict) -> tuple[list[dict], dict[str, int]]:
 
 
 def delisted_tickers() -> list[str]:
-    """Every ticker a delisted security traded under, from the delisted serving layer; [] without that file."""
+    """Every ticker a security **delisted on or after** :data:`ARCHIVE_START` traded under, from the delisted
+    serving layer; [] without that file. The window is the point: UW's archive starts in January 2023, so a name
+    that stopped trading before it has no row to fetch and no call is spent on it."""
     from ... import read
     try:
-        rows = read.delisted_symbols()
+        ids = [str(r["security_id"]) for r in read.delisted_securities(delisted_from=ARCHIVE_START)
+               if r.get("security_id")]
+        rows: list[dict] = []
+        for n in range(0, len(ids), 500):               # one IN list per chunk, not 30,000 placeholders
+            rows += read.delisted_symbols(security_ids=ids[n:n + 500])
     except Exception:                                   # noqa: BLE001 - no delisted file yet is no delisted names
         return []
     return sorted({str(r.get("symbol") or "").strip() for r in rows if str(r.get("symbol") or "").strip()})
@@ -210,6 +233,24 @@ class UWScreenerAnalysts:
             raise base.SourceError(f"UW {EP}: HTTP {status}: the key was refused")
         return None, err
 
+    def _ticker_rows(self, ctx: base.RunContext, ticker: str):
+        """One ticker's rows **below the floor**: ``older_than`` = :data:`PASS2_FROM`, paged on while a page comes
+        back full. ``(body, error)``; the body is ``{"data": rows}`` so the raw file keeps the shape UW answers."""
+        cursor, rows = PASS2_FROM.isoformat(), []
+        for _ in range(MAX_TICKER_PAGES):
+            body, err = self._ask(ctx, {"limit": PAGE_LIMIT, "ticker": ticker, "older_than": cursor})
+            if err is not None:
+                return None, err
+            page = rows_of(body)
+            rows += page
+            if len(page) < PAGE_LIMIT:
+                break
+            nxt = oldest_stamp(page)
+            if nxt is None or nxt == cursor:
+                break
+            cursor = nxt
+        return {"data": rows}, None
+
     def _feed(self, ctx: base.RunContext, as_of: date) -> tuple[list[Path], list[str]]:
         """Pass 1: the market-wide feed, newest first, paged back with ``older_than`` to :data:`FLOOR`. Returns the
         day's feed files and the tickers they hold. A page already on disk is read, not asked again."""
@@ -253,7 +294,7 @@ class UWScreenerAnalysts:
             if path.exists():
                 out.append(path)
                 continue
-            body, err = self._ask(ctx, {"limit": PAGE_LIMIT, "ticker": ticker})
+            body, err = self._ticker_rows(ctx, ticker)
             if err is not None:
                 failed.append(ticker)
                 ctx.issue("fetch_failed", ticker, f"UW {EP}: {err.get('error')} HTTP {err.get('status')}")
@@ -273,13 +314,16 @@ class UWScreenerAnalysts:
                 continue
             for t, e in held:
                 out.append(base.write_raw_json(ticker_path(as_of, t), {
-                    "request": {"endpoint": EP, "params": {"ticker": t}}, "pass": "ticker", "ticker": t,
+                    "request": {"endpoint": EP, "params": {"ticker": t, "older_than": PASS2_FROM.isoformat()}},
+                "pass": "ticker", "ticker": t,
                     "as_of": as_of.isoformat(), "fetched_at": time.time(), "run_id": ctx.run_id,
                     "rejected": e, "body": None}))
             rejected += len(held)
             held, streak, streak_first = [], 0, ""
             out.append(base.write_raw_json(path, {
-                "request": {"endpoint": EP, "params": {"ticker": ticker}}, "pass": "ticker", "ticker": ticker,
+                "request": {"endpoint": EP, "params": {"ticker": ticker,
+                                                       "older_than": PASS2_FROM.isoformat()}},
+                "pass": "ticker", "ticker": ticker,
                 "as_of": as_of.isoformat(), "fetched_at": time.time(), "run_id": ctx.run_id, "body": body}))
         ctx.notes.append(f"pass 2: {len(every)} tickers asked, {len(failed)} failed"
                          + (f" ({rejected} rejected by UW, kept as an empty answer)" if rejected else ""))
