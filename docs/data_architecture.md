@@ -1856,6 +1856,10 @@ market cap until an ADS ratio is read, #711), `universe_etf_no_bar` (a universe
 fund, a ticker of the spine's `etf` table or an `etf` of `my_universe`, with no bar on the newest served session;
 key: the ticker), `universe_etf_ticker_shared` (more than one recent Compustat series carries a routeless universe
 fund's ticker: one is stored, the one priced most recently, then the larger dollar volume; key: the ticker),
+`etf_identity_disagrees` (a universe fund whose spine `etf` row gives a gvkey:iid while a prices path -- its spine
+`security` row, its ticker series or its CUSIP alias -- claims another, or whose ticker has two spine `etf` rows with
+a gvkey:iid; found only, nothing served changes, #1585), `etf_identity_unclaimed` (a universe fund whose spine `etf`
+gvkey:iid no prices path claims; key: the ticker),
 `price_gap_no_action` (the split-adjusted close moved by 1.9 times or more, either way, within 7
 days, with no split; `price_gap_warrant` when the spine types the security a warrant or a unit), `split_only_crsp` (a split CRSP's `dlycumfacpr` records and no Compustat or Alpaca split is
 within 3 days of, between two served bars at most 7 days apart, **and the served close does not jump across it**: a
