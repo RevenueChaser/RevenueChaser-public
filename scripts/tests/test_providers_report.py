@@ -68,3 +68,49 @@ def test_market_sources_and_helpers_are_read():
     inv = providers_report.inventory()
     assert {"treasury", "bls", "cboe", "fred"} <= set(inv["market_sources"])
     assert "tickerinside" in inv["helper_modules"]
+
+
+def test_every_dataset_card_is_read_with_a_label():
+    """``screen.py``'s ``DATASETS`` is the registry that holds the jobs ``NAME`` alone misses."""
+    cards = providers_report.dataset_cards()
+    flat = {name: label for rows in cards.values() for name, label in rows}
+    # the six the NAME-only scan missed (endpoint review, 27 Nov 2026, claude-coordinator PR #1524)
+    for missed in ("wrds/funda", "wrds/fundq", "wrds/segments", "wrds/exrt",
+                   "yfinance/float", "tradingview/float"):
+        assert missed in flat, missed
+    assert len(flat) > 40, "the DATASETS map was not parsed"
+    assert all(flat.values()), "a dataset card was read without its label"
+
+
+def test_a_name_that_is_a_label_and_not_a_fetch_is_not_read_as_a_dataset():
+    """``wrds/compustat`` and ``wrds/crsp`` tag ``price_bar_daily``'s rows; neither is a job."""
+    flat = {n for rows in providers_report.dataset_cards().values() for n, _ in rows}
+    assert "wrds/compustat" not in flat and "wrds/crsp" not in flat
+    assert "wrds/prices" in flat                                   # the fetch those two labels come from
+
+
+def test_every_dataset_card_prefix_is_a_provider_or_one_of_our_own_lanes():
+    cards = providers_report.dataset_cards()
+    known = set(providers_report.needs_by_provider())
+    _, internal = providers_report.builders(known)
+    lanes = {job.split("/", 1)[0] for job in internal}
+    unplaced = set(cards) - known - lanes
+    assert not unplaced, f"a dataset card names something that is neither: {sorted(unplaced)}"
+
+
+def test_a_reader_declared_outside_rcdata_is_reported():
+    """``module_news/x_lane.py`` declares ``PROVIDER = "x-follow"`` and has no ``Need(...)`` of its own."""
+    outside = providers_report.module_providers()
+    assert "x-follow" in outside and outside["x-follow"].startswith("module_news/")
+    inv = providers_report.inventory()
+    row = next(p for p in inv["providers"] if p["provider"] == "x-follow")
+    assert row["in_need_catalog"] is False and row["declared_outside_rcdata"]
+
+
+def test_the_source_enum_is_read_and_not_mistaken_for_the_provider_list():
+    """``core/datasets.py``'s ``Source`` is a per-dataset label: it names fewer providers than the code has."""
+    inv = providers_report.inventory()
+    enum = inv["source_enum"]
+    assert {"uw", "sec", "yfinance"} <= set(enum)
+    assert len(enum) < inv["totals"]["providers_in_code"]
+    assert "derived" in inv["source_enum_not_a_provider"]

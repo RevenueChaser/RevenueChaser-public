@@ -33,6 +33,9 @@ BUILD = ROOT / "rcdata" / "build"
 SOURCES = BUILD / "sources"
 CAPS = ROOT / "rcdata" / "caps.py"
 HELPERS = ROOT / "core" / "providers"
+DATASETS = ROOT / "core" / "datasets.py"
+SCREEN = ROOT / "rcdata" / "needs" / "screen.py"
+SCANNED = ("rcdata", "core")
 
 
 def _tree(path: Path) -> ast.Module:
@@ -134,11 +137,88 @@ def helpers() -> dict[str, str]:
     return out
 
 
+def _sources() -> list[Path]:
+    """Every non-test module of the scanned trees, plus the module packages' own files."""
+    out: list[Path] = []
+    for top in (*SCANNED, *(d.name for d in sorted(ROOT.glob("module_*")) if d.is_dir())):
+        for path in sorted((ROOT / top).rglob("*.py")):
+            if "tests" in path.parts or path.name.startswith("test_"):
+                continue
+            out.append(path)
+    return out
+
+
+def dataset_cards(path: Path | None = None) -> dict[str, list[tuple[str, str]]]:
+    """``{provider: [(job, label), ...]}`` from ``rcdata/needs/screen.py``'s ``DATASETS`` map.
+
+    A builder's job name is not always a module constant: ``wrds_fund.py`` sets ``self.name = "wrds/segments"``
+    inside a class, ``fx_rates.py`` names its second job ``EXRT_NAME = "wrds/exrt"``, and ``spine/wrds.py`` keeps
+    its dataset names in a dict literal. So reading only ``NAME`` missed ``wrds/funda``, ``wrds/fundq``,
+    ``wrds/segments``, ``wrds/exrt``, ``yfinance/float`` and ``tradingview/float`` (endpoint review of this
+    script, 27 Nov 2026, claude-coordinator PR #1524).
+
+    ``screen.py``'s ``DATASETS`` is the registry that does hold every one of them, keyed ``<provider>/<job>``,
+    each with the label the Settings / Data screen shows -- which is also the plainest statement of what the job
+    fetches. It is read here instead of scanning the tree for strings, because a string match cannot tell a job
+    from a label: ``wrds/compustat`` and ``wrds/crsp`` are the two sources ``price_bar_daily`` tags its rows with
+    (``rcdata/build/prices/wrds_history.py:84``) and ``finra/cftc`` is a ``Source`` enum value, and none of the
+    three is a fetch.
+    """
+    path = path or SCREEN
+    out: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for node in _tree(path).body:
+        targets = getattr(node, "targets", []) or ([node.target] if isinstance(node, ast.AnnAssign) else [])
+        if not (targets and getattr(targets[0], "id", None) == "DATASETS"):
+            continue
+        for key, value in zip(node.value.keys, node.value.values):
+            name = _const_str(key)
+            if not (name and "/" in name):
+                continue
+            label = ""
+            if isinstance(value, ast.Call) and value.args:
+                label = _const_str(value.args[0]) or ""
+            out[name.split("/", 1)[0]].append((name, label))
+    return {k: sorted(v) for k, v in out.items()}
+
+
+def module_providers() -> dict[str, str]:
+    """``{provider: file:line}`` for a ``PROVIDER = "..."`` declared in a ``module_*`` package.
+
+    A reader can live outside ``rcdata/``: ``module_news/x_lane.py`` declares ``PROVIDER = "x-follow"`` for the
+    News board's X lane, which has no ``Need(...)`` of its own and so appears in no other section here.
+    """
+    out: dict[str, str] = {}
+    for path in _sources():
+        if not path.relative_to(ROOT).parts[0].startswith("module_"):
+            continue
+        for node in _tree(path).body:
+            if not (isinstance(node, ast.Assign) and len(node.targets) == 1):
+                continue
+            if getattr(node.targets[0], "id", None) != "PROVIDER":
+                continue
+            value = _const_str(node.value)
+            if value:
+                out[value] = f"{path.relative_to(ROOT).as_posix()}:{node.lineno}"
+    return out
+
+
+def source_enum() -> list[str]:
+    """The ``Source`` enum values of ``core/datasets.py``: a per-dataset label, not the provider list."""
+    for node in ast.walk(_tree(DATASETS)):
+        if isinstance(node, ast.ClassDef) and node.name == "Source":
+            return sorted(v for stmt in node.body
+                          if isinstance(stmt, ast.Assign) and (v := _const_str(stmt.value)))
+    return []
+
+
 def inventory() -> dict:
     needs = needs_by_provider()
     jobs, internal = builders(set(needs))
-    names = sorted(set(needs) | set(jobs))
+    outside = module_providers()
+    names = sorted(set(needs) | set(jobs) | set(outside))
+    cards = dataset_cards()
     caps = capped()
+    enum = source_enum()
     return {
         "providers": [
             {
@@ -146,12 +226,16 @@ def inventory() -> dict:
                 "needs": sorted(needs.get(n, [])),
                 "need_count": len(needs.get(n, [])),
                 "jobs": sorted(jobs.get(n, [])),
+                "datasets": [{"name": j, "label": lb} for j, lb in cards.get(n, [])],
                 "capped": n in caps,
                 "in_need_catalog": n in needs,
+                "declared_outside_rcdata": outside.get(n, ""),
             }
             for n in names
         ],
         "internal_jobs": internal,
+        "source_enum": enum,
+        "source_enum_not_a_provider": sorted(set(enum) - set(names)),
         "market_sources": market_sources(),
         "helper_modules": helpers(),
         "capped": caps,
@@ -159,6 +243,7 @@ def inventory() -> dict:
             "needs": sum(len(v) for v in needs.values()),
             "providers_in_catalog": len(needs),
             "providers_in_code": len(names),
+            "datasets": sum(len(v) for v in cards.values()),
         },
     }
 
@@ -169,7 +254,7 @@ def markdown(inv: dict) -> str:
         "# Provider inventory (generated by scripts/providers_report.py)",
         "",
         f"{t['providers_in_catalog']} providers in the need catalog, {t['providers_in_code']} in the code, "
-        f"{t['needs']} need-to-provider links.",
+        f"{t['needs']} need-to-provider links, {t['datasets']} datasets on the Settings / Data screen.",
         "",
         "| Provider | In catalog | Needs | Jobs | Capped |",
         "|---|---|---|---|---|",
@@ -180,6 +265,20 @@ def markdown(inv: dict) -> str:
             f"| {', '.join(f'`{j}`' for j in p['jobs']) or '-'} | {'yes' if p['capped'] else '-'} |"
         )
     lines += ["", "## Our own serving jobs (not providers)", "", ", ".join(f"`{j}`" for j in inv["internal_jobs"])]
+    lines += ["", "## What each provider actually fetches (rcdata/needs/screen.py DATASETS)", ""]
+    for p in inv["providers"]:
+        for d in p["datasets"]:
+            lines.append(f"- `{d['name']}` - {d['label']}")
+    outside = [p for p in inv["providers"] if p["declared_outside_rcdata"]]
+    if outside:
+        lines += ["", "## Readers declared outside rcdata (no need of their own)", ""]
+        lines += [f"- `{p['provider']}` - {p['declared_outside_rcdata']}" for p in outside]
+    lines += ["", "## core/datasets.py `Source` enum (a per-dataset label, not this list)", "",
+              ", ".join(f"`{v}`" for v in inv["source_enum"])]
+    missing = sorted(p["provider"] for p in inv["providers"] if p["provider"] not in inv["source_enum"])
+    lines += ["", f"Not an enum value: {', '.join(f'`{m}`' for m in missing) or '-'}.",
+              f"An enum value that is not a provider name here: "
+              f"{', '.join(f'`{m}`' for m in inv['source_enum_not_a_provider']) or '-'}."]
     lines += ["", "## Market-series sources", ""]
     lines += [f"- `{k}` - {v}" for k, v in inv["market_sources"].items()]
     lines += ["", "## Provider helper modules (core/providers)", ""]
