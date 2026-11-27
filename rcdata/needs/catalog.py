@@ -109,8 +109,9 @@ _NEEDS = (
     # Tier A names, which the boards read today, and it is retired with them when they move over.
     Need("identity.my_universe", "my_universe", "my_universe", "source_as_of", "ticker", 5, providers=("sec",)),
     # Each fund's newest day of lines, ticker/name/weight (#642 F9); the funds publish daily, so 5 sessions as above.
+    # UW left this need on 22 Nov 2026 (#1365): TickerInside serves funds with no keyless issuer file, ARK backs ARKQ.
     Need("identity.etf_holdings", "etf_holdings", "etf_holdings", "as_of", "etf", 5,
-         ask_param="etfs", normalize=TICKER, providers=("ssga", "ishares", "uw")),
+         ask_param="etfs", normalize=TICKER, providers=("ssga", "ishares", "tickerinside", "ark")),
     Need("identity.membership", "membership", "index_membership", "source_as_of", "ticker", 5,
          providers=("ssga", "ishares", "nasdaq", "invesco", "proshares")),
     # ── The prices store (serving kind ``prices``; daily bars, share counts from filings) ────────────────────────
