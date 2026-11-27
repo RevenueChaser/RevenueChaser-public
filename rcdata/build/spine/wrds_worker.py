@@ -16,9 +16,12 @@ End of stdin closes the connection. ``wrds`` prints to stdout and may prompt wit
 private copies of the original stdin and stdout, stdout itself goes to stderr, and stdin is the terminal or
 ``/dev/null`` (``_isolate_streams``). An error sent back is capped and carries no user or host name.
 
-Each answer is streamed in chunks (``raw_sql(..., chunksize=CHUNK, return_iter=True)`` where the installed ``wrds``
-has them, else one frame) to gzip JSON lines, every value a string or null (dates as ``YYYY-MM-DD``, whole floats
-as integers), written to ``<out>.tmp`` and renamed, so a file under its real name is whole. Standard library and
+Each answer is streamed in chunks to gzip JSON lines, every value a string or null (dates as ``YYYY-MM-DD``,
+whole floats as integers), written to ``<out>.tmp`` and renamed, so a file under its real name is whole. The
+chunks come from a **server-side cursor** this file asks for itself (``_stream``), because the package's
+``raw_sql`` pulls the whole result set into the client and its ``chunksize`` only slices what is already there
+(#1574: CRSP ``dsf`` peaked at 2.8 GB and was OOM-killed). Where this connection cannot give a cursor, or the
+driver refuses one at the first fetch, the query falls back to ``raw_sql`` and is answered as it was before. Standard library and
 ``wrds`` (with its pandas) only: this file must not import the RevenueChaser package.
 """
 from __future__ import annotations
@@ -52,7 +55,45 @@ def _text(v):
     return str(v)
 
 
-def _frames(con, sql: str):
+def _stream(con, sql: str):
+    """The answer in chunks from a **server-side** cursor, or None where this connection cannot give one.
+
+    Why this exists (#1574, measured 27 Nov 2026): ``wrds`` 3.5.0 passes ``chunksize`` straight into
+    ``pd.read_sql_query`` on a plain SQLAlchemy connection and names ``stream_results`` nowhere, so the whole
+    result set is pulled into the client first and ``chunksize`` only slices what is already in memory. Lowering
+    ``CHUNK`` buys nothing. ``wrds/prices``' CRSP ``dsf`` query peaked at 2.8 GB that way and was OOM-killed
+    twice on homesrv, where the fetch has 3 GB at most.
+
+    So the cursor is asked for here. ``stream_results=True`` makes the psycopg2 dialect read through a named
+    cursor, and the read runs on a **connection of its own** inside a transaction, because the engine is
+    ``AUTOCOMMIT`` and a named cursor is destroyed at the end of each statement under it; a fresh connection
+    takes the isolation level without touching the shared one, and is closed again here. Same engine, so the
+    same login and pool: no second WRDS login.
+    """
+    engine = getattr(getattr(con, "connection", None), "engine", None)
+    if engine is None:
+        return None
+
+    def chunks():
+        conn = engine.connect().execution_options(isolation_level="READ COMMITTED", stream_results=True)
+        try:
+            with conn.begin():
+                yield from _read_sql_chunks(conn, sql)
+        finally:
+            conn.close()
+
+    return chunks()
+
+
+def _read_sql_chunks(conn, sql: str):
+    """``CHUNK`` rows at a time off ``conn``, which is already set to stream. Its own function because this is the
+    one line that needs the venv's pandas, and because a test can stand in for it without a database."""
+    import pandas as pd                                        # the wrds venv's pandas, already imported by wrds
+    return pd.read_sql_query(sql, conn, chunksize=CHUNK)
+
+
+def _raw_sql_frames(con, sql: str):
+    """What the package itself answers: chunked where it takes ``chunksize``, else one frame."""
     try:
         result = con.raw_sql(sql, chunksize=CHUNK, return_iter=True)
     except TypeError:                                          # an older wrds without chunked reads
@@ -62,15 +103,43 @@ def _frames(con, sql: str):
     return result
 
 
+def _note(text: str) -> None:
+    """One line for the person reading the build log: fd 1 is stderr here, the protocol has its own pipe."""
+    print(f"wrds worker: {text}", flush=True)
+
+
+def _dump(frames, fh) -> int:
+    rows = 0
+    for frame in frames:
+        records = frame.to_dict("records") if hasattr(frame, "to_dict") else frame
+        for rec in records:
+            fh.write(json.dumps({str(k).lower(): _text(v) for k, v in rec.items()}) + "\n")
+            rows += 1
+    return rows
+
+
 def _write(con, sql: str, out: str) -> int:
+    """Write the answer to ``out`` whole or not at all, from the server-side cursor where there is one.
+
+    A streaming read that fails **before its first row** falls back to the package's own ``raw_sql`` and the
+    query is answered as it was before #1574, because the cursor is an optimisation and must never be the reason
+    a fetch fails: the ``stream_results`` path depends on the installed driver, and a refusal shows up at the
+    first fetch. A failure after rows have been written is the query's own and is raised, as any other.
+    """
     tmp, rows = out + ".tmp", 0
     try:
         with gzip.open(tmp, "wt", encoding="utf-8") as fh:
-            for frame in _frames(con, sql):
-                records = frame.to_dict("records") if hasattr(frame, "to_dict") else frame
-                for rec in records:
-                    fh.write(json.dumps({str(k).lower(): _text(v) for k, v in rec.items()}) + "\n")
-                    rows += 1
+            streamed = _stream(con, sql)
+            if streamed is not None:
+                try:
+                    first = next(streamed, None)
+                except Exception as e:                         # noqa: BLE001 - no cursor here: ask the package
+                    _note(f"server-side cursor unavailable ({type(e).__name__}); read whole")
+                    streamed = None
+                else:
+                    rows = _dump([] if first is None else [first], fh) + _dump(streamed, fh)
+            if streamed is None:
+                rows = _dump(_raw_sql_frames(con, sql), fh)
     except BaseException:
         if os.path.exists(tmp):
             os.remove(tmp)

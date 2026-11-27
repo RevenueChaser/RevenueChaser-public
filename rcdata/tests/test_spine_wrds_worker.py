@@ -164,3 +164,145 @@ def test_an_error_is_masked_before_it_is_cut_and_whatever_the_case(monkeypatch):
     text = wrds_worker._error(RuntimeError("x" * 280 + " secretuser can not log in"))
     assert len(text) <= 300 and "secre" not in text
     assert wrds_worker._error(RuntimeError("role SecretUser denied")) == "RuntimeError: role <user> denied"
+
+
+# ── #1574: the answer is read through a server-side cursor, not pulled whole into the client ──────────────────
+# These run the worker's own functions in this process with a stand-in connection: the subprocess tests above
+# cover the ``raw_sql`` path end to end, and no SQLAlchemy or database is needed to pin the decisions here.
+
+class _Conn:
+    """A SQLAlchemy connection as ``_stream`` uses one: options recorded, a transaction that must be open."""
+
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.options, self.closed, self.in_tx, self.tx_closed = {}, False, False, False
+
+    def execution_options(self, **kw):
+        self.options.update(kw)
+        return self
+
+    def begin(self):
+        conn = self
+
+        class _Tx:
+            def __enter__(self):
+                conn.in_tx = True
+                return self
+
+            def __exit__(self, *exc):
+                conn.in_tx, conn.tx_closed = False, True
+                return False
+
+        return _Tx()
+
+    def close(self):
+        self.closed = True
+
+
+class _Engine:
+    def __init__(self, conn):
+        self.conn, self.connects = conn, 0
+
+    def connect(self):
+        self.connects += 1
+        return self.conn
+
+
+class _Wrds:
+    """``wrds.Connection``: ``connection`` is the shared SQLAlchemy connection, which carries ``engine``."""
+
+    def __init__(self, conn):
+        self.connection = type("_Shared", (), {"engine": _Engine(conn)})()
+        self.raw_sql_calls = []
+
+    def raw_sql(self, sql, chunksize=None, return_iter=False):
+        self.raw_sql_calls.append(sql)
+        return iter([[{"GVKEY": "001"}]])
+
+
+@pytest.fixture
+def worker_module():
+    from revenuechaser.rcdata.build.spine import wrds_worker
+    return wrds_worker
+
+
+def test_the_read_asks_for_a_server_side_cursor_on_a_connection_of_its_own(worker_module, monkeypatch, tmp_path):
+    """The whole point of #1574: ``stream_results`` is asked for, on a fresh connection inside a transaction.
+
+    The engine is AUTOCOMMIT, under which a psycopg2 named cursor dies at the end of each statement, so the read
+    must hold a transaction; and it must not change the isolation level of the shared connection, so it opens one
+    of its own and closes it again.
+    """
+    conn = _Conn(chunks=[[{"GVKEY": "001"}], [{"GVKEY": "002"}]])
+    con = _Wrds(conn)
+    seen = {}
+
+    def fake_chunks(c, sql):
+        seen["conn"], seen["sql"], seen["in_tx"] = c, sql, c.in_tx
+        return iter(c.chunks)
+
+    monkeypatch.setattr(worker_module, "_read_sql_chunks", fake_chunks)
+    out = tmp_path / "a.jsonl.gz"
+    assert worker_module._write(con, "SELECT * FROM crsp.dsf_v2", str(out)) == 2
+
+    assert conn.options == {"isolation_level": "READ COMMITTED", "stream_results": True}
+    assert con.connection.engine.connects == 1 and seen["conn"] is conn
+    assert seen["in_tx"] is True, "a named cursor under AUTOCOMMIT needs a transaction held open for the read"
+    assert conn.tx_closed and conn.closed, "the read's own connection is closed again"
+    assert con.raw_sql_calls == [], "raw_sql pulls the whole result set: it must not be the normal path"
+    assert _lines(out) == [{"gvkey": "001"}, {"gvkey": "002"}]
+
+
+def test_a_driver_that_refuses_the_cursor_falls_back_to_the_package(worker_module, monkeypatch, tmp_path):
+    """The cursor is an optimisation: a refusal at the first fetch must not be why a fetch fails."""
+    conn = _Conn(chunks=[])
+    con = _Wrds(conn)
+
+    def refuse(c, sql):
+        def gen():
+            raise RuntimeError('cursor "c_1" does not exist')
+            yield  # pragma: no cover
+        return gen()
+
+    monkeypatch.setattr(worker_module, "_read_sql_chunks", refuse)
+    out = tmp_path / "b.jsonl.gz"
+    assert worker_module._write(con, "SELECT 1", str(out)) == 1
+    assert con.raw_sql_calls == ["SELECT 1"]
+    assert _lines(out) == [{"gvkey": "001"}]
+    assert conn.closed
+
+
+def test_a_failure_after_the_first_rows_is_raised_and_leaves_no_file(worker_module, monkeypatch, tmp_path):
+    """Only the first fetch may fall back; a query that dies mid-stream is the query's own failure."""
+    con = _Wrds(_Conn(chunks=[]))
+
+    def die_late(c, sql):
+        def gen():
+            yield [{"GVKEY": "001"}]
+            raise RuntimeError("connection reset")
+        return gen()
+
+    monkeypatch.setattr(worker_module, "_read_sql_chunks", die_late)
+    out = tmp_path / "c.jsonl.gz"
+    with pytest.raises(RuntimeError, match="connection reset"):
+        worker_module._write(con, "SELECT 1", str(out))
+    assert not out.exists() and not list(tmp_path.glob("*.tmp"))
+    assert con.raw_sql_calls == [], "a half-written answer is not retried with the whole-result read"
+
+
+def test_a_connection_without_an_engine_uses_the_package_as_before(worker_module, tmp_path):
+    """An installed ``wrds`` whose connection is not a SQLAlchemy one keeps working."""
+    class _NoEngine:
+        connection = None
+
+        def __init__(self):
+            self.raw_sql_calls = []
+
+        def raw_sql(self, sql, chunksize=None, return_iter=False):
+            self.raw_sql_calls.append(sql)
+            return iter([[{"GVKEY": "001"}]])
+
+    con = _NoEngine()
+    out = tmp_path / "d.jsonl.gz"
+    assert worker_module._write(con, "SELECT 1", str(out)) == 1
+    assert con.raw_sql_calls == ["SELECT 1"]
