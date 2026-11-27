@@ -257,6 +257,7 @@ def test_the_limit_follows_the_free_memory_between_a_floor_and_a_cap(monkeypatch
     floor is safe because DuckDB spills past its limit instead of failing."""
     for var in ("RC_DUCKDB_MEMORY_SHARE", "RC_DUCKDB_MEMORY_FLOOR", "RC_DUCKDB_MEMORY_CAP"):
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(serving, "_cgroup_headroom", lambda: None)         # a box with no cgroup limit on it
     monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
     assert serving.auto_memory_limit() == "6442MB"                         # 60 % of 10 GiB
     monkeypatch.setattr(serving, "available_memory", lambda: 1 * 2**30)    # a busy box: the floor
@@ -277,8 +278,31 @@ def test_the_share_the_floor_and_the_cap_come_from_the_environment(monkeypatch, 
     monkeypatch.setenv("RC_DUCKDB_MEMORY_SHARE", share)
     monkeypatch.setenv("RC_DUCKDB_MEMORY_FLOOR", floor)
     monkeypatch.setenv("RC_DUCKDB_MEMORY_CAP", cap)
+    monkeypatch.setattr(serving, "_cgroup_headroom", lambda: None)         # the cgroup clamp is its own test
     monkeypatch.setattr(serving, "available_memory", lambda: 10 * 2**30)
     assert serving.auto_memory_limit() == expected
+
+
+def test_the_floor_never_raises_the_limit_above_what_the_cgroup_allows(monkeypatch):
+    """The ``wrds/prices`` Parquet step was oom-killed on homesrv at 01:27 on 27 Nov 2026, a 2.8 GB peak under
+    ``life-scripts.slice``'s ``MemoryMax=3G``, with an empty spill folder: the floor had handed DuckDB ``2000MB``
+    of buffers inside a cgroup of 3 GB, and ``memory_limit`` counts no Python, Arrow or gzip memory. A limit the
+    cgroup cannot pay for is a kill, not a spill, so the floor is held to the headroom's share."""
+    for var in ("RC_DUCKDB_MEMORY_SHARE", "RC_DUCKDB_MEMORY_FLOOR", "RC_DUCKDB_MEMORY_CAP", "RC_DUCKDB_MEMORY_MIN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(serving, "_meminfo_available", lambda: 10 * 2**30)  # the box is quiet
+    monkeypatch.setattr(serving, "_cgroup_headroom", lambda: 2_800_000_000)  # the slice is not
+    assert serving.auto_memory_limit() == "1680MB"                          # 60 % of the headroom, not the 2GB floor
+
+
+def test_a_cgroup_tighter_than_the_minimum_still_gets_a_workable_limit(monkeypatch):
+    """The clamp stops at ``MEMORY_MIN_DEFAULT``: a nearly full cgroup would otherwise be given a limit DuckDB
+    cannot plan a single join under, and the step must fail on its own terms rather than on a 0 MB buffer pool."""
+    for var in ("RC_DUCKDB_MEMORY_SHARE", "RC_DUCKDB_MEMORY_FLOOR", "RC_DUCKDB_MEMORY_CAP", "RC_DUCKDB_MEMORY_MIN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(serving, "_meminfo_available", lambda: 10 * 2**30)
+    monkeypatch.setattr(serving, "_cgroup_headroom", lambda: 10_000_000)    # 10 MB left in the cgroup
+    assert serving.auto_memory_limit() == "256MB"
 
 
 def test_a_set_memory_limit_still_wins_over_the_machine(monkeypatch):
