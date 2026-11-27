@@ -203,7 +203,13 @@ def stage_sources(con: duckdb.DuckDBPyConnection) -> None:
     empty typed view, so the build runs on a server that has never fetched (and in a test)."""
     schema = wrds_history.DSF + wrds_history.PROVENANCE
     prices_stage.view(con, STG_DSF, schema, _year_files("dsf"))
-    prices_stage.view(con, STG_DELIST, wrds_history.DELIST + wrds_history.PROVENANCE, _newest_snapshot("stkdelists"))
+    # ``added_later``: the snapshot on disk is the four-column one the fetch asked before #1293, and a snapshot is
+    # re-asked only when it is ``SNAPSHOT_DAYS`` old, so the type-code columns are read as NULL until then. Without
+    # it every missing column resolves to its own alias and DuckDB refuses the view (Binder Error: column
+    # ``deldtprcflg`` cannot be referenced before it is defined), which is what the first attended run on homesrv
+    # hit, four seconds in, before any file was written (27 Nov 2026).
+    prices_stage.view(con, STG_DELIST, wrds_history.DELIST + wrds_history.PROVENANCE, _newest_snapshot("stkdelists"),
+                      added_later=wrds_history.DELIST_ADDED)
     prices_stage.view(con, STG_SECD, wrds_history.SECD + wrds_history.PROVENANCE, _year_files("secd"),
                       added_later=wrds_history.SECD_ADDED)
 
