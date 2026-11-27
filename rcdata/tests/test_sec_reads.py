@@ -216,6 +216,16 @@ def test_a_slice_value_that_is_not_positive_seconds_keeps_the_default(monkeypatc
     assert any(asker.SLICE_ENV in n and "positive" in n for n in ctx.notes)
 
 
+def test_the_question_registered_last_keeps_its_share_of_the_slice():
+    """``debt.note`` made no call in run ``20261125T152000Z-ceaa36af``: ``company.profile``, registered before it,
+    spent the whole 900 s slice (fetch step 977 s) and the last question was asked with nothing left."""
+    limit = 900.0
+    share = limit / 3                                       # the three registered questions
+    spent = reads._share_started(0.0, 900.0, limit, share)
+    assert spent == 600.0 and 900.0 - spent == share        # the slice is gone: the share is still there
+    assert reads._share_started(0.0, 100.0, limit, share) == 0.0     # time left: the run's own start, unchanged
+
+
 def test_a_provider_stop_keeps_the_answers_already_paid_for(http_mock):
     calls = iter([(200, json.dumps(chat('{"products": ["x"]}')), {}), (401, "{}", {})])
     http_mock.add("/chat/completions", lambda req: next(calls))

@@ -269,8 +269,9 @@ def ask(ctx: base.RunContext, jobs: list[Job],
     """Ask every job: ``(replies, the error that stopped the run or None, jobs left unasked)``.
 
     The replies that came back before a stop are returned with it, so the caller stores them before it raises: a
-    paid answer is never thrown away. ``started`` is the run's clock when one run asks several questions, so the
-    slice is the run's and not each question's.
+    paid answer is never thrown away. ``started`` is the clock the caller gives this question: the run's own
+    when the slice still has room, else moved forward so the question keeps its share of it
+    (``reads._share_started``), because the question registered last would otherwise be starved.
 
     **A wrong endpoint costs five calls and no attempt.** While no company has had a usable reply, the unusable
     ones are held back; :data:`UNUSABLE_STOP` of them stop the run as failed and none is stored, so a renamed
