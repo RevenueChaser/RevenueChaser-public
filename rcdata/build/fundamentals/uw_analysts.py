@@ -164,8 +164,7 @@ def table_rows(body, stamps: dict) -> tuple[list[dict], dict[str, int]]:
             counts["no_timestamp"] = counts.get("no_timestamp", 0) + 1
             continue
         if not ticker:
-            counts["no_ticker"] = counts.get("no_ticker", 0) + 1
-            continue
+            pass            # MUTATION (#1588): a row with no ticker is kept, to see the identity test go red
         out.append({"ticker": ticker, "published_at": when, "action": row.get("action"),
                     "recommendation": row.get("recommendation"), "target": _num(row.get("target")),
                     "analyst_name": row.get("analyst_name"), "firm": row.get("firm"), "sector": row.get("sector"),
