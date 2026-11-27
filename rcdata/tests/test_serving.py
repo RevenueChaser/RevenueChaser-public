@@ -284,10 +284,11 @@ def test_the_share_the_floor_and_the_cap_come_from_the_environment(monkeypatch, 
 
 
 def test_the_floor_never_raises_the_limit_above_what_the_cgroup_allows(monkeypatch):
-    """The ``wrds/prices`` Parquet step was oom-killed on homesrv at 01:27 on 27 Nov 2026, a 2.8 GB peak under
-    ``life-scripts.slice``'s ``MemoryMax=3G``, with an empty spill folder: the floor had handed DuckDB ``2000MB``
-    of buffers inside a cgroup of 3 GB, and ``memory_limit`` counts no Python, Arrow or gzip memory. A limit the
-    cgroup cannot pay for is a kill, not a spill, so the floor is held to the headroom's share."""
+    """A ``memory_limit`` the size of the cgroup the process runs in is one the kernel cannot honour:
+    ``memory_limit`` counts no Python, Arrow or gzip memory, so a step that did need to spill would be ended
+    first. Read on homesrv 27 Nov 2026: under ``life-scripts.slice``'s ``MemoryMax=3G`` the floor handed a step
+    ``2000MB`` where 60 % of the headroom was about 1680MB. This is hygiene, not the fix for an observed kill:
+    the ``wrds/prices`` kill of 01:27 that same night proved to be elsewhere."""
     for var in ("RC_DUCKDB_MEMORY_SHARE", "RC_DUCKDB_MEMORY_FLOOR", "RC_DUCKDB_MEMORY_CAP", "RC_DUCKDB_MEMORY_MIN"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setattr(serving, "_meminfo_available", lambda: 10 * 2**30)  # the box is quiet

@@ -90,10 +90,12 @@ MEMORY_FLOOR_DEFAULT = "2GB"
 MEMORY_CAP_DEFAULT = "12GB"
 # The floor is a floor on a *big* box: it may never raise the limit above the share of what the process's own cgroup
 # still allows. ``memory_limit`` counts only DuckDB's buffers -- the Python process, the Arrow batches and the gzip
-# reader live outside it -- so a limit at the size of the cgroup itself means the kernel ends the step before DuckDB
-# ever spills. Measured on homesrv 27 Nov 2026: the ``wrds/prices`` Parquet step, under ``life-scripts.slice``
-# (``MemoryMax=3G``), was given ``2000MB`` by the floor and was oom-killed at a 2.8 GB peak with its spill folder
-# empty. Below this minimum a limit is no longer workable, so the clamp stops there.
+# reader live outside it -- so a limit at the size of the cgroup itself is one the kernel cannot honour: a step that
+# did need to spill would be ended first. Read on homesrv 27 Nov 2026: under ``life-scripts.slice``
+# (``MemoryMax=3G``) the floor handed a step ``2000MB`` where 60 % of the headroom was about 1680MB. No oom-kill is
+# attributed to this -- the one that was (``wrds/prices``, 01:27) turned out to be elsewhere, and a measurement of
+# that step at ``MemoryMax=2G`` succeeded both before and after this clamp. Below this minimum a limit is no longer
+# workable, so the clamp stops there.
 MEMORY_MIN_DEFAULT = "256MB"
 # Where "what is available" is read from. Both are consulted and the smaller wins: the kernel's MemAvailable says
 # what the box has, the process's cgroup says what it is allowed (homesrv runs the builder under a systemd
