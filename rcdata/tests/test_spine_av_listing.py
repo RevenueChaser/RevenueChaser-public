@@ -245,3 +245,29 @@ def test_a_5xx_fails_with_the_url_and_never_the_key(env):
     row = _run()
     assert row["result"] == "failed" and "HTTP 500" in row["note"] and "av.test/query" in row["note"]
     assert KEY not in row["note"] and row["calls"] == base.HTTP_ATTEMPTS
+
+
+def test_a_non_csv_delisted_answer_is_asked_once_more_and_kept_when_the_second_answers(env):
+    """#1418: the delisted call answered JSON instead of the list on 13 and 19 Nov 2026 and the run gave up on one
+    answer. That answer is Alpha Vantage's own note, not a refusal, so it is asked once more; a second answer that
+    is the list is kept, with no issue left open. Three calls that run, inside the day cap."""
+    answers = iter(["{}", DELISTED])
+    env.add("state=delisted", lambda _request: (200, next(answers).encode("utf-8"), {}))
+    env.add("av.test/query", ACTIVE)
+    row = _run()
+    assert row["result"] == "changed", row["note"]
+    assert len(env.calls("state=delisted")) == av.DELISTED_TRIES == 2
+    assert ("OLDE", "OLDE", "Old ETF", "ETF", date(2010, 1, 4), date(2024, 6, 28), "Delisted") in _parquet()
+    assert ops.open_issues(av.NAME)[0] == 0
+    assert "asking once more" in row["note"]
+
+
+def test_the_delisted_issue_opens_only_after_both_asks_answer_no_list(env):
+    """The other half of the same rule: two tries, then the issue, and the active list is still kept."""
+    _answer(env, delisted="{}")
+    row = _run()
+    assert row["result"] == "changed", row["note"]
+    assert len(env.calls("state=delisted")) == 2
+    assert {r[0] for r in _parquet()} == {"A", "XLK", "BNKU", "BRK-B"}
+    assert [(i["kind"], i["key"]) for i in ops.open_issues(av.NAME)[1]] == [("no_rows", "delisted")]
+    assert "after 2 tries" in row["note"]
