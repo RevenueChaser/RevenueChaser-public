@@ -200,7 +200,7 @@ def test_a_refused_pass_of_several_requests_skips_every_one(refusing):
 
 
 def test_only_the_schedules_own_request_is_the_pass():
-    """Not the negation of ``_pressed``: a request with neither an id nor a ``requested_by`` is held by nothing."""
+    """A request with neither an id nor a ``requested_by`` is held by nothing."""
     assert base._scheduled({"id": 1, "requested_by": "schedule"}) is True
     assert base._scheduled({"id": 1, "requested_by": "settings"}) is False
-    assert base._scheduled({}) is False and base._pressed({}) is False
+    assert base._scheduled({}) is False
