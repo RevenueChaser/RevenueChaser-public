@@ -253,10 +253,14 @@ def test_the_read_asks_for_a_server_side_cursor_on_a_connection_of_its_own(worke
     assert _lines(out) == [{"gvkey": "001"}, {"gvkey": "002"}]
 
 
-def test_a_driver_that_refuses_the_cursor_falls_back_to_the_package(worker_module, monkeypatch, tmp_path):
-    """The cursor is an optimisation: a refusal at the first fetch must not be why a fetch fails."""
+def test_the_package_answers_where_there_is_no_cursor_to_be_had(worker_module, monkeypatch, tmp_path):
+    """The cursor is an optimisation, never the reason a fetch fails, in both ways it can be absent.
+
+    A driver that refuses it at the first fetch, and a ``wrds`` whose connection is not a SQLAlchemy one, both
+    fall back to the package's own read and answer exactly as before #1574.
+    """
     conn = _Conn(chunks=[])
-    con = _Wrds(conn)
+    refused = _Wrds(conn)
 
     def refuse(c, sql):
         def gen():
@@ -266,10 +270,26 @@ def test_a_driver_that_refuses_the_cursor_falls_back_to_the_package(worker_modul
 
     monkeypatch.setattr(worker_module, "_read_sql_chunks", refuse)
     out = tmp_path / "b.jsonl.gz"
-    assert worker_module._write(con, "SELECT 1", str(out)) == 1
-    assert con.raw_sql_calls == ["SELECT 1"]
+    assert worker_module._write(refused, "SELECT 1", str(out)) == 1
+    assert refused.raw_sql_calls == ["SELECT 1"]
     assert _lines(out) == [{"gvkey": "001"}]
-    assert conn.closed
+    assert conn.closed, "the read's own connection is closed even when its first fetch raised"
+
+    class _NoEngine:
+        connection = None
+
+        def __init__(self):
+            self.raw_sql_calls = []
+
+        def raw_sql(self, sql, chunksize=None, return_iter=False):
+            self.raw_sql_calls.append(sql)
+            return iter([[{"GVKEY": "001"}]])
+
+    plain = _NoEngine()
+    out2 = tmp_path / "b2.jsonl.gz"
+    assert worker_module._write(plain, "SELECT 1", str(out2)) == 1
+    assert plain.raw_sql_calls == ["SELECT 1"]
+    assert _lines(out2) == [{"gvkey": "001"}]
 
 
 def test_a_failure_after_the_first_rows_is_raised_and_leaves_no_file(worker_module, monkeypatch, tmp_path):
@@ -288,21 +308,3 @@ def test_a_failure_after_the_first_rows_is_raised_and_leaves_no_file(worker_modu
         worker_module._write(con, "SELECT 1", str(out))
     assert not out.exists() and not list(tmp_path.glob("*.tmp"))
     assert con.raw_sql_calls == [], "a half-written answer is not retried with the whole-result read"
-
-
-def test_a_connection_without_an_engine_uses_the_package_as_before(worker_module, tmp_path):
-    """An installed ``wrds`` whose connection is not a SQLAlchemy one keeps working."""
-    class _NoEngine:
-        connection = None
-
-        def __init__(self):
-            self.raw_sql_calls = []
-
-        def raw_sql(self, sql, chunksize=None, return_iter=False):
-            self.raw_sql_calls.append(sql)
-            return iter([[{"GVKEY": "001"}]])
-
-    con = _NoEngine()
-    out = tmp_path / "d.jsonl.gz"
-    assert worker_module._write(con, "SELECT 1", str(out)) == 1
-    assert con.raw_sql_calls == ["SELECT 1"]
