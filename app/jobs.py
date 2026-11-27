@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from revenuechaser.core import credentials, job_control, ledger, notify, rawstore
+from revenuechaser.core import credentials, job_control, ledger, rawstore
 from revenuechaser.core.providers.unusual_whales import BREAKER_THRESHOLD, UWClient
 
 logger = logging.getLogger(__name__)
@@ -512,9 +512,6 @@ def execute(job_id: str) -> None:
         _CURRENT.job_id = None
         if uw is not None:
             getattr(uw, "close", lambda: None)()
-        with _LOCK:
-            ended = dict(_JOBS.get(job_id) or {})
-        notify.job_end(ended)   # never raises
 
 
 def _worker_loop(q: "queue.Queue | None" = None) -> None:

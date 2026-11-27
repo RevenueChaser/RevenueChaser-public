@@ -37,7 +37,7 @@ from typing import Any, Callable, Iterable, Protocol
 import duckdb
 import httpx
 
-from ...core import calendar, config, job_lock, notify, rawstore
+from ...core import calendar, config, job_lock, rawstore
 from .. import caps, ops, serving
 from . import measure
 
@@ -1451,17 +1451,11 @@ def run_request(req: dict, *, trigger: str = "queue", attended_ok: bool = False,
 def _scheduled(req: dict) -> bool:
     """A request the hourly pass queued itself (``due.REQUESTED_BY``, not imported: ``due`` imports this module).
 
-    Not the negation of :func:`_pressed`: a request with no id is nobody's press and is also not the pass's, and a
-    build called directly (a test, a one-off) is neither. Only this one holds a whole build back, so anything this
+    A request with no id is nobody's press and is also not the pass's, and a build called directly (a test, a
+    one-off) is neither. Only this one holds a whole build back, so anything this
     cannot name goes ahead and builds, which is what every caller did before #446 step 8.
     """
     return req.get("requested_by") == "schedule"
-
-
-def _pressed(req: dict) -> bool:
-    """A request a person made (a Build button, the CLI), not one the hourly pass queued (``due.REQUESTED_BY``,
-    not imported: due.py imports this module)."""
-    return req.get("id") is not None and req.get("requested_by") != "schedule"
 
 
 def _abort(run_id: str | None, req: dict, e: BaseException) -> None:
@@ -1484,8 +1478,6 @@ def _abort(run_id: str | None, req: dict, e: BaseException) -> None:
             ops.finish_request(req["id"], "failed", note=f"killed: {why}"[:300])
         except ops.STORE_ERRORS:
             logger.warning("could not end request %s", req["id"], exc_info=True)
-    if run_id is not None:   # a claimed request never reached (no run) is not a run that ended
-        notify.build_end(str(req.get("dataset") or "?"), status, why, requested=_pressed(req))
 
 
 def _run(ctx: RunContext, ds, req: dict, params: dict, attended_ok: bool = False) -> dict:
@@ -1702,7 +1694,6 @@ def _finish(ctx: RunContext, req: dict, check: dict, status: str, error: str | N
     ops.finish_run(ctx.run_id, status, error, {"steps": ctx.step_times()})
     if req.get("id") is not None:
         ops.finish_request(req["id"], {"ok": "done", "skipped": "skipped"}.get(status, "failed"), note=notes)
-    notify.build_end(ctx.dataset, status, error or notes, requested=_pressed(req))
     out = ops.latest_check(ctx.dataset)
     logger.info(format_check(out))
     measure.finish(ctx, req, {**check, **(out or {})}, status, _served_bytes(ctx.dataset))
