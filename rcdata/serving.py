@@ -88,6 +88,13 @@ MEMORY_SHARE_DEFAULT = 0.6
 # quiet box from handing one build everything, which is what DuckDB's own 80 %-of-RAM default did (#319).
 MEMORY_FLOOR_DEFAULT = "2GB"
 MEMORY_CAP_DEFAULT = "12GB"
+# The floor is a floor on a *big* box: it may never raise the limit above the share of what the process's own cgroup
+# still allows. ``memory_limit`` counts only DuckDB's buffers -- the Python process, the Arrow batches and the gzip
+# reader live outside it -- so a limit at the size of the cgroup itself means the kernel ends the step before DuckDB
+# ever spills. Measured on homesrv 27 Nov 2026: the ``wrds/prices`` Parquet step, under ``life-scripts.slice``
+# (``MemoryMax=3G``), was given ``2000MB`` by the floor and was oom-killed at a 2.8 GB peak with its spill folder
+# empty. Below this minimum a limit is no longer workable, so the clamp stops there.
+MEMORY_MIN_DEFAULT = "256MB"
 # Where "what is available" is read from. Both are consulted and the smaller wins: the kernel's MemAvailable says
 # what the box has, the process's cgroup says what it is allowed (homesrv runs the builder under a systemd
 # ``MemoryMax``, so free host RAM alone would be a limit the cgroup kills the build for taking).
@@ -212,6 +219,9 @@ def auto_memory_limit() -> str:
 
     More when the box is quiet, less when it is not. A floor below what the build needs is not a failure: DuckDB
     spills past its limit (``spill_dir``). ``RC_DUCKDB_MEMORY_LIMIT`` set to a size skips all of this.
+
+    Where a cgroup is what binds (homesrv runs every script under a ``MemoryMax``), the floor is held to a share of
+    that headroom as well (``MEMORY_MIN_DEFAULT``): a limit the cgroup cannot pay for is a kill, not a spill.
     """
     available = available_memory()
     if available is None:
@@ -219,6 +229,10 @@ def auto_memory_limit() -> str:
     floor = _bytes(_size("RC_DUCKDB_MEMORY_FLOOR", MEMORY_FLOOR_DEFAULT))
     cap = _bytes(_size("RC_DUCKDB_MEMORY_CAP", MEMORY_CAP_DEFAULT))
     chosen = max(floor, min(cap, int(available * _memory_share())))
+    room = _cgroup_headroom()
+    if room is not None:
+        least = _bytes(_size("RC_DUCKDB_MEMORY_MIN", MEMORY_MIN_DEFAULT))
+        chosen = min(chosen, max(least, int(room * _memory_share())))
     return f"{chosen // 10**6}MB"
 
 
