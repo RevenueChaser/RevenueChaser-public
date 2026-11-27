@@ -3,13 +3,15 @@
 ``GET <RC_ALPHAVANTAGE_BASE>/query?function=LISTING_STATUS&apikey=...`` answers CSV with the header
 ``symbol,name,exchange,assetType,ipoDate,delistingDate,status`` and the literal ``null`` for a missing value
 (measured 1 Nov 2026: 14,521 rows, 5,907 ``ETF`` and 8,614 ``Stock``). A second call adds ``&state=delisted``; it
-answered ``{}`` (2 bytes) that day, so a delisted answer that is not the CSV is a ``no_rows`` build issue (one open
-row, resolved when the call answers a list) and the active list is kept. An active list under :data:`MIN_ETFS` ETF
+answered ``{}`` (2 bytes) that day, so a delisted answer that is not the CSV is asked once more
+(:data:`DELISTED_TRIES`) and, if it answers no list again, is a ``no_rows`` build issue (one open row, resolved when
+the call answers a list) while the active list is kept. An active list under :data:`MIN_ETFS` ETF
 rows, or under :data:`MIN_SHARE` of the previous snapshot's, fails the run and is not kept. A failed run is due
 again on the next New York day, not on the next hourly pass (``due.py``), so the 25 a day are not spent on it
 (unless the day's raw file is held: a rerun then costs no call). A JSON answer to the active call (a rate limit or
 an error, HTTP 200) fails the run and keeps nothing; its body is never echoed (it can repeat the key). Two requests
-a run, inside the ``alphavantage`` day cap it shares with the earnings calendar. It runs **weekly** (avo, 21 Nov 2026:
+a run, three when the delisted call is asked again, inside the ``alphavantage`` day cap it shares with the earnings
+calendar. It runs **weekly** (avo, 21 Nov 2026:
 "Evet onlarda cok sik olmasina gerek yok"): a list of every US listing changes by a handful of rows a week, and a
 truncated or missing answer is caught by the floor rather than by how often the list is asked for. A failed run is
 still due again on the next New York day (``due.DAY_CAPPED``), not a week later.
@@ -57,6 +59,13 @@ MIN_ETFS = 3_000
 MIN_SHARE = 0.8
 #: The delisted call's issue kind: kept open while the call answers no list, resolved when it does (review S5).
 ISSUE_KINDS = {"no_rows": "the delisted call answered no list (key: delisted)"}
+#: How many times the delisted call is asked before it is given up on, and the wait between the asks (#1418). It
+#: answered JSON instead of the list on 13 and 19 Nov 2026 and the run kept the active list and noted it; that
+#: answer is Alpha Vantage's own note, not a permanent refusal, so a second ask is worth one more of the 25
+#: requests the free tier allows a day. The active list is never retried here: it is asked before this and a
+#: failure there fails the fetch, with the provider's own backoff behind it (``base.http_get``).
+DELISTED_TRIES = 2
+DELISTED_RETRY_S = 5.0
 
 
 def raw_dir() -> Path:
@@ -172,14 +181,20 @@ class AvListing:
         rows = parse(r.text)                      # refuse a rate-limit answer before it is kept
         floor_check(rows, as_of)                  # and a truncated one
         found = []
-        try:
-            d = base.http_get(ctx, PROVIDER, url, keyed=True,
-                              params={"function": "LISTING_STATUS", "state": "delisted", "apikey": key})
-            parse(d.text)
-            base.write_raw(delisted_path(as_of), d.content)
-        except base.SourceError as e:
-            found.append(("no_rows", "delisted", str(e)))
-            ctx.notes.append(f"delisted list not read ({e})")
+        for attempt in range(1, DELISTED_TRIES + 1):
+            try:
+                d = base.http_get(ctx, PROVIDER, url, keyed=True,
+                                  params={"function": "LISTING_STATUS", "state": "delisted", "apikey": key})
+                parse(d.text)
+                base.write_raw(delisted_path(as_of), d.content)
+                break
+            except base.SourceError as e:
+                if attempt < DELISTED_TRIES:
+                    ctx.notes.append(f"delisted list not read, asking once more ({e})")
+                    ctx.sleep(DELISTED_RETRY_S)
+                    continue
+                found.append(("no_rows", "delisted", str(e)))
+                ctx.notes.append(f"delisted list not read after {attempt} tries ({e})")
         # One open issue while the call answers no list, resolved when it does: never one a day (review S5).
         ops.sync_issues(NAME, ISSUE_KINDS, found, run_id=ctx.run_id)
         base.write_raw_json(meta_path(raw), {"as_of": as_of.isoformat(), "fetched_at": time.time(),
