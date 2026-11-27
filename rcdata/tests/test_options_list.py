@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from revenuechaser.core import calendar
+from revenuechaser.core.option_prints import is_block, is_sweep
 from revenuechaser.core.providers import unusual_whales
 from revenuechaser.rcdata import ops, serving
 from revenuechaser.rcdata.build import base
@@ -141,6 +142,26 @@ def test_a_multi_leg_or_stock_tied_print_is_marked_a_package():
     assert package({"upstream_condition_detail": "TLET"}) is True
     assert package({"upstream_condition_detail": "auto"}) is False
     assert package({"upstream_condition_detail": ""}) is None and package({}) is None
+
+
+def test_an_intermarket_sweep_print_is_marked_a_sweep():
+    """Lane D of #1431: UW carries OPRA's sweep marker twice and the two agree on every sweep of the stored
+    2026-11-20 session (19 of 4,800 prints), so either field answers it and nothing is inferred."""
+    assert is_sweep({"report_flags": ["intermarket_sweep"], "upstream_condition_detail": "isoi"}) is True
+    assert is_sweep({"report_flags": "INTERMARKET_SWEEP"}) is True, "one flag is enough"
+    assert is_sweep({"upstream_condition_detail": "SLAI"}) is True, "the condition alone is enough"
+    assert is_sweep({"report_flags": ["extended_hours"], "upstream_condition_detail": "auto"}) is False
+    assert is_sweep({"report_flags": [], "upstream_condition_detail": ""}) is None and is_sweep({}) is None
+
+
+def test_a_print_at_either_block_threshold_is_marked_a_block():
+    """Lane D of #1431: no vendor tags a block, so the rule is the market's size cut. The stored 2026-11-20
+    session had median size 1, p99 100 and max 678: 56 prints of 100 contracts or more, 5 of $1M or more."""
+    assert is_block({"size": "100", "premium": "1000"}) is True
+    assert is_block({"size": 1, "premium": "1000000"}) is True, "premium alone is enough"
+    assert is_block({"size": 99, "premium": 999_999}) is False
+    assert is_block({"premium": "250"}) is False, "a premium under the cut and no size is still not a block"
+    assert is_block({}) is None and is_block({"size": None, "premium": None}) is None
 
 
 def test_outside_the_observed_window_no_call_is_sent(uw_opts, monkeypatch):
