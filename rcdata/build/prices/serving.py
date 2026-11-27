@@ -176,6 +176,12 @@ ISSUE_KINDS = {
     "universe_etf_no_bar": ("an ETF of the stored universe (a ticker of the spine's etf table, or a fund of the "
                             "my_universe list) with no bar on the newest served session (key: the ticker; review M3 "
                             "of #382, D5 of #420)"),
+    "etf_identity_disagrees": ("a universe fund whose spine ``etf`` row gives a gvkey:iid, while prices claims "
+                               "another for it: its spine row's, its ticker series (``_etf_tic_series``) or its CUSIP "
+                               "alias (``_gvkey_alias``); found only, nothing served changes (key: the ticker; #1585, "
+                               "avo 27 Nov 2026 option A)"),
+    "etf_identity_unclaimed": ("a universe fund whose spine ``etf`` row gives a gvkey:iid that no prices path claims "
+                               "for it (key: the ticker; #1585)"),
     "universe_etf_ticker_shared": ("more than one recent Compustat series carries the ticker of a universe fund the "
                                    "spine cannot route; one is stored, the detail names them all (key: the ticker; "
                                    "review D1 of #420)"),
@@ -351,6 +357,52 @@ def _create(con: duckdb.DuckDBPyConnection, table: str, select: str, live: bool 
     return stage.count(con, table)
 
 
+#: Every gvkey:iid a prices path claims for a fund ticker (``universe.norm`` form): its spine ``security`` row, its
+#: ticker series, and its CUSIP alias, reached through the spine row's id or the ``sym:``/``cik:`` id the fetch minted.
+ETF_CLAIMS_SQL = f"""
+    SELECT {universe.norm('s.ticker')} AS tic, s.gvkey || ':' || s.iid AS gid, 'spine security' AS how FROM stg_spine s
+    WHERE nullif(s.gvkey, '') IS NOT NULL AND nullif(s.iid, '') IS NOT NULL
+    UNION ALL SELECT tic, gid, 'ticker series' FROM _etf_tic_series WHERE pick = 1
+    UNION ALL SELECT {universe.norm('s.ticker')}, a.gid, 'cusip alias' FROM _gvkey_alias a
+              JOIN stg_spine s ON s.security_id = a.security_id
+    UNION ALL SELECT {universe.norm("split_part(a.security_id, ':', 2)")}, a.gid, 'cusip alias' FROM _gvkey_alias a
+              WHERE a.security_id LIKE 'sym:%'
+    UNION ALL SELECT {universe.norm("split_part(a.security_id, ':', 3)")}, a.gid, 'cusip alias' FROM _gvkey_alias a
+              WHERE a.security_id LIKE 'cik:%'"""
+#: Per universe fund with a spine gvkey:iid: that gid, the claims that differ, and how many claims there are at all.
+ETF_IDENTITY_SQL = f"""
+    WITH sp AS (SELECT {universe.norm('ticker')} AS tic, gvkey || ':' || iid AS gid FROM stg_etf
+                WHERE nullif(gvkey, '') IS NOT NULL AND nullif(iid, '') IS NOT NULL
+                QUALIFY count(*) OVER (PARTITION BY {universe.norm('ticker')}) = 1),
+         c AS (SELECT DISTINCT tic, gid, how FROM ({ETF_CLAIMS_SQL}))
+    SELECT u.ticker, sp.gid, string_agg(c.how || ' ' || c.gid, '; ' ORDER BY c.how, c.gid)
+                             FILTER (WHERE c.gid <> sp.gid), count(c.gid)
+    FROM _universe_etf u JOIN sp USING (tic) LEFT JOIN c USING (tic)
+    GROUP BY 1, 2 ORDER BY 1"""
+
+
+def etf_identity_filled(con: duckdb.DuckDBPyConnection) -> int:
+    """How many ``stg_etf`` rows carry a gvkey:iid: 0 on a spine from before schema 11 (no such columns)."""
+    return con.execute("SELECT count(*) FROM stg_etf WHERE nullif(gvkey, '') IS NOT NULL "
+                       "AND nullif(iid, '') IS NOT NULL").fetchone()[0]
+
+
+def etf_identity_issues(con: duckdb.DuckDBPyConnection) -> list[tuple[str, str, str]]:
+    """The spine owns ETF identity (#1585, avo 27 Nov 2026 option A): every universe fund whose spine ``etf`` row
+    gives a gvkey:iid is checked against each gvkey:iid a prices path claims for it. A claim that differs is
+    ``etf_identity_disagrees``, no claim at all ``etf_identity_unclaimed``. Found only: the served ids stay what the
+    prices paths make them, and the follow-ups (#1600, #1601) decide when a disagreement refuses a build."""
+    if not _has(con, "stg_etf", "stg_spine", "_universe_etf", "_etf_tic_series", "_gvkey_alias"):
+        return []
+    found: list[tuple[str, str, str]] = []
+    for ticker, gid, other, claims in con.execute(ETF_IDENTITY_SQL).fetchall():
+        if other:
+            found.append(("etf_identity_disagrees", ticker, f"{ticker}: the spine gives {gid}; prices claims {other}"))
+        elif not claims:
+            found.append(("etf_identity_unclaimed", ticker, f"{ticker}: the spine gives {gid}; no prices path claims it"))
+    return found
+
+
 def _spine(con: duckdb.DuckDBPyConnection) -> int:
     """``stg_spine``: the live spine's ``security`` rows with their security id (empty before a first spine), and
     ``is_etf`` / ``inception`` from its ``etf`` table when it has one (schema 4, #349), for the CRSP ticker rule;
@@ -359,7 +411,8 @@ def _spine(con: duckdb.DuckDBPyConnection) -> int:
     con.execute("CREATE OR REPLACE TEMP TABLE stg_spine (ticker TEXT, cik TEXT, tier TEXT, security_type TEXT, "
                 "gvkey TEXT, iid TEXT, composite_figi TEXT, security_id TEXT, cusip TEXT, is_etf BOOLEAN, "
                 "inception DATE)")
-    con.execute("CREATE OR REPLACE TEMP TABLE stg_etf (ticker TEXT, aum DOUBLE, is_etn BOOLEAN, is_cef BOOLEAN)")
+    con.execute("CREATE OR REPLACE TEMP TABLE stg_etf (ticker TEXT, aum DOUBLE, is_etn BOOLEAN, is_cef BOOLEAN, "
+                "gvkey TEXT, iid TEXT)")
     con.execute(f"CREATE OR REPLACE TEMP TABLE stg_{universe.MY_UNIVERSE_TABLE} (ticker TEXT, kind TEXT)")
     live = serving.live_path("spine")
     if not live.exists():
@@ -387,7 +440,9 @@ def _spine(con: duckdb.DuckDBPyConnection) -> int:
                     f"nullif(s.cusip, '') AS cusip, e.etf_ticker IS NOT NULL AS is_etf, e.inception "
                     f"FROM live_spine.security s {etf})")
         if has_etf:
-            con.execute("INSERT INTO stg_etf SELECT ticker, aum, is_etn, is_cef FROM live_spine.etf")
+            # By name: the universe rule reads aum/is_etn/is_cef; gvkey/iid feed only the identity check (#1585).
+            con.execute("INSERT INTO stg_etf (ticker, aum, is_etn, is_cef, gvkey, iid) SELECT ticker, aum, is_etn, "
+                        f"is_cef, {'gvkey, iid' if etf_ids else 'NULL, NULL'} FROM live_spine.etf")
         has_mine = con.execute("SELECT count(*) FROM duckdb_tables() WHERE database_name = 'live_spine' "
                                "AND table_name = ?", [universe.MY_UNIVERSE_TABLE]).fetchone()[0]
         if has_mine:
@@ -824,6 +879,11 @@ class PricesServing:
             counts["wrds_price_diff"] += stage.carry_reports(con)
         self._views(con)
         found += self._issues(con, have, live, alpaca)
+        identity = etf_identity_issues(con)
+        found += identity
+        ctx.notes.append(f"etf identity vs the spine (#1585): {etf_identity_filled(con)} etf rows carry a gvkey:iid; "
+                         f"{sum(k == 'etf_identity_disagrees' for k, _, _ in identity)} universe funds claimed "
+                         f"otherwise, {sum(k == 'etf_identity_unclaimed' for k, _, _ in identity)} unclaimed")
         ctx.pending[NAME] = found
         return counts
 
