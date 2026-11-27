@@ -1232,3 +1232,28 @@ def test_a_four_column_delist_snapshot_still_stages_with_the_new_code_columns_nu
         row = con.execute("SELECT * FROM stg_delist").df().to_dict("records")[0]
     assert row["permno"] == "99001" and row["delret"] == pytest.approx(-0.42)
     assert all(row[c] is None or row[c] != row[c] for c in wrds_history.DELIST_ADDED), row
+
+
+def test_the_parquet_step_materialises_a_year_on_disk_not_in_memory(tmp_path):
+    """The Parquet step holds a whole year in a DuckDB table (``CREATE TABLE new AS ...``, and ``_revisions``'
+    ``old`` beside it), and an **in-memory** DuckDB cannot spill a table it holds: only an operator's
+    intermediates reach ``temp_directory``, so the table stays resident whatever ``memory_limit`` says. Measured
+    on homesrv 27 Nov 2026, converting two ``secd`` partitions through the in-memory connection: 1.98 GiB of anon
+    memory in one process, 0.20 GiB of page cache, and no spill even with the limit at 1278MB. So the step's
+    connection must be file-backed and capped (``CONVERSION_MEMORY_LIMIT``)."""
+    db = tmp_path / "convert.duckdb"
+    con = wrds_history.WrdsPrices._conversion_con(tmp_path)
+    try:
+        limit, spill = con.execute("SELECT current_setting('memory_limit'), "
+                                   "current_setting('temp_directory')").fetchone()
+        con.execute("CREATE TABLE new AS SELECT * FROM range(200000) t(i)")
+        con.execute("CHECKPOINT")
+        rows = con.execute("SELECT count(*) FROM new").fetchone()[0]
+    finally:
+        con.close()
+    assert rows == 200_000
+    assert db.is_file() and db.stat().st_size > 100_000, db.stat().st_size if db.is_file() else "no file"
+    assert spill and str(tmp_path) in spill                 # and its intermediates spill beside it
+    # The cap is the step's own, not the machine's adaptive share. DuckDB reports it in its own units.
+    assert wrds_history.CONVERSION_MEMORY_LIMIT == "1GB"
+    assert serving._bytes(limit) <= 1.01 * serving._bytes(wrds_history.CONVERSION_MEMORY_LIMIT), limit
