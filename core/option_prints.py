@@ -14,6 +14,10 @@ another rule can be read from them at any time.
 
 Package: the print's OPRA trade condition (``upstream_condition_detail``) is a multi-leg (``ml*``, ``mesl``),
 stock-tied (``tl*``, ``tasl``) or older spread, straddle, buy-write or combo code.
+
+Sweep and block are the two rules lane D of #1431 asked for, at the bottom of this file: sweep from OPRA's
+intermarket-sweep marker (measured, UW carries it twice and the two agree), block from the size cut, because
+no vendor tags one. Neither is stored on ``option_print`` yet — that column pair is a schema bump of its own.
 """
 from __future__ import annotations
 
@@ -57,3 +61,35 @@ def is_package(item: dict) -> bool | None:
     """True for a package's trade condition, False for any other condition, None when the print has none."""
     code = str(item.get("upstream_condition_detail") or "").strip().lower()
     return None if not code else code in PACKAGE_CODES
+
+
+# ── Sweep and block (lane D of #1431) ─────────────────────────────────────────────────────────────────
+# Sweep: OPRA's intermarket-sweep marker, which UW carries twice — the ``intermarket_sweep`` report flag and
+# the ``isoi`` condition. Measured on the stored 2026-11-20 session (4,800 prints of the list and earnings
+# sets): the two agree on every one of the 19 sweeps, so either field answers and neither is guessed. This is
+# the ISO marker of one print, not UW's per-contract ``sweep_volume``, which aggregates a sweep order's legs.
+SWEEP_FLAGS = frozenset({"intermarket_sweep"})
+SWEEP_CODES = frozenset({"isoi", "slai", "mlai", "mlfi", "mlci"})
+# Block: a size rule, because neither UW nor OPRA tags one. Measured on that same session: median size 1,
+# p99 100, max 678; 56 prints of 100 contracts or more and 5 of a million dollars or more.
+# shortcut: the two thresholds are the market's usual block cut, not scored against a vendor tag (there is
+# none to score against); revisit if a side/flow source with its own block tag is bought.
+BLOCK_SIZE = 100
+BLOCK_PREMIUM = 1_000_000
+
+
+def is_sweep(item: dict) -> bool | None:
+    """True for an intermarket-sweep print, False for one marked otherwise, None when it carries no marker."""
+    flags = {t.lower() for t in _texts(item.get("report_flags"))}
+    code = str(item.get("upstream_condition_detail") or "").strip().lower()
+    if flags & SWEEP_FLAGS or code in SWEEP_CODES:
+        return True
+    return None if not flags and not code else False
+
+
+def is_block(item: dict) -> bool | None:
+    """True for a print at or over either block threshold, False under both, None without a size or premium."""
+    size, premium = (_decimal(item.get(k)) for k in ("size", "premium"))
+    if size is None and premium is None:
+        return None
+    return (size is not None and size >= BLOCK_SIZE) or (premium is not None and premium >= BLOCK_PREMIUM)
