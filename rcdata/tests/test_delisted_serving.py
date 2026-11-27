@@ -275,3 +275,37 @@ def test_the_needs_layer_serves_it_and_never_calls_it_stale(world):
     answer = needs.ask("market.delisted_price_bar", security_ids=[DEAD])
     assert answer.fill is None and [str(r["session_date"]) for r in answer.rows] == MARCH
     assert needs.ask("market.delisted_security").state != "stale"
+
+
+def test_the_four_column_delist_snapshot_on_disk_stages_with_the_type_codes_null_1293():
+    """The ``stkdelists`` snapshot the fetch wrote before #1293 has four columns, and a snapshot is re-asked only
+    when it is ``SNAPSHOT_DAYS`` old, so this build has to read the type-code columns as NULL until then. It did
+    not: ``stage_sources`` typed the view by the whole ``DELIST`` schema without ``added_later``, every absent
+    column resolved to its own SELECT alias, and the first attended run on homesrv died four seconds in with
+    ``Binder Error: Column "deldtprcflg" referenced that exists in the SELECT clause - but this column cannot be
+    referenced before it is defined`` (27 Nov 2026, no file written). The view is built here over such a snapshot,
+    which is what the box holds.
+    """
+    import duckdb
+
+    from revenuechaser.rcdata.build.prices import stage as prices_stage
+
+    # The four columns the fetch asked then, plus the provenance every partition carries (``_write``).
+    old = ([("permno", "TEXT"), ("delistingdt", "DATE"), ("deldtprc", "DOUBLE"), ("delret", "DOUBLE")]
+           + wrds_history.PROVENANCE)
+    assert set(wrds_history.DELIST_ADDED) == {c for c, _ in wrds_history.DELIST} - {c for c, _ in old}
+    part = delisted._parquet_dir("stkdelists") / "snapshot=2026-11-22" / "part-0.parquet"
+    part.parent.mkdir(parents=True, exist_ok=True)
+    prices_stage.write_rows([{"permno": "99001", "delistingdt": "2024-03-07", "deldtprc": 2.5, "delret": -0.42,
+                              "source_as_of": "2026-11-22", "fetched_at": 1.0, "run_id": "r1"}], old, part)
+    assert delisted._newest_snapshot("stkdelists") == [part]
+    with duckdb.connect() as con:
+        delisted.stage_sources(con)                      # red on the base: BinderException on deldtprcflg
+        row = con.execute(f"SELECT * FROM {delisted.STG_DELIST}").df().to_dict("records")[0]
+    assert row["permno"] == "99001" and row["delret"] == pytest.approx(-0.42)
+    assert all(row[c] is None or row[c] != row[c] for c in wrds_history.DELIST_ADDED), row
+    # The build's own query over that view still names the delisting, which is all this layer needs from it.
+    with duckdb.connect() as con:
+        delisted.stage_sources(con)
+        named = con.execute(f"SELECT permno FROM ({delisted.DELISTED_PERMNO_SQL})").fetchall()
+    assert named == [("99001",)]
