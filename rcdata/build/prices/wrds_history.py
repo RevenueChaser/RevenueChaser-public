@@ -68,13 +68,14 @@ the dividend behind ``dlyret``.
 """
 from __future__ import annotations
 
+import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
 
 from ....core import calendar
-from ... import caps
+from ... import caps, serving
 from .. import base, secd
 from ..fundamentals import wrds_fund
 from ..spine import wrds
@@ -108,6 +109,17 @@ SNAPSHOT_DAYS = 30
 # CRSP's ``shrout`` is in thousands of shares (CRSP's documentation; not read from WRDS here).
 CRSP_SHARES_UNIT = 1000
 RAW_SUFFIX = ".jsonl.gz"
+# The Parquet step's own DuckDB cap. It needs one of its own because the step **materialises a whole year**
+# (``CREATE TABLE new AS ...``, and ``_revisions``' ``old`` beside it), and an in-memory DuckDB cannot spill a
+# table it holds: only an operator's intermediates go to ``temp_directory``, so the table stays resident whatever
+# ``memory_limit`` says. Measured on homesrv 27 Nov 2026, converting two ``secd`` partitions in the in-memory
+# connection: 1.98 GiB of **anon** memory in one process against 0.20 GiB of page cache, a sawtooth climbing to
+# ~1.9 GB per partition, and no spill even with the limit at 1278MB. The step is file-backed here instead, so the
+# year lives on the scratch disk and the cap governs buffers that can actually be evicted. 1GB follows ``nport``,
+# the other step that types millions of rows into a throwaway database (#1100).
+CONVERSION_MEMORY_LIMIT = "1GB"
+#: The scratch folder's prefix, so a killed run's leftovers are recognisable.
+CONVERSION_SCRATCH = "wrds-prices-convert-"
 PROVENANCE = [("source_as_of", "DATE"), ("fetched_at", "DOUBLE"), ("run_id", "TEXT")]
 
 SECD = [("gvkey", "TEXT"), ("iid", "TEXT"), ("datadate", "DATE"), ("tic", "TEXT"), ("cusip", "TEXT"),
@@ -533,8 +545,20 @@ class WrdsPrices:
         return out
 
     def _write(self, ctx: base.RunContext, table: str, year: int | None, raw: Path, meta: dict, final: Path) -> Path:
+        with tempfile.TemporaryDirectory(dir=serving.scratch_dir("wrds-prices", raw.parent),
+                                         prefix=CONVERSION_SCRATCH) as tmp:
+            return self._convert(ctx, table, year, raw, meta, final, Path(tmp))
+
+    @staticmethod
+    def _conversion_con(scratch: Path) -> duckdb.DuckDBPyConnection:
+        """The Parquet step's connection: a throwaway DuckDB **file** under ``scratch``, capped at
+        :data:`CONVERSION_MEMORY_LIMIT`. Not ``base.scratch_con``: see that constant for the measurement."""
+        return serving.connect_scratch_file(scratch / "convert.duckdb", CONVERSION_MEMORY_LIMIT)
+
+    def _convert(self, ctx: base.RunContext, table: str, year: int | None, raw: Path, meta: dict, final: Path,
+                 scratch: Path) -> Path:
         spec = TABLES[table]
-        con = base.scratch_con()
+        con = self._conversion_con(scratch)
         try:
             keys = ", ".join(spec["key"])
             every = ", ".join(f'"{c}" NULLS LAST' for c, _ in spec["schema"])
