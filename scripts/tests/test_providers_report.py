@@ -90,12 +90,26 @@ def test_a_name_that_is_a_label_and_not_a_fetch_is_not_read_as_a_dataset():
 
 
 def test_every_dataset_card_prefix_is_a_provider_or_one_of_our_own_lanes():
-    cards = providers_report.dataset_cards()
-    known = set(providers_report.needs_by_provider())
-    _, internal = providers_report.builders(known)
-    lanes = {job.split("/", 1)[0] for job in internal}
-    unplaced = set(cards) - known - lanes
+    """Measured against the providers the **report** names, not the catalog's alone.
+
+    `openfigi` is the named exception and the reason this distinction matters: it declares
+    ``PROVIDER = "openfigi"`` (`rcdata/build/spine/openfigi_map.py:55`) and owns the dataset
+    ``openfigi/map``, but it has no ``Need(...)`` of its own, so the need catalog does not list it. It is a
+    provider by the report's own rule, and the report flags it ``in catalog: no`` rather than dropping it -- so
+    a dataset card naming it is correct, and comparing cards against the catalog alone failed this test on a
+    provider that was never missing (FULL CI on 0198c996, unit 4/6).
+    """
+    inv = providers_report.inventory()
+    reported = {p["provider"] for p in inv["providers"]}
+    lanes = {job.split("/", 1)[0] for job in inv["internal_jobs"]}
+    unplaced = set(providers_report.dataset_cards()) - reported - lanes
     assert not unplaced, f"a dataset card names something that is neither: {sorted(unplaced)}"
+
+    # the exception, written by name: a provider with a dataset and no need of its own.
+    openfigi = next(p for p in inv["providers"] if p["provider"] == "openfigi")
+    assert openfigi["in_need_catalog"] is False and openfigi["need_count"] == 0
+    assert "openfigi/map" in {d["name"] for d in openfigi["datasets"]}
+    assert "openfigi" not in set(providers_report.needs_by_provider())
 
 
 def test_a_reader_declared_outside_rcdata_is_reported():
