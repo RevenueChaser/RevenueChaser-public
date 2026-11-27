@@ -54,10 +54,18 @@ from typing import Callable
 import duckdb
 
 from ....core import calendar
+from ... import ops
 from .. import base
 from . import KIND, stage
 
 NAME = "funds/index_holdings"
+#: The build issues this dataset writes, synced by ``ops.sync_issues`` at the end of every fetch so that a file
+#: which starts answering again closes its own row. Measured on homesrv 27 Nov 2026 (K-F of #1418): 75 open
+#: ``source_failed`` rows, every one a repeat of the same four keys -- the three Vanguard baskets removed from
+#: this module on 22 Nov and the ``nasdaq-NDX`` timeout fixed the same day -- whose newest ``found_on`` is
+#: 20 Nov. ``ops.record_issue``, which the fetch called before, only ever INSERTs, one row per file per run, so a
+#: fixed source could never stop being shown as broken and the count could only grow.
+ISSUE_KINDS = {"source_failed": "a fund file could not be read this run (key: the raw file name)"}
 #: The indexes one iShares file each gives, so, like ``dow``, a member is "the file holds it" (avo, 22 Nov 2026
 #: 22:42-22:43, "Russell için ulaşabileceğim bütün endeksleri ekle"): (slug, fund, product id, page slug, typed shape,
 #: floor). Each CSV was read once from homesrv on 22 Nov 2026 (holdings of 20 Nov); the floor is 80 % of its
@@ -447,7 +455,7 @@ class FundHoldings:
         return calendar.today_ny()
 
     def fetch(self, ctx: base.RunContext, as_of: date) -> list[Path]:
-        out, failed = [], []
+        out, failed, found = [], [], []
         for f in FILES:
             raw = raw_dir() / as_of.isoformat() / f.raw_name()
             if raw.exists():
@@ -458,11 +466,15 @@ class FundHoldings:
                 f.parse(r.content)                                # refuse a file of the wrong shape before keeping it
             except Exception as e:  # noqa: BLE001 - one file down must not stop the others
                 failed.append(f.raw_name())
-                ctx.issue("source_failed", f.raw_name(), f"{type(e).__name__}: {e}"[:300])
+                found.append(("source_failed", f.raw_name(), f"{type(e).__name__}: {e}"[:300]))
                 continue
             base.write_raw_json(_meta(raw), {"as_of": as_of.isoformat(), "fetched_at": time.time(),
                                              "run_id": ctx.run_id, "url": f.url().split("?")[0]})
             out.append(base.write_raw(raw, r.content))
+        # The run's whole truth about these kinds, in one transaction: a file that failed again keeps its first
+        # ``found_on``, a new failure is added, and a file that is not in ``found`` -- because it answered, or
+        # because its raw file of this day is already on disk, which means it answered earlier -- is resolved.
+        ops.sync_issues(NAME, ISSUE_KINDS, found, run_id=ctx.run_id)
         if failed:
             ctx.notes.append("failed files: " + ", ".join(failed))
             if len(failed) == len(FILES):

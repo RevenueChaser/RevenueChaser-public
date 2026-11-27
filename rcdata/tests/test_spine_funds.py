@@ -333,3 +333,30 @@ def test_a_day_already_fetched_is_not_fetched_again(env):
     assert {str(r.url).split("/")[2] for r in env.requests} <= {"www.ssga.com", "www.ishares.com", "api.nasdaq.com",
                                                                 "accounts.profunds.com"}
     assert len(env.requests) == 43                         # only the ones that failed are asked again
+
+
+def test_a_file_that_answers_again_closes_its_own_issue_and_a_repeat_failure_adds_no_second_row(env, http_mock):
+    """The fetch syncs its ``source_failed`` rows instead of inserting one per file per run.
+
+    Measured on homesrv 27 Nov 2026 (K-F of #1418): 75 open rows of this dataset, all repeats of four keys whose
+    newest ``found_on`` was 20 Nov -- the Vanguard baskets this module dropped on 22 Nov and the ``nasdaq-NDX``
+    timeout fixed the same day. Both were long fixed and both were still shown as open, because
+    ``ops.record_issue`` only ever INSERTs. Two things follow and both are asserted here: a file that starts
+    answering again must close its own row, and a file that fails again must not add a second one.
+    """
+    http_mock.routes[:] = [r for r in http_mock.routes if "company_tickers" in r[0]]
+    fx.add_fund_routes(http_mock, fail=("SPY",))
+    base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-27"}})
+    first, issues = ops.open_issues(funds.NAME, limit=200)
+    assert "ssga-SPY.xlsx" in {i["key"] for i in issues} and first == 44      # the fixture's 43, and SPY
+
+    # The next day, with SPY answering again: its row closes, and the 43 that fail again stay one row each.
+    http_mock.routes[:] = [r for r in http_mock.routes if "company_tickers" in r[0]]
+    fx.add_fund_routes(http_mock)
+    base.run_request({"dataset": funds.NAME, "params": {"as_of": "2026-10-28"}})
+    second, issues = ops.open_issues(funds.NAME, limit=200)
+    assert second == first - 1, f"{first} -> {second}: a repeat failure must not add a row"
+    assert "ssga-SPY.xlsx" not in {i["key"] for i in issues}
+    assert "ssga-SPSM.xlsx" in {i["key"] for i in issues}                    # still broken, still one row
+    assert ops.open_issue_kinds(funds.NAME) == [{"kind": "source_failed", "count": second}]
+    assert set(funds.ISSUE_KINDS) == {"source_failed"}
