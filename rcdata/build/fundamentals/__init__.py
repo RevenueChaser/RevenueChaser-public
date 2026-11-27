@@ -10,6 +10,10 @@ The companies are avo's own list (``my_universe``, the spine's ``stock`` rows; t
 holds no list -- ``common.universe``), the same names the boards that read this file screen: their CIKs, gvkeys and
 GICS codes come from ``spine.duckdb``, so the spine is built first. Every dataset ``starts_by_hand``: none is due before a first CLI run
 or Fetch built it, so the first hourly pass after a deploy does not start them before the attended backfill.
+
+``uw/screener_analysts`` is the one dataset of the kind that serves nothing and is read **once**: Unusual Whales' dated
+analyst ratings, the only source measured that answers for delisted names, archived before avo's plan ends on
+6 December 2026 (#1588).
 """
 from __future__ import annotations
 
