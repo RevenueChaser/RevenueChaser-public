@@ -120,6 +120,7 @@ def test_every_dataset_either_honours_the_scope_or_is_named_here():
         "public/economic_calendar": "two calendars, no names",
         "public/fda_calendar": "a full-text search and a notice list, no names",
         "uw/institutions": "one list of every 13F institution at once, keyed by CIK, not by ticker",
+        "uw/screener_analysts": "the market-wide rating feed, then the delisted universe first: a one-off export",
         "openfigi/map": "the spine rows with no FIGI yet",
         "ownership/serve": "no fetch",
         "prices/serving": "no fetch",

@@ -90,7 +90,7 @@ CHECK_DATES = {"sec/nport": ((1, 15), (4, 15), (7, 15), (10, 15))}
 #: for ever, because a failed check is due again at once. A run a person starts (Fetch, the CLI) is not held, so
 #: the line simply comes out again if avo stays on UW. Kept here rather than on the dataset for the reason
 #: :data:`CHECK_DATES` is.
-SOURCE_ENDS = {"uw/institutions": date(2026, 12, 6)}
+SOURCE_ENDS = {"uw/institutions": date(2026, 12, 6), "uw/screener_analysts": date(2026, 12, 6)}
 #: Why such a dataset is not due, and why its Settings row is not stale. One sentence, one home.
 SOURCE_ENDED_WHY = "its source ended {day}: the rows it last read stand (a run a person starts still reads it)"
 #: The New York hours a ``CHECK_DATES`` dataset may start in: 20:00-22:59, 02:00-04:59 in Amsterdam.

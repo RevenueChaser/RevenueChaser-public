@@ -137,6 +137,11 @@ DATASETS: dict[str, DatasetCard] = {
                                        'committee meetings (Federal Register)', step=11, role='first'),
     'uw/institutions': DatasetCard('Every 13F institution, its tags and its successions (Unusual Whales)',
                                   cadence='quarterly', step=10, role='only source'),
+    'uw/screener_analysts': DatasetCard("Dated analyst ratings and price targets, delisted names included "
+                                        '(Unusual Whales; read once before 6 Dec 2026)', cadence='quarterly',
+                                        step=9, role='only source',
+                                        about="Every rating event UW serves: action, recommendation, price "
+                                              'target, the analyst and the firm.', short='UW analyst ratings'),
     'uw/greek_expiry_strike': DatasetCard('SPX greek exposure by expiry and strike, whole chain (Unusual Whales)', coverage_target=0.95, step=11, role='first'),
     'wrds/audit': DatasetCard('Restatements, late filings and officer changes (WRDS: Audit Analytics)', step=9,
                                role='only source'),
