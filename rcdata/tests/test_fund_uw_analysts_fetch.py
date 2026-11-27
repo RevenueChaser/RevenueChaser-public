@@ -116,7 +116,10 @@ def test_a_feed_page_already_written_is_read_and_not_asked_again(http_mock):
                                                  "pass": "feed", "page": 0, "body": {"data": rows[:3]}})
     http_mock.add("/screener/analysts", uw_like(rows))
     _fetch()
-    assert [q.get("older_than") for q in _queries(http_mock) if "ticker" not in q] == [rows[2]["timestamp"]]
+    # Page 0 is not asked again (no request without a cursor); paging carries on from its oldest row.
+    asked = [q.get("older_than") for q in _queries(http_mock) if "ticker" not in q]
+    assert None not in asked and asked[0] == rows[2]["timestamp"]
+    assert base.read_raw_json(ua.feed_path(AS_OF, 0))["run_id"] == "earlier"
 
 
 def test_a_provider_side_failure_in_the_feed_fails_the_run_and_keeps_the_pages(http_mock):
