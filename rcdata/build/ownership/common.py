@@ -34,7 +34,6 @@ from ....core import calendar
 from ....core.identity.sources import norm_ticker
 from ... import serving
 from .. import base, cik_history, dirty, ticker_history
-from ..spine import wrds
 from ..spine.security import squash
 
 SPINE = "spine"
@@ -340,51 +339,44 @@ def spine_cusips() -> dict[str, str] | None:
 ISSUER_ISIN = "comp:sec_idhist_isin"
 
 
-def spine_isin_history(con: duckdb.DuckDBPyConnection) -> list[dict] | None:
-    """The **dated** ISIN periods of the spine's securities as ``{isin, ticker, valid_from, valid_to}``, from
-    Compustat's identifier history (``comp.sec_idhist`` ISIN items) through the spine's ``(gvkey, iid)`` link; None
-    with no spine file, ``[]`` with no staged identifier history.
+def spine_isin_history() -> list[dict] | None:
+    """The **dated** ISIN periods of the spine's securities as ``{isin, ticker, valid_from, valid_to}``, half-open as
+    ``spine_cusip_history``'s; None with no spine file or no history table (an older build).
 
     The spine's own ``security.isin`` is **derived from the CUSIP**, so a foreign-domiciled security that trades in
     the US has none: its CUSIP is a CINS (a letter first), and a CINS cannot be turned into the issuer's real ISIN.
     A fund reports exactly that real ISIN and no CUSIP (Accenture as ``IE00B4BNMY34``, $191bn of ETF rows), so the
-    holding reaches the board unnamed although its ticker is listed. These items carry the real local ISIN and
-    carry it with dates: Medtronic is ``US5850551061`` until 2015-01-26 and ``IE00BTN1Y115`` after (#1564, avo
-    26 Nov 2026: name the foreign-domiciled securities that trade in the US).
+    holding reaches the board unnamed although its ticker is listed. Compustat's identifier history carries the real
+    local ISIN with dates -- Medtronic is ``US5850551061`` until 2015-01-26 and ``IE00BTN1Y115`` after (#1564, avo
+    26 Nov 2026: name the foreign-domiciled securities that trade in the US) -- and the spine keeps those items in
+    ``security_history`` (``field = 'isin'``), read here as the CUSIP path reads its own (#1570). A row with no ticker
+    takes the spine ticker of its ``(gvkey, iid)``.
 
     Dated for the reason #1559 gave on the CUSIP side -- 4,558 securities changed ISIN at least once, so a
     single-valued column would name an old quarter after today's ISIN. A period another ticker also claims is left
     out rather than guessed, as ``serve.py``'s review S1 guard does on the 13F side.
     """
     try:
-        spine = serving.open_read(SPINE)
+        con = serving.open_read(SPINE)
     except serving.ServingFileMissing:
         return None
     try:
-        links = [{"gvkey": g, "iid": i, "ticker": t} for g, i, t in spine.execute(
-            "SELECT gvkey, iid, ticker FROM security WHERE gvkey IS NOT NULL AND ticker IS NOT NULL").fetchall()]
-    except duckdb.Error:                                                  # no security table: a file we cannot read
-        return None
-    finally:
-        spine.close()
-    files = wrds.parquet_files(wrds.SEC_IDHIST.name, "sec_idhist")
-    if not files or not links:
-        return []
-    temp_rows(con, "_sp_isin_link", [("gvkey", "TEXT"), ("iid", "TEXT"), ("ticker", "TEXT")], links)
-    try:
-        rows = con.execute(f"""
-            WITH h AS (SELECT DISTINCT upper(trim(i.itemvalue)) AS isin, l.ticker,
-                              coalesce(i.efffrom, DATE '1900-01-01') AS valid_from,
-                              coalesce(i.effthru, DATE '9999-12-31') AS valid_to
-                       FROM {files_sql(files)} i JOIN _sp_isin_link l
-                         ON l.gvkey = i.gvkey AND l.iid IS NOT DISTINCT FROM i.iid
-                       WHERE upper(i.item) = 'ISIN' AND i.itemvalue IS NOT NULL)
+        rows = con.execute("""
+            WITH l AS (SELECT gvkey, iid, ticker FROM security WHERE gvkey IS NOT NULL AND ticker IS NOT NULL),
+                 h AS (SELECT DISTINCT upper(trim(s.value)) AS isin, coalesce(s.ticker, l.ticker) AS ticker,
+                              coalesce(s.valid_from, DATE '1900-01-01') AS valid_from,
+                              coalesce(s.valid_to, DATE '9999-12-31') AS valid_to
+                       FROM security_history s
+                       LEFT JOIN l ON s.ticker IS NULL AND l.gvkey = s.gvkey AND l.iid IS NOT DISTINCT FROM s.iid
+                       WHERE s.field = 'isin' AND s.value IS NOT NULL AND coalesce(s.ticker, l.ticker) IS NOT NULL)
             SELECT h.isin, h.ticker, h.valid_from, h.valid_to FROM h
             WHERE NOT EXISTS (SELECT 1 FROM h o WHERE o.isin = h.isin
                               AND o.ticker IS DISTINCT FROM h.ticker
                               AND o.valid_from < h.valid_to AND h.valid_from < o.valid_to)""").fetchall()
+    except duckdb.Error:                                                       # no security_history: an old file
+        return None
     finally:
-        con.execute("DROP TABLE _sp_isin_link")
+        con.close()
     return [{"isin": i, "ticker": t, "valid_from": f, "valid_to": to} for i, t, f, to in rows]
 
 
