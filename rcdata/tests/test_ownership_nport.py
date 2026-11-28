@@ -341,7 +341,8 @@ def test_an_isin_period_that_ended_before_the_report_date_does_not_name_the_hold
 
 def test_the_isin_periods_are_the_spines_own_history_named_through_gvkey_and_iid():
     """#1570: the ISIN periods come from the spine's ``security_history`` as the CUSIP ones do, half-open; a row with
-    no ticker takes the spine ticker of its ``(gvkey, iid)``, and a period two tickers claim names neither."""
+    no ticker takes the spine ticker of its ``(gvkey, iid)``, and a period two tickers claim names neither (an ANTI
+    JOIN: DuckDB 1.5.5's correlated NOT EXISTS let both through)."""
     src = "wrds/sec_idhist"
     ox.make_spine(tickers=("ACN", "MDT", "AAA", "BBB"), history=(
         ("ACN", "isin", "IE00B4BNMY34", date(2009, 9, 1), None, "143357", "01", src),

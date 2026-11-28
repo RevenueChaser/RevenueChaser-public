@@ -361,6 +361,8 @@ def spine_isin_history() -> list[dict] | None:
     except serving.ServingFileMissing:
         return None
     try:
+        # ANTI JOIN, not NOT EXISTS: DuckDB 1.5.5 answers a correlated NOT EXISTS with a ``<`` in it as if nothing
+        # matched, so the overlap guard dropped nothing (#1570)
         rows = con.execute("""
             WITH l AS (SELECT gvkey, iid, ticker FROM security WHERE gvkey IS NOT NULL AND ticker IS NOT NULL),
                  h AS (SELECT DISTINCT upper(trim(s.value)) AS isin, coalesce(s.ticker, l.ticker) AS ticker,
@@ -370,9 +372,8 @@ def spine_isin_history() -> list[dict] | None:
                        LEFT JOIN l ON s.ticker IS NULL AND l.gvkey = s.gvkey AND l.iid IS NOT DISTINCT FROM s.iid
                        WHERE s.field = 'isin' AND s.value IS NOT NULL AND coalesce(s.ticker, l.ticker) IS NOT NULL)
             SELECT h.isin, h.ticker, h.valid_from, h.valid_to FROM h
-            WHERE NOT EXISTS (SELECT 1 FROM h o WHERE o.isin = h.isin
-                              AND o.ticker IS DISTINCT FROM h.ticker
-                              AND o.valid_from < h.valid_to AND h.valid_from < o.valid_to)""").fetchall()
+            ANTI JOIN h o ON o.isin = h.isin AND o.ticker IS DISTINCT FROM h.ticker
+                         AND o.valid_from < h.valid_to AND h.valid_from < o.valid_to""").fetchall()
     except duckdb.Error:                                                       # no security_history: an old file
         return None
     finally:
