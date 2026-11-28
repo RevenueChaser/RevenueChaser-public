@@ -149,6 +149,18 @@ def held(question: str) -> dict[tuple, dict]:
         con.close()
 
 
+def _share_started(started: float, now: float, limit: float, share: float) -> float:
+    """The ``started`` one question is asked with, so the first question cannot starve the last (#1594).
+
+    ``asker.ask`` stops a question when ``now - started > limit``, and the questions are asked in registration
+    order, so the one registered last used to get whatever the earlier ones left. Measured on homesrv, run
+    ``20261125T152000Z-ceaa36af``: ``company.profile`` spent the 900 s slice and ``debt.note``, registered last,
+    made no call at all. Moving ``started`` forward leaves a question that finds the slice spent its own ``share``
+    of it; a run with time left is unchanged, so the slice still bounds the common case.
+    """
+    return max(started, now - limit + share)
+
+
 def _plan(q: Question, ctx: base.RunContext) -> tuple[list[asker.Job], dict[tuple, dict], list[dict]]:
     """``(jobs to ask, their stored rows by key, new no_text rows)`` for one question."""
     ciks = sorted({common.norm_cik(c) for c in q.scope()} - {None, ""}, key=int)
@@ -361,6 +373,8 @@ class Reads:
 
     def _ask_all(self, ctx: base.RunContext) -> list[Path]:
         started = ctx.clock()
+        limit = asker.slice_s(ctx)
+        share = limit / max(1, len(QUESTIONS))
         raws: list[Path] = []
         asked = left_all = 0
         by_status: dict[str, int] = {}
@@ -372,7 +386,7 @@ class Reads:
                 continue
             ctx.check_pause()
             jobs, prior, rows = _plan(q, ctx)
-            replies, stop, left = asker.ask(ctx, jobs, started)
+            replies, stop, left = asker.ask(ctx, jobs, _share_started(started, ctx.clock(), limit, share))
             rows += [row_of(ctx, r, prior[_job_key(r.job)]) for r in replies]
             asked += len(jobs)
             left_all += left

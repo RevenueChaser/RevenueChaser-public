@@ -1691,7 +1691,9 @@ def _finish(ctx: RunContext, req: dict, check: dict, status: str, error: str | N
     ops.record_check(ctx.dataset, result, run_id=ctx.run_id, note=notes, **row)
     # The inside of the run: seconds per step, into the ``counts`` column the builder path left empty (ops schema
     # v3, #136), so no schema bump. A run that ended without reaching a step records only the steps it reached.
-    ops.finish_run(ctx.run_id, status, error, {"steps": ctx.step_times()})
+    # The note rides along: the check row keeps only the newest and the request row only the last 20, so a
+    # run's own "N left for the next run" was unreadable a day later (debt.note, 25 Nov 2026).
+    ops.finish_run(ctx.run_id, status, error, {"steps": ctx.step_times(), "note": notes})
     if req.get("id") is not None:
         ops.finish_request(req["id"], {"ok": "done", "skipped": "skipped"}.get(status, "failed"), note=notes)
     out = ops.latest_check(ctx.dataset)
