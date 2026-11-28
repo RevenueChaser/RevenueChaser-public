@@ -180,16 +180,30 @@ def stage_age_h(check: dict) -> float:
     return max(0.0, (calendar.today_ny() - day).days * 24.0)
 
 
+def _first_stage(check: dict) -> dict:
+    """The oldest stage since the last build (a check that is not ``skipped``); a pause or day-cap skip between two
+    stages builds nothing, so it does not end the wait."""
+    first = check
+    for row in ops.recent_checks(check["dataset"], 400)[1:] if check.get("dataset") else ():
+        if row["result"] != "skipped":
+            break
+        if _staged(row):
+            first = row
+    return first
+
+
 def stage_overdue(check: dict | None) -> float | None:
-    """The age in hours of a stage that has waited longer than :data:`STAGE_GAP_MAX_H` for its build, else None.
+    """The age in hours of the oldest stage that has waited longer than :data:`STAGE_GAP_MAX_H` for its build, else
+    None.
 
     This is the one place the gap ceiling is decided (#1532). A ``--no-duckdb`` run leaves the data in Parquet and
-    the serving file as it was; the build that follows is seconds long and needs no provider call, so an old stage
-    is always built rather than fetched again.
+    the serving file as it was; the build that follows is seconds long and needs no provider call. The age runs from
+    the first stage since the last build, not the newest, because the fetch pass keeps staging (avo, 28 Nov 2026:
+    "fetch her zaman devam etmeli build acik olmasa bile"): a newer stage must not make the waiting data look young.
     """
     if not _staged(check):
         return None
-    age = stage_age_h(check)
+    age = stage_age_h(_first_stage(check))
     return age if age >= STAGE_GAP_MAX_H else None
 
 
@@ -363,14 +377,11 @@ def _pass_mode(ds, mode: str, stage: str | None) -> tuple[str, str | None]:
     ``build``: only a ``full`` source whose newest check is a Parquet stage is queued, and as ``full``: the build of
     what the fetch timer staged, at no provider call (the raw file is the resume marker).
 
-    The gap ceiling (#1532) reaches both: the build pass takes an overdue stage whatever the mode says, and the
-    fetch pass leaves it alone instead of staging over it -- a fresh stage every hour would keep the newest check
-    young for ever and the ceiling would never fire.
+    The gap ceiling (#1532) reaches only the build pass: it takes an overdue stage whatever the mode says. The fetch
+    pass never waits for a build (avo, 28 Nov 2026: "fetch her zaman devam etmeli build acik olmasa bile"); it
+    stages on, and ``stage_overdue`` ages the waiting data from its first stage, so the ceiling still fires.
     """
     if stage == "fetch":
-        overdue = stage_overdue(ops.latest_check(ds.name))
-        if overdue is not None:
-            return mode, STAGE_OVERDUE_WHY.format(h=STAGE_GAP_MAX_H, age=overdue) + ": not staged over"
         return ("parquet" if mode == "full" else mode), _fetch_hour(ds)
     if stage == "build":
         check = ops.latest_check(ds.name)
