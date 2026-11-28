@@ -557,7 +557,7 @@ class Nport:
         # A security the spine cannot give an ISIN -- a foreign issuer that trades in the US, whose CUSIP is a CINS
         # -- is named by Compustat's own dated ISIN item instead (#1564). Today's item names the newest quarter,
         # the dated ones name the history, as with the CUSIP above.
-        isin_at = common.spine_isin_history(con) or []
+        isin_at = common.spine_isin_history() or []
         today = calendar.today_ny()
         isins = {r["isin"]: r["ticker"] for r in isin_at if r["valid_from"] <= today < r["valid_to"]}
         common.temp_rows(con, "_np_isin", [("isin", "TEXT"), ("ticker", "TEXT")],

@@ -11,7 +11,7 @@ import duckdb
 import pytest
 
 from revenuechaser.core.providers import sec_edgar
-from revenuechaser.rcdata import ops
+from revenuechaser.rcdata import ops, serving
 from revenuechaser.rcdata.build import base
 from revenuechaser.rcdata.build.ownership import common, nport, sec
 from revenuechaser.rcdata.build.spine import ncen
@@ -306,7 +306,7 @@ def _build_with_isins(sets, monkeypatch, isin_rows, run_id):
     _backfill(date(2026, 1, 1))
     monkeypatch.setattr(nport, "_spine_etfs", lambda: [("VTI", "S000002848")])
     monkeypatch.setattr(common, "spine_cusips", lambda: {"594918104": "MSFT"})
-    monkeypatch.setattr(common, "spine_isin_history", lambda con: list(isin_rows))
+    monkeypatch.setattr(common, "spine_isin_history", lambda: list(isin_rows))
     con = duckdb.connect()
     ctx = base.RunContext(run_id=run_id, dataset=nport.NAME)
     nport.DATASET.build(ctx, con)
@@ -337,6 +337,28 @@ def test_an_isin_period_that_ended_before_the_report_date_does_not_name_the_hold
          "valid_to": date(2026, 5, 1)}], "b6")
     assert con.execute(f"SELECT ticker FROM {nport.TABLE}").fetchall() == [("MSFT",)]
     assert con.execute(f"SELECT ticker FROM {nport.HISTORY} WHERE isin = 'ES0113900J37'").fetchall() == [(None,)]
+
+
+def test_the_isin_periods_are_the_spines_own_history_named_through_gvkey_and_iid():
+    """#1570: the ISIN periods come from the spine's ``security_history`` as the CUSIP ones do, half-open; a row with
+    no ticker takes the spine ticker of its ``(gvkey, iid)``, and a period two tickers claim names neither (an ANTI
+    JOIN: DuckDB 1.5.5's correlated NOT EXISTS let both through)."""
+    src = "wrds/sec_idhist"
+    ox.make_spine(tickers=("ACN", "MDT", "AAA", "BBB"), history=(
+        ("ACN", "isin", "IE00B4BNMY34", date(2009, 9, 1), None, "143357", "01", src),
+        (None, "isin", "IE00BTN1Y115", date(2015, 1, 27), None, "007257", "01", src),
+        (None, "isin", "US0000000001", date(2015, 1, 1), None, "999999", "01", src),
+        ("AAA", "isin", "US1111111111", date(2020, 1, 1), date(2021, 1, 1), "1", "01", src),
+        ("BBB", "isin", "US1111111111", date(2020, 6, 1), None, "2", "01", src),
+        ("ACN", "cusip", "G1151C101", date(2009, 9, 1), None, "143357", "01", src)))
+    with duckdb.connect(str(serving.live_path("spine"))) as con:
+        con.execute("UPDATE security SET gvkey = '007257', iid = '01' WHERE ticker = 'MDT'")
+    assert sorted(common.spine_isin_history(), key=lambda r: r["isin"]) == [
+        {"isin": "IE00B4BNMY34", "ticker": "ACN", "valid_from": date(2009, 9, 1), "valid_to": date(9999, 12, 31)},
+        {"isin": "IE00BTN1Y115", "ticker": "MDT", "valid_from": date(2015, 1, 27), "valid_to": date(9999, 12, 31)}]
+    serving.live_path("spine").unlink()
+    ox.make_spine()                                                   # a spine built before its history table
+    assert common.spine_isin_history() is None
 
 
 def test_the_check_counts_a_change_in_the_history_too(two_quarters):
