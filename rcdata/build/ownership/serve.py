@@ -112,8 +112,9 @@ interest published before it and that session's IBKR borrow fee, rebate and shar
 ``total_float`` have no source here and are NULL.
 
 **When it derives.** A run of any ownership dataset builds the whole kind. The 13F tables are derived on a run of
-``sec/13f`` or of this dataset (a spine change reaches them through this dataset's own daily run) and carried over
-from the live file otherwise, so a FINRA or IBKR run does not read millions of holdings again.
+``sec/13f`` or of this dataset (a spine change reaches them through this dataset's own daily run), or on any run
+whose pass brought a ``sec/13f`` file (#1573: the pass is led by its first request), and carried over from the live
+file otherwise, so a FINRA or IBKR run does not read millions of holdings again.
 
 **Per quarter** (avo, 23 Nov 2026: the whole derive spilled 57 GB and filled the SSD): a ``sec/13f`` run on the
 live copy derives again only the quarters its changed filing days reach (``_quarters``) and keeps every other
@@ -736,11 +737,13 @@ class OwnershipServe:
 
     def build(self, ctx: base.RunContext, con: duckdb.DuckDBPyConnection) -> dict[str, int]:
         on_live = getattr(ctx, "incremental", None) is not None
-        derive = ctx.dataset in (NAME, sec13f.NAME)
+        # #1573: a pass is led by its first request, so a FINRA run can carry a sec/13f file whose quarters the
+        # manifest then marks as built; those quarters are derived whoever leads.
+        derive = ctx.dataset in (NAME, sec13f.NAME) or self._filed(ctx)
         counts = None
         if not derive:
             counts = self._kept(con) if on_live else self._carry_over(con)
-        elif on_live and ctx.dataset == sec13f.NAME:
+        elif on_live and ctx.dataset != NAME:
             keep, why = self._quarters(ctx, con)
             if keep == []:
                 counts = self._kept(con)
@@ -760,6 +763,13 @@ class OwnershipServe:
         for view, sql in VIEWS.items():
             con.execute(f"CREATE OR REPLACE VIEW {view} AS {sql}")
         return counts
+
+    @staticmethod
+    def _filed(ctx: base.RunContext) -> bool:
+        """A ``sec/13f`` Parquet file changed since the live file was built. shortcut: an unknown change set reads as
+        none, as before; that build is whole and led by hand, upgrade if a scheduled one ever is."""
+        root, own = base.parquet_root(), tuple(sec13f.NAME.split("/"))
+        return any(p.relative_to(root).parts[:2] == own for p in (getattr(ctx, "changed", None) or ()))
 
     @staticmethod
     def _kept(con: duckdb.DuckDBPyConnection) -> dict[str, int] | None:

@@ -14,7 +14,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from revenuechaser.rcdata import serving
+from revenuechaser.rcdata import ops, serving
 from revenuechaser.rcdata.build import base, dirty
 from revenuechaser.rcdata.build.ownership import (
     KIND, common, finra, form4, ftd, ibkr, regsho, sched13dg, sec13f, sec13f_listing, serve
@@ -358,3 +358,20 @@ def test_a_filer_family_that_changes_in_a_kept_quarter_derives_everything(histor
     row = _13f_run(monkeypatch)
     assert "13F derived whole: a filer family changed" in _note(row), _note(row)
     _same_as_whole(monkeypatch, row)
+
+
+def test_a_13f_file_in_a_pass_another_source_leads_derives_its_quarters(history, monkeypatch):
+    """#1573: the pass builds with its first request's context; a FINRA request ahead of ``sec/13f`` once kept the
+    live 13F tables while the manifest marked the new filing day built, so its quarters stayed stale for good."""
+    _finra("2026-10-31", {"MSFT": 120})
+    _13f("2026-10-28", [("0001000004-26-000001", 1000004, [(MSFT, 50_000, 125)])])
+    monkeypatch.setattr(finra.FinraShortInterest, "fetch", lambda self, ctx, as_of: [])
+    monkeypatch.setattr(sec13f.Sec13f, "fetch", lambda self, ctx, as_of: [])
+    reqs = []
+    for name in (finra.NAME, sec13f.NAME):
+        ops.enqueue(name, {"as_of": "2026-10-28"}, by="cli")
+        reqs.append(ops.next_request(name))
+    rows = base.run_batch(reqs)
+    assert "13F derived for 9 quarter(s) (2024-09-30..2026-09-30)" in _note(rows[0]), _note(rows[0])
+    _same_as_whole(monkeypatch, rows[0])
+    assert _rows("SELECT count(*) FROM sec13f_filer_period WHERE cik = '1000004'") == [(1,)]
