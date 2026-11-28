@@ -181,11 +181,13 @@ def stage_age_h(check: dict) -> float:
 
 
 def _first_stage(check: dict) -> dict:
-    """The oldest stage since the last build (a check that is not ``skipped``); a pause or day-cap skip between two
-    stages builds nothing, so it does not end the wait."""
+    """The oldest stage since the last build (a ``changed`` or ``unchanged`` check); a failed run, a pause or a
+    day-cap skip between two stages builds nothing, so it does not end the wait."""
     first = check
-    for row in ops.recent_checks(check["dataset"], 400)[1:] if check.get("dataset") else ():
-        if row["result"] != "skipped":
+    for row in ops.recent_checks(check["dataset"], 400) if check.get("dataset") else ():
+        if int(row["id"]) >= int(check["id"]):
+            continue                  # the check itself, or a row written after it was read
+        if row["result"] in ("changed", "unchanged"):
             break
         if _staged(row):
             first = row

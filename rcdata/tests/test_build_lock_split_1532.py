@@ -154,6 +154,7 @@ def test_a_newer_stage_does_not_make_the_waiting_data_look_young(one_source, mon
     ops.record_check(MS, "changed", run_id="built", source_as_of="2026-11-20")
     ops.record_check(MS, "skipped", note=base.NO_DUCKDB_NOTE, run_id="old", source_as_of="2026-11-23")
     ops.record_check(MS, "skipped", note="skipped: paused", run_id="pause", source_as_of="2026-11-24")
+    ops.record_check(MS, "failed", note="a fetch that failed builds nothing", run_id="pause", source_as_of="2026-11-24")
     ops.record_check(MS, "skipped", note=base.NO_DUCKDB_NOTE, run_id="new", source_as_of=AS_OF.isoformat())
     started = {"old": 50.0, "pause": 20.0, "new": 1.0, "built": 120.0}
     monkeypatch.setattr(ops, "run_started_at", lambda run_id: WED_EVENING.timestamp() - started[run_id] * 3600.0)
