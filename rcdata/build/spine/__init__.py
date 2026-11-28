@@ -18,8 +18,9 @@ the bridge views from the staging tables:
 - ``openfigi/map`` (weekly): the CUSIPs not mapped yet, under 25 requests a minute;
 - ``funds/index_holdings`` (daily): the ETF holdings files of SSGA, iShares and Invesco and Nasdaq's list API, the
   index membership;
-- ``funds/etf_holdings`` (daily): the rotation board's ETFs read whole, from the SPDR and iShares files and UW's
-  holdings answer for the themes whose issuer has no keyless file; it serves ``etf_holdings`` itself (no vote);
+- ``funds/etf_holdings`` (daily): the rotation board's ETFs read whole, from the SPDR and iShares files and, for the
+  themes whose issuer has no keyless file, TickerInside (ARK's own CSV behind it for ARKQ; UW is asked for nothing
+  since #1365); it serves ``etf_holdings`` itself (no vote);
 - ``alphavantage/listing_status`` (weekly, keyed) and ``sec/ncen`` (weekly): Alpha Vantage's list of every US
   listing and the SEC's Form N-CEN data sets, the two halves of the ETF list (#346);
 - ``spine/security``: no fetch; tier rule v1 (``tier.py``), the served tables ``security``, ``security_history``,

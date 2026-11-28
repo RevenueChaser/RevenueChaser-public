@@ -24,6 +24,17 @@ def client():
     return dashboard.app.test_client()
 
 
+def _no_worker(monkeypatch) -> None:
+    """Keep a submitted job queued. Patching ``_ensure_*`` alone is not enough: a worker an earlier test of the same
+    process started is still alive and would take the job off the shared queue (then the cancel answers 409). Fresh
+    queues reach no live worker, because a worker reads the queue object it was started with (``_worker_loop``)."""
+    import queue
+    monkeypatch.setattr(jobs, "_ensure_worker", lambda: None)
+    monkeypatch.setattr(jobs, "_ensure_long_worker", lambda: None)
+    monkeypatch.setattr(jobs, "_JOB_QUEUE", queue.Queue())
+    monkeypatch.setattr(jobs, "_LONG_QUEUE", queue.Queue())
+
+
 def _row(client, name: str) -> dict:
     rows = client.get("/api/automations").get_json()["rows"]
     return next(r for r in rows if r["name"] == name)
@@ -51,8 +62,7 @@ def test_each_row_says_whether_it_has_a_stop_and_the_get_itself_changes_nothing(
 
 def test_a_queued_job_shows_on_its_row_and_that_id_is_the_one_the_cancel_route_stops(client, fake, monkeypatch):
     """End to end on the queued side: the row's ``cancel_url`` is a route that really cancels that job."""
-    monkeypatch.setattr(jobs, "_ensure_worker", lambda: None)
-    monkeypatch.setattr(jobs, "_ensure_long_worker", lambda: None)
+    _no_worker(monkeypatch)
     job_id = jobs.submit("module_value_chain", {})
     try:
         stop = _row(client, "RC-ValueChain-Sync")["stop"]
@@ -69,8 +79,7 @@ def test_a_queued_job_shows_on_its_row_and_that_id_is_the_one_the_cancel_route_s
 
 
 def test_a_running_job_without_checkpoints_offers_no_stop(client, fake, monkeypatch):
-    monkeypatch.setattr(jobs, "_ensure_worker", lambda: None)
-    monkeypatch.setattr(jobs, "_ensure_long_worker", lambda: None)
+    _no_worker(monkeypatch)
     job_id = jobs.submit("module_value_chain", {})
     try:
         jobs._set(job_id, status="running")
