@@ -8,7 +8,8 @@ row per series and filing: ``SERIES_ID``, ``FUND_NAME``, the fund-type flags ``I
 assets ``DAILY_AVG_NET_ASSETS`` / ``MONTHLY_AVG_NET_ASSETS``) and ``SECURITY_EXCHANGE.tsv`` (the ticker and exchange,
 filled for the ETFs). ``SUBMISSION.tsv`` gives each filing's CIK and dates.
 
-**Cadence: monthly.** ``due.py`` knows daily, weekly and monthly, not quarterly. Every run, the daily Fetch and the
+**Cadence: weekly**, with the other spine sources (avo, 22 Nov 2026; ``cadence`` below). ``due.py`` knows no
+quarterly cadence, so every run, the daily Fetch and the
 backfill alike, holds the last four published quarters: from the newest quarter that has ended backwards, a quarter
 not held is asked (a 404 is "not published yet", and the walk goes one quarter further), until four are held. An
 N-CEN is filed once a fiscal year, so four quarters hold every fund's newest one (measured 1 Nov 2026 over
