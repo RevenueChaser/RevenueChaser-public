@@ -140,12 +140,28 @@ def test_a_stage_under_a_partial_mode_is_built_once_the_ceiling_passes(one_sourc
     assert _queued() == [(MS, {"build_only": True})], "the build of what was staged, at no provider call"
 
 
-def test_the_fetch_pass_does_not_stage_over_an_overdue_stage(one_source, monkeypatch):
-    """A fresh stage every hour would keep the newest check young and the ceiling would never fire."""
+def test_the_fetch_pass_stages_on_over_an_overdue_stage(one_source, monkeypatch):
+    """avo, 28 Nov 2026: "fetch her zaman devam etmeli build acik olmasa bile" -- with the build timer off, the fetch
+    pass still fetches; it used to leave an overdue dataset alone, so no new data came in until a build ran."""
     _staged_check(30.0, monkeypatch)
-    name, why, rid, error = _one(due.enqueue_due(stage="fetch"))
-    assert rid is None and not error and "not staged over" in why
-    assert _queued() == []
+    assert due.stage_overdue(ops.latest_check(MS)) is not None
+    assert due._pass_mode(one_source, "full", "fetch") == ("parquet", None)
+    assert due._pass_mode(one_source, "parquet", "fetch") == ("parquet", None)
+
+
+def test_a_newer_stage_does_not_make_the_waiting_data_look_young(one_source, monkeypatch):
+    """The fetch pass stages on, so the ceiling ages the first stage since the last build, not the newest."""
+    ops.record_check(MS, "changed", run_id="built", source_as_of="2026-11-20")
+    ops.record_check(MS, "skipped", note=base.NO_DUCKDB_NOTE, run_id="old", source_as_of="2026-11-23")
+    ops.record_check(MS, "skipped", note="skipped: paused", run_id="pause", source_as_of="2026-11-24")
+    ops.record_check(MS, "failed", note="a fetch that failed builds nothing", run_id="pause", source_as_of="2026-11-24")
+    ops.record_check(MS, "skipped", note=base.NO_DUCKDB_NOTE, run_id="new", source_as_of=AS_OF.isoformat())
+    started = {"old": 50.0, "pause": 20.0, "new": 1.0, "built": 120.0}
+    monkeypatch.setattr(ops, "run_started_at", lambda run_id: WED_EVENING.timestamp() - started[run_id] * 3600.0)
+    assert due.stage_overdue(ops.latest_check(MS)) == pytest.approx(50.0)
+    ops.record_check(MS, "changed", run_id="built", source_as_of=AS_OF.isoformat())
+    ops.record_check(MS, "skipped", note=base.NO_DUCKDB_NOTE, run_id="new", source_as_of=AS_OF.isoformat())
+    assert due.stage_overdue(ops.latest_check(MS)) is None, "a build ends the wait"
 
 
 def test_the_build_pass_takes_an_overdue_raw_only_stage_too(one_source, monkeypatch):

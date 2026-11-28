@@ -225,8 +225,10 @@ writes the serving file in seconds (`due._pass_mode`, `due.enqueue_due`). A run 
 press are untouched: theirs is one turn on purpose. Two rules keep the split honest:
 
 - **The gap ceiling is 24 hours** (`due.STAGE_GAP_MAX_H`). Data that has been staged for longer is built on the
-  next pass whatever the source's automation mode says, with a `build_only` request and no provider call, and the
-  fetch pass stops staging over it in the meantime. Without the ceiling a source under `raw` or `parquet`
+  next pass whatever the source's automation mode says, with a `build_only` request and no provider call. The
+  fetch pass never waits for that build: it stages on (avo, 28 Nov 2026, "fetch her zaman devam etmeli build acik
+  olmasa bile"), and the age is counted from the first stage since the last build, so a newer stage does not hide
+  the wait. Without the ceiling a source under `raw` or `parquet`
   automation staged every hour and was never built, because its own stage note counted as that mode's finished
   run. An `off` source is left alone: that switch is avo's word that it is built by hand.
 - **No build beside a heavy fetch.** The build turn waits while a live `rcdata_fetch_<dataset>` lock belongs to a
